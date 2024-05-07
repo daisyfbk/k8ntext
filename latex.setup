@@ -1,0 +1,49 @@
+
+# ------ latex customizations --------------------------------------------------
+#+LATEX_HEADER: \PassOptionsToPackage{table,xcdraw}{xcolor}
+#+LATEX_HEADER: \usepackage[T1]{fontenc}
+#+LATEX_HEADER: \usepackage[utf8]{inputenc}
+#+LATEX_HEADER: \usepackage{amsmath}
+#+LATEX_HEADER: \usepackage{amssymb}
+#+LATEX_HEADER: \usepackage{amsthm}
+#+LATEX_HEADER: \usepackage{amsfonts}
+#+LATEX_HEADER: \usepackage{graphicx}
+#+LATEX_HEADER: \usepackage{colortbl}
+#+LATEX_HEADER: \usepackage{enumitem}
+#+LATEX_HEADER: \usepackage[top=3cm, bottom=3cm, left=2.5cm, right=2.5cm]{geometry}
+#+LATEX_HEADER: \usepackage[scaled=0.85]{FiraMono}
+#+LATEX_HEADER: \usepackage[ruled, lined, longend, linesnumbered]{algorithm2e}
+#+LATEX_HEADER: \usepackage{bm}
+#+LATEX_HEADER: \usepackage{listings}
+#+LATEX_HEADER: \usepackage[dvipsnames]{xcolor}
+#+LATEX_HEADER: \usepackage{palatino}
+#+LATEX_HEADER: \usepackage{palatino}
+#+LATEX_HEADER: \usepackage{caption}
+#+LATEX_HEADER: \usepackage{array}
+#+LATEX_HEADER: \usepackage{pgf}
+#+LATEX_HEADER: \usepackage{lmodern}
+#+LATEX_HEADER: \usepackage{import}
+#+LATEX_HEADER: \usepackage{layouts}
+#+LATEX_HEADER: \usepackage{enumitem}
+
+# show section numbers
+#+LATEX_HEADER: \setcounter{secnumdepth}{3}
+# reduce space between items
+# #+LATEX_HEADER:\setlist{nosep}
+# #+LATEX_HEADER:\setlist[itemize]{leftmargin=*}
+# smaller parskip
+# #+LATEX_HEADER: \setlength{\parskip}{1pt}
+# larger space after shaded boxes
+# #+LATEX_HEADER: \setlength{\partopsep}{1em}
+# argmin/max definitions
+#+LATEX_HEADER: \DeclareMathOperator*{\argmax}{arg\,max}
+#+LATEX_HEADER: \DeclareMathOperator*{\argmin}{arg\,min}
+#+LATEX_HEADER: \lstset{basicstyle=\ttfamily, keywordstyle=\bfseries, language=Python, float}
+#+LATEX_HEADER: \captionsetup[table]{skip=10pt,justification=centering}
+#+LATEX_HEADER: \renewcommand{\arraystretch}{1.4}
+# final latex configuration and bibliography
+#+LATEX_CLASS: article
+#+LATEX_CLASS_OPTIONS: [a4paper,10pt]
+# #+BIBLIOGRAPHY: cisco.bib
+# #+CITE_EXPORT: natbib plain
+# ----- end of latex customizations --------------------------------------------------

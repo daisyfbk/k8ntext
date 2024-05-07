@@ -1,0 +1,192 @@
+#+TITLE: Audit Research 
+#+AUTHOR: Matteo Franzil, Valentino Armani, Luis Augusto Dias Knob, Domenico Siracusa
+#+LANGUAGE: en
+#+EXCLUDE_TAGS: noexpo
+#+OPTIONS: num:nil html-style:nil toc:nil
+# #+OPTIONS: ^:nil toc:nil num:3
+#+SETUPFILE: latex.setup
+
+* Audit Project
+The scope of this project is to devise, implement, and evaluate a system that
+performs audit log parsing, (possibly) reduction, and generation of a graph
+(or similar structure) that captures the interactions between the events in
+audit logs.
+
+** Objectives
+1. Parse audit logs, extracting relevant information and discarding
+   redundant and non-informative data
+2. Store the parsed data in a structured format that captures:
+   - the relationships between the events and the entities involved
+   - the temporal dimension of the events
+   - the context in which the events occurred
+3. Evaluate the performance of the system in terms of:
+   - the correctness of the generated structure 
+     - we should investigate the loss of information and
+       the choices that must be made between preserving
+       data and discarding it
+   - the effectiveness of the structured data 
+     - the information that can be extracted 
+     - the ease-of-use of the data structure 
+       and the preservation of causality relationships
+   - the efficiency of the parsing process, e.g.
+     - the spatial and temporal complexity in traversing the data
+     - the time required to parse a log file
+     - the memory footprint of the system
+     - its feasibility as a real-time system (not necessarily)
+    
+** Timeline and milestones
+(V) = Valentino, (M) = Matteo
+*** Weeks 1-2 (May 7-20)
+- (M+V) Literature review 
+  - (audit) log parsing and analysis
+  - graph-based data structures
+  - data provenance 
+- (M+V) Initial investigation of K8s audit logs
+  - Set up infrastructure to collect logs
+  - Identify priority events to parse
+    - Assess possible problematic areas
+**** Results
+- A literature review (shared) document
+- A shared cluster with K8s running to collect logs from
+- Initial rough idea of events to focus on
+*** Weeks 3-7 (May 21-June 17)
+- (M+V) Designing the system 
+  - Choosing which data structure to use
+  - Outlining a definitive priority list of events to parse
+    - This also includes which Service Accounts to focus on first
+  - Understanding how to include the temporal dimension
+- (V) Initial implementation of parser for logs
+  - Parse JSON logs
+  - Extract relevant information
+  - Build a data structure to store the parsed data
+    - Optimize for fast access and traversal
+- (M) Work on understanding the relationships
+  - Understand: when I do X, what is generated? Who is involved?
+  - Which events are related to each other? Which can be discarded?
+**** Results
+- A shared document with the design of the system
+- An ordered list of /milestones/ to reach, w.r.t. the capabilities
+  of the system, along with the difficulties in doing so
+*** Weeks 8-10 (June 18-July 1)
+- Continuation of the work from the previous weeks,
+  step by step adding more features to the parser
+  making it more capable of extracting information
+  from the logs.
+**** Results
+- An early implementation of the parser that should
+  already be able to extract some information,
+  albeit not programmatically.
+*** Weeks 11-14 (July 2-29)
+- (V) Focus on: querying the data structure 
+  - An user should be able to quickly find the information
+    they are looking for.
+    - e.g. I put in a user and I can "follow" what
+      the user did 
+    - this possibly creates subgraphs that are "isolated"
+      from the rest of the graph, on the fly
+- (M) Initial assessment of the system
+  - Correctness of the extracted information
+  - Effectiveness of the structured data and its usability
+  - Efficiency of the parsing process
+  - In reality this should be a continuous process
+**** Results
+- A prototype of a system that is now queryable
+- A document outlining the evaluation process
+  and the results obtained
+*** Weeks 15-18 (July 30-August 26)
+- (V) Refining queries 
+  - Could be the right moment to start making /user stories/
+    to understand how the system could be used and what
+    features users would like to see
+  - Strong focus on the temporal dimension
+    - Assume an incident happened at time X, what happened
+      in timespan $[X - 1h, X + 1h]$?
+    - Is it possible to "replay" the events that led to the incident?
+- (M) Work towards feature-completeness
+  - The system should be able to parse all the events
+    we set out to parse
+  - Each event should be thoroughly tested, the choices
+    made strongly justified and documented
+- Did we meet the list of milestones we set up?
+  - Yes :: Perfect, we can move on to the next phase
+  - No :: Take a time machine and go back to the previous
+            weeks to fix the issues
+*** Weeks 19-20 (August 27-September 9)
+- (M+V) Starting the publication draft
+  - The document should generalize the work done,
+    making it suitable for not just Kubernetes logs
+    but for any kind of audit log (e.g. AWS, GCP)
+  - Still to be decided which type of publication
+    we are aiming for
+- (M+V) Final assessment of the system
+  - The system should be able to parse logs in a reasonable
+    amount of time, and the data structure should be
+    efficient in storing the data
+  - The system should be able to answer queries in a
+    reasonable amount of time
+  - The query system should be user-friendly, and the
+    results should be easily interpretable
+  - The system could have some kind of visualization
+    to help users understand the data
+
+- If something went wrong, this is the correct moment to
+  apply fixes and improvements to the system.
+
+**** Results
+- A first WIP of the publication, still in the early
+  stages of writing
+- A final assessment of the system
+- A visualization of the data structure
+- A final report on the project  
+*** Weeks 21-27 (September 10-October 28)
+- Writing the publication
+- Finalizing the system
+- Closure work
+**** Results
+- A publication
+- A final report on the project
+- A final version of the system
+  
+* Misc notes
+- Accessing secrets using printenv does not leave a trace in the audit logs
+- (to be expanded)
+  
+* Old notes (from mzani, gfoletto internship) :noexpo: 
+** Notes
+- LogGC [1] performs garbage collection of /plain/ audit logs. Many entries in
+  audit logs regard objects which bear no influence on actual post mortem
+  investigation, and thus can be pruned. LogGC additionally puts some probes
+  around user applications that emit events that avoid false positives
+- [2] formalizes the notion of "forensic validity", i.e., a set of three
+  metrics that encode relationships between system events that must be
+  preserved in logs. In particular, the three are /lossless/,
+  /causality-preserving/, and /attack-preserving/. Furthermore, it proposes
+  LogApprox, a regex based approximation of audit logs that mainly targets file
+  I/O events, and showing how this approach can be used to generate multiple
+  regex that are realistic to processes and actually help in reducing logs.
+- KCAL [3], after performing an analysis on the Linux Auditing system, proposes
+  an inline auditing system that is able to reduce the amount of logs by
+  90% and overhead by 15/40%. By modifying the Linux kernel (!!!), they introduce
+  an in-memory cache that is triggered by the Linux auditing module and is able
+  to discard events which do not provide novel information.
+- CSCLog [4] proposes a method that captures the sequential dependencies in
+  subsequences and their implicit correlations. This is done using an
+  LSTM-based approach. They additionally perform an exhaustive SoA research
+  and justify their superiority against other papers in the area.
+- LogAnomaly [5] outlines a tool that converts a log stream into a structured,
+  templated form and proposes a way of identifying anomalies using
+  unsupervised techniques.
+- LogGraph [6] proposes a method that extracts the "structure" from a log,
+  generates subsequences out of the log, and constructs a graph in which every
+  node is an event and edges represent correlation between events. A GNN is
+  then used to learn the interactions between the events. This approach is
+  robust against log overlaps, missing, duplicated, and reordered data.
+** References
+#+BEGIN_SRC
+[1] K. H. Lee, X. Zhang, and D. Xu, “LogGC: garbage collecting audit log,” in Proceedings of the 2013 ACM SIGSAC conference on Computer & communications security - CCS ’13, Berlin, Germany: ACM Press, 2013, pp. 1005–1016. doi: 10.1145/2508859.2516731. Available: http://dl.acm.org/citation.cfm?doid=2508859.2516731. [Accessed: Nov. 10, 2023]
+[2] N. Michael, J. Mink, J. Liu, S. Gaur, W. U. Hassan, and A. Bates, “On the Forensic Validity of Approximated Audit Logs,” in Annual Computer Security Applications Conference, Austin USA: ACM, Dec. 2020, pp. 189–202. doi: 10.1145/3427228.3427272. Available: https://dl.acm.org/doi/10.1145/3427228.3427272. [Accessed: Nov. 10, 2023]
+[3] S. Ma et al., “Kernel-Supported Cost-Effective Audit Logging for Causality Tracking,” presented at the 2018 USENIX Annual Technical Conference (USENIX ATC 18), 2018, pp. 241–254. Available: https://www.usenix.org/conference/atc18/presentation/ma-shiqing. [Accessed: Nov. 16, 2023]
+[4] L. Chen, C. Song, X. Wang, D. Fu, and F. Li, “CSCLog: A Component Subsequence Correlation-Aware Log Anomaly Detection Method.” arXiv, Jul. 06, 2023. Available: http://arxiv.org/abs/2307.03359. [Accessed: Aug. 04, 2023]
+[5] W. Meng et al., “LogAnomaly: Unsupervised Detection of Sequential and Quantitative Anomalies in Unstructured Logs,” in Proceedings of the Twenty-Eighth International Joint Conference on Artificial Intelligence, Macao, China: International Joint Conferences on Artificial Intelligence Organization, Aug. 2019, pp. 4739–4745. doi: 10.24963/ijcai.2019/658. Available: https://www.ijcai.org/proceedings/2019/658. [Accessed: Aug. 07, 2023]
+[6] J. Li, H. He, S. Chen, and D. Jin, “LogGraph: Log Event Graph Learning Aided Robust Fine-Grained Anomaly Diagnosis,” IEEE Transactions on Dependable and Secure Computing, pp. 1–15, 2023, doi: 10.1109/TDSC.2023.3293111
+#+END_SRC
