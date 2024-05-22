@@ -36,7 +36,7 @@ audit logs.
     
 ** Timeline and milestones
 (V) = Valentino, (M) = Matteo
-*** Weeks 1-2 (May 7-20)
+*** Weeks 1-2 (May 7 - May 20)
 - (M+V) Literature review 
   - (audit) log parsing and analysis
   - graph-based data structures
@@ -49,7 +49,7 @@ audit logs.
 - A literature review (shared) document
 - A shared cluster with K8s running to collect logs from
 - Initial rough idea of events to focus on
-*** Weeks 3-7 (May 21-June 17)
+*** Weeks 3-7 (May 21 - June 24)
 - (M+V) Designing the system 
   - Choosing which data structure to use
   - Outlining a definitive priority list of events to parse
@@ -67,7 +67,7 @@ audit logs.
 - A shared document with the design of the system
 - An ordered list of /milestones/ to reach, w.r.t. the capabilities
   of the system, along with the difficulties in doing so
-*** Weeks 8-10 (June 18-July 1)
+*** Weeks 8-10 (June 25 - July 16)
 - Continuation of the work from the previous weeks,
   step by step adding more features to the parser
   making it more capable of extracting information
@@ -76,7 +76,7 @@ audit logs.
 - An early implementation of the parser that should
   already be able to extract some information,
   albeit not programmatically.
-*** Weeks 11-14 (July 2-29)
+*** Weeks 11-12 (July 17 - July 30)
 - (V) Focus on: querying the data structure 
   - An user should be able to quickly find the information
     they are looking for.
@@ -93,7 +93,7 @@ audit logs.
 - A prototype of a system that is now queryable
 - A document outlining the evaluation process
   and the results obtained
-*** Weeks 15-18 (July 30-August 26)
+*** Weeks 12-16 (July 30 - August 26)
 - (V) Refining queries 
   - Could be the right moment to start making /user stories/
     to understand how the system could be used and what
@@ -111,7 +111,7 @@ audit logs.
   - Yes :: Perfect, we can move on to the next phase
   - No :: Take a time machine and go back to the previous
             weeks to fix the issues
-*** Weeks 19-20 (August 27-September 9)
+*** Weeks 17-18 (August 27 - September 9)
 - (M+V) Starting the publication draft
   - The document should generalize the work done,
     making it suitable for not just Kubernetes logs
@@ -138,7 +138,7 @@ audit logs.
 - A final assessment of the system
 - A visualization of the data structure
 - A final report on the project  
-*** Weeks 21-27 (September 10-October 28)
+*** Weeks 19-25 (September 10 - October 28)
 - Writing the publication
 - Finalizing the system
 - Closure work
@@ -148,8 +148,22 @@ audit logs.
 - A final version of the system
   
 * Misc notes
-- Accessing secrets using printenv does not leave a trace in the audit logs
-- (to be expanded)
+- Motivation
+  - Cloud Auditing is a powerful security feature that as it is does
+    not realise its full potential. Indeed, some tools present in the
+    market perform audit cruching and already provide some intelligence
+    over the incoming information, but no one performs actual cross-log
+    correlation between temporally distinct events.
+  - Other academic works focus on doing data forensics and post-mortem
+    investigation over system audit logs. However, we want to
+    dynamically and in-real-time parse our log so that we can perform
+    anomaly detection rather than letting security experts do it.
+  - GUI and querying are secondary: the graph should be quick to be
+    generated and to parse, but in the end a machine will query it.
+  - To the best of our knowledge no one explored the capabilities of audit logging 
+    for doing real time anomaly detection over cloud environments.
+- Caveats
+  - Accessing secrets using printenv does not leave a trace in the audit logs
   
 * Old notes (from mzani, gfoletto internship) :noexpo: 
 ** Notes
