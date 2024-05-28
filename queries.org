@@ -1,5 +1,7 @@
 # #+PROPERTY: header-args :eval both
-# #+PROPERTY: header-args :exports both
+#+PROPERTY: header-args :eval no-export
+#+PROPERTY: header-args :exports both
+#+PROPERTY: header-args :results type verbatim
 #+PROPERTY: header-args:shell :prologue "exec 2>&1" :epilogue ":" 
 
 #+LATEX_HEADER: \usepackage{xcolor}
@@ -7,7 +9,7 @@
 # -*- org-confirm-babel-evaluate: nil -*-
 
 * Log setups 
-** Namespace log =N1=
+** Namespace log =N1= - Simple namespace creation and deletion
 - Create a namespace:
   #+BEGIN_SRC shell
   kubectl create namespace rising
@@ -31,7 +33,7 @@
   | limited         | Active | 99d |
   | my-namespace    | Active | 19d |
   | rising          | Active | 96m |
-
+  
 - Describe the namespace:
   #+BEGIN_SRC shell
   kubectl describe namespace rising
@@ -55,7 +57,7 @@
   #+RESULTS:
   : namespace "rising" deleted
 
-** Pod log
+** Pod log =P1= - Simple Pod creation and inspection
 - Create a pod:
   #+BEGIN_SRC shell
     cat <<EOF | kubectl apply -f -
@@ -70,7 +72,7 @@
 	image: nginx
       - name: second-container
 	image: alpine 
-        command: ["sh", "-c", "echo Hello, Kubernetes! && sleep 36000"]
+        command: ["sh", "-c", "echo Hello, Kubernetes! && sleep 3600"]
     EOF
   #+END_SRC
 
@@ -113,7 +115,121 @@
 
   #+RESULTS:
   : pod "rising-pod" deleted
+  
+** Pod log =P2= - Image download
+*Prerequisites*: run the following helper script to wipe the image cache on all nodes:
 
-** Pod log P2 - Image download
+#+BEGIN_SRC shell :results type verbatim
+  for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
+    echo "Pruning images on $node"
+    ssh -F ssh/cluster-setup $node "sudo crictl rmi --prune"
+  done
+#+END_SRC
+
+#+RESULTS:
+: Pruning images on kubeadm-master
+: time="2024-05-28T12:49:20Z" level=warning msg="image connect using default endpoints: [unix:///var/run/dockershim.sock unix:///run/containerd/containerd.sock unix:///run/crio/crio.sock unix:///var/run/cri-dockerd.sock]. As the default settings are now deprecated, you should set the endpoint instead."
+: time="2024-05-28T12:49:20Z" level=error msg="validate service connection: validate CRI v1 image API for endpoint \"unix:///var/run/dockershim.sock\": rpc error: code = Unavailable desc = connection error: desc = \"transport: Error while dialing: dial unix /var/run/dockershim.sock: connect: no such file or directory\""
+: time="2024-05-28T12:49:20Z" level=warning msg="runtime connect using default endpoints: [unix:///var/run/dockershim.sock unix:///run/containerd/containerd.sock unix:///run/crio/crio.sock unix:///var/run/cri-dockerd.sock]. As the default settings are now deprecated, you should set the endpoint instead."
+: time="2024-05-28T12:49:20Z" level=error msg="validate service connection: validate CRI v1 runtime API for endpoint \"unix:///var/run/dockershim.sock\": rpc error: code = Unavailable desc = connection error: desc = \"transport: Error while dialing: dial unix /var/run/dockershim.sock: connect: no such file or directory\""
+: Pruning images on kubeadm-worker1
+: Pruning images on kubeadm-worker2
+
+With the image cache cleared, we can now run the following tests:
+- Create a Pod with a container that uses a non-existent image:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: image-pod
+    namespace: rising
+  spec:
+    containers:
+    - name: image-container
+      image: www.fbk.eu/non-existent-image
+      command: ["sh", "-c", "echo Hello, Kubernetes! && sleep 3600"]
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  : pod/image-pod created
+
+- Get the pod log:
+  #+BEGIN_SRC shell
+  kubectl -n rising logs image-pod -c image-container
+  #+END_SRC
+
+  #+RESULTS:
+  : Error from server (BadRequest): container "image-container" in pod "image-pod" is waiting to start: image can't be pulled
+
+- Get the events that led to the failure:
+  #+BEGIN_SRC shell :results type verbatim
+  kubectl get events -n rising --sort-by='.metadata.creationTimestamp'
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_example
+  LAST SEEN   TYPE      REASON                   OBJECT          MESSAGE
+  13s         Normal    Scheduled                pod/image-pod   Successfully assigned rising/image-pod to kubeadm-worker1
+  12s         Normal    Pulling                  pod/image-pod   Pulling image "www.fbk.eu/non-existent-image"
+  11s         Warning   Failed                   pod/image-pod   Failed to pull image "www.fbk.eu/non-existent-image": rpc error: code = NotFound desc = failed to pull and unpack image "www.fbk.eu/non-existent-image:latest": failed to resolve reference "www.fbk.eu/non-existent-image:latest": www.fbk.eu/non-existent-image:latest: not found
+  11s         Warning   Failed                   pod/image-pod   Error: ErrImagePull
+  10s         Normal    BackOff                  pod/image-pod   Back-off pulling image "www.fbk.eu/non-existent-image"
+  10s         Warning   Failed                   pod/image-pod   Error: ImagePullBackOff
+  #+end_example
+
+- Delete the pod:
+  #+BEGIN_SRC shell
+  kubectl -n rising delete pod image-pod
+  #+END_SRC
+
+  #+RESULTS:
+  : pod "image-pod" deleted
+  
+- Create a pod with an image that will surely not be in cache:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: image-pod
+      namespace: rising
+    spec:
+      containers:
+      - name: image-container
+        image: busybox
+        command: ["sh", "-c", "echo Hello, Kubernetes! && sleep 3600"]
+    EOF
+   #+END_SRC
+
+   #+RESULTS:
+   : pod/image-pod created
+
+- Wait for the Pod to be downloaded and monitor the events:
+  #+BEGIN_SRC shell
+  kubectl wait --for=condition=Ready pod/image-pod -n rising
+  kubectl get events -n rising --sort-by='.metadata.creationTimestamp'
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_example
+  pod/image-pod condition met
+  LAST SEEN   TYPE      REASON                   OBJECT          MESSAGE
+  6s          Normal    Scheduled                pod/image-pod   Successfully assigned rising/image-pod to kubeadm-worker1
+  5s          Normal    Pulling                  pod/image-pod   Pulling image "busybox"
+  1s          Normal    Pulled                   pod/image-pod   Successfully pulled image "busybox" in 4.047s (4.047s including waiting)
+  1s          Normal    Created                  pod/image-pod   Created container image-container
+  1s          Normal    Started                  pod/image-pod   Started container image-container
+  #+end_example
+
+ - Delete the pod:
+   #+BEGIN_SRC shell
+   kubectl -n rising delete pod image-pod
+   #+END_SRC
+
+   #+RESULTS:
+   : pod "image-pod" deleted
+
 ** ConfigMap C1 - Create a ConfigMap and use it in a Pod, then delete it
 ** Secret S1 - Create a Secret and use it in a Pod, then delete it

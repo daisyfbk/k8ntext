@@ -1,0 +1,12 @@
+Host kubeadm-master
+    Hostname 1.2.3.4
+    User youruser 
+
+Host kubeadm-worker1
+    Hostname 5.6.7.8
+    User youruser
+
+# Add more workers as needed
+
+Host kubeadm*
+    IdentityFile ~/.ssh/id_rsa

@@ -1,5 +1,7 @@
 logs/
 *.tex
+ssh/cluster-setup
+.#*
 
 ## Core latex/pdflatex auxiliary files:
 
