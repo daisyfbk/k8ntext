@@ -1,0 +1,119 @@
+# #+PROPERTY: header-args :eval both
+# #+PROPERTY: header-args :exports both
+#+PROPERTY: header-args:shell :prologue "exec 2>&1" :epilogue ":" 
+
+#+LATEX_HEADER: \usepackage{xcolor}
+#+SETUPFILE: latex.setup 
+# -*- org-confirm-babel-evaluate: nil -*-
+
+* Log setups 
+** Namespace log =N1=
+- Create a namespace:
+  #+BEGIN_SRC shell
+  kubectl create namespace rising
+  #+END_SRC
+
+  #+RESULTS:
+  : Error from server (AlreadyExists): namespaces "rising" already exists
+
+- Get the namespace:
+  #+BEGIN_SRC shell 
+  kubectl get namespaces
+  #+END_SRC
+
+  #+RESULTS:
+  | NAME            | STATUS | AGE |
+  | default         | Active | 99d |
+  | kube-flannel    | Active | 99d |
+  | kube-node-lease | Active | 99d |
+  | kube-public     | Active | 99d |
+  | kube-system     | Active | 99d |
+  | limited         | Active | 99d |
+  | my-namespace    | Active | 19d |
+  | rising          | Active | 96m |
+
+- Describe the namespace:
+  #+BEGIN_SRC shell
+  kubectl describe namespace rising
+  #+END_SRC
+
+  #+RESULTS:
+  | Name:        | rising                             |           |
+  | Labels:      | kubernetes.io/metadata.name=rising |           |
+  | Annotations: | <none>                             |           |
+  | Status:      | Active                             |           |
+  |              |                                    |           |
+  | No           | resource                           | quota.    |
+  |              |                                    |           |
+  | No           | LimitRange                         | resource. |
+
+- Delete the namespace:
+  #+BEGIN_SRC shell
+  kubectl delete namespace rising
+  #+END_SRC
+
+  #+RESULTS:
+  : namespace "rising" deleted
+
+** Pod log
+- Create a pod:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: rising-pod
+      namespace: rising
+    spec:
+      containers:
+      - name: first-container 
+	image: nginx
+      - name: second-container
+	image: alpine 
+        command: ["sh", "-c", "echo Hello, Kubernetes! && sleep 36000"]
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  : pod/rising-pod created
+
+- Inspect the Pod:
+  #+BEGIN_SRC shell
+  kubectl -n rising describe pod rising-pod
+  #+END_SRC
+
+- Patch the Pod and try to add a third container, this will fail:
+  #+BEGIN_SRC shell
+  kubectl -n rising patch pod rising-pod --type='json' -p='[{"op": "add", "path": "/spec/containers/1", "value": {"name": "third-container", "image": "nginx"}}]'
+  #+END_SRC
+
+  #+RESULTS:
+
+- Get the pod log:
+  #+BEGIN_SRC shell
+  kubectl -n rising logs rising-pod -c second-container
+  #+END_SRC
+
+  #+RESULTS:
+  | Hello | Kubernetes! |
+
+- Execute commands in the second containers, the first will complain about the shell, the second will work:
+  #+BEGIN_SRC shell
+  kubectl -n rising exec -t rising-pod -c second-container -- /bin/bash -c "echo Hello again, Kubernetes!"
+  kubectl -n rising exec -t rising-pod -c second-container -- /bin/sh -c "echo Hello again, Kubernetes!"
+  #+END_SRC
+
+  #+RESULTS:
+  | Hello again | Kubernetes! |
+
+- Delete the pod:
+  #+BEGIN_SRC shell
+  kubectl -n rising delete pod rising-pod
+  #+END_SRC
+
+  #+RESULTS:
+  : pod "rising-pod" deleted
+
+** Pod log P2 - Image download
+** ConfigMap C1 - Create a ConfigMap and use it in a Pod, then delete it
+** Secret S1 - Create a Secret and use it in a Pod, then delete it

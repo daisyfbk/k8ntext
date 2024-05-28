@@ -148,6 +148,13 @@ audit logs.
 - A final version of the system
   
 * Misc notes
+- Create a scenario with two deployments being done by different users
+  (in different namespaces?)
+- Using KWOK
+- Ask for a master's student to create a simulator with KWOK,
+  defining scenarios and gathering the audit log
+- Don't need a node per pod, maybe create it as a deployment node?
+  Let's keep the graph size down
 - Motivation
   - Cloud Auditing is a powerful security feature that as it is does
     not realise its full potential. Indeed, some tools present in the
