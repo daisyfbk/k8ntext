@@ -1,17 +1,26 @@
-# #+PROPERTY: header-args :eval both
-#+PROPERTY: header-args :eval no-export
-#+PROPERTY: header-args :exports both
+#+NAME: Commands used to generate logs
+#+AUTHOR: Matteo Franzil, Valentino Armani
+#+DATE: 2024-05-28
+#+DESCRIPTION: This document contains the commands used to generate the logs for the Audit project
+#+PROPERTY: header-args :exports code
 #+PROPERTY: header-args :results type verbatim
-#+PROPERTY: header-args:shell :prologue "exec 2>&1" :epilogue ":" 
+#+PROPERTY: header-args:shell :prologue "exec 2>&1" :epilogue ":"
+
+# Unused properties
+# #+PROPERTY: header-args :eval both
+# -*- org-confirm-babel-evaluate: nil -*-
 
 #+LATEX_HEADER: \usepackage{xcolor}
 #+SETUPFILE: latex.setup 
-# -*- org-confirm-babel-evaluate: nil -*-
+
 
 * Log setups 
+:PROPERTIES:
+:END:
+
 ** Namespace log =N1= - Simple namespace creation and deletion
 - Create a namespace:
-  #+BEGIN_SRC shell
+  #+BEGIN_SRC shell 
   kubectl create namespace rising
   #+END_SRC
 
@@ -57,9 +66,10 @@
   #+RESULTS:
   : namespace "rising" deleted
 
+** Namespace log =N2= - Namespace with resource quotas
 ** Pod log =P1= - Simple Pod creation and inspection
 - Create a pod:
-  #+BEGIN_SRC shell
+  #+BEGIN_SRC shell 
     cat <<EOF | kubectl apply -f -
     apiVersion: v1
     kind: Pod
@@ -69,9 +79,9 @@
     spec:
       containers:
       - name: first-container 
-	image: nginx
+        image: nginx
       - name: second-container
-	image: alpine 
+        image: alpine 
         command: ["sh", "-c", "echo Hello, Kubernetes! && sleep 3600"]
     EOF
   #+END_SRC
@@ -223,13 +233,255 @@ With the image cache cleared, we can now run the following tests:
   1s          Normal    Started                  pod/image-pod   Started container image-container
   #+end_example
 
- - Delete the pod:
-   #+BEGIN_SRC shell
-   kubectl -n rising delete pod image-pod
-   #+END_SRC
+- Delete the pod:
+  #+BEGIN_SRC shell
+  kubectl -n rising delete pod image-pod
+  #+END_SRC
 
    #+RESULTS:
    : pod "image-pod" deleted
 
-** ConfigMap C1 - Create a ConfigMap and use it in a Pod, then delete it
-** Secret S1 - Create a Secret and use it in a Pod, then delete it
+** ConfigMap =C1= - Create a ConfigMap and use it in a Pod, then delete it
+- Create a ConfigMap:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: my-config
+    namespace: rising
+  data:
+    status: "decent" 
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  : configmap/my-config created
+
+- Get the configmap
+  #+BEGIN_SRC shell
+  kubectl -n rising get configmap my-config -o yaml
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_example
+  apiVersion: v1
+  data:
+    status: decent
+  kind: ConfigMap
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","data":{"status":"decent"},"kind":"ConfigMap","metadata":{"annotations":{},"name":"my-config","namespace":"rising"}}
+    creationTimestamp: "2024-05-28T14:25:08Z"
+    name: my-config
+    namespace: rising
+    resourceVersion: "2248050"
+    uid: 96e72faa-5ecb-4cc6-83d4-01217d2c0803
+  #+end_example
+
+- Deploy a Pod that uses the ConfigMap:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: config-pod
+    namespace: rising
+  spec:
+    containers:
+    - name: config-container
+      image: alpine
+      command: ["sh", "-c", 'echo Status is \$STATUS && sleep 3600']
+      env:
+      - name: STATUS
+        valueFrom:
+          configMapKeyRef:
+            name: my-config
+            key: status
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  : pod/config-pod created
+
+- Access the logs of the Pod:
+  #+BEGIN_SRC shell
+    kubectl wait --for=condition=Ready pod/config-pod -n rising
+    kubectl -n rising logs config-pod -c config-container
+  #+END_SRC
+
+  #+RESULTS:
+  : pod/config-pod condition met
+  : Status is decent
+
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl -n rising delete pod config-pod
+  kubectl -n rising delete configmap my-config
+  #+END_SRC
+
+  #+RESULTS:
+  : pod "config-pod" deleted
+  : configmap "my-config" deleted
+
+** Secret =S1= - Create a Secret and use it in a Pod, then delete it
+- Create a secret
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Secret
+  metadata:
+    name: my-secret
+    namespace: rising
+  type: Opaque
+  data:
+    username: $(echo -n "admin" | base64)
+    password: $(echo -n "password" | base64)
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  : secret/my-secret created
+
+- Inspect the secret:
+  #+BEGIN_SRC shell
+  kubectl -n rising get secret my-secret -o yaml
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_example
+  apiVersion: v1
+  data:
+    password: cGFzc3dvcmQ=
+    username: YWRtaW4=
+  kind: Secret
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","data":{"password":"cGFzc3dvcmQ=","username":"YWRtaW4="},"kind":"Secret","metadata":{"annotations":{},"name":"my-secret","namespace":"rising"},"type":"Opaque"}
+    creationTimestamp: "2024-05-28T15:12:17Z"
+    name: my-secret
+    namespace: rising
+    resourceVersion: "2252306"
+    uid: e604704a-ac9b-4964-b3cd-8e09ebc856e9
+  type: Opaque
+  #+end_example
+
+- Attach the secret to a Pod:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: secret-pod
+      namespace: rising
+    spec:
+      containers:
+      - name: secret-container
+        image: alpine
+        command: ["sh", "-c", 'echo Username is \$USERNAME && echo Password is \$PASSWORD && sleep 3600']
+        env:
+        - name: USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: my-secret
+              key: username
+        - name: PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: my-secret
+              key: password    
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  : pod/secret-pod created
+
+- Inspect the Pod:
+  #+BEGIN_SRC shell
+  kubectl -n rising describe pod secret-pod
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_example
+  Name:             secret-pod
+  Namespace:        rising
+  Priority:         0
+  Service Account:  default
+  Node:             kubeadm-worker1/192.168.38.11
+  Start Time:       Tue, 28 May 2024 17:12:44 +0200
+  Labels:           <none>
+  Annotations:      <none>
+  Status:           Running
+  IP:               10.244.1.46
+  IPs:
+    IP:  10.244.1.46
+  Containers:
+    secret-container:
+      Container ID:  containerd://2c554736fa23a4dee900ea5f4f8d8164e49b5da8c948a8ea91c7f865e16869ce
+      Image:         alpine
+      Image ID:      docker.io/library/alpine@sha256:77726ef6b57ddf65bb551896826ec38bc3e53f75cdde31354fbffb4f25238ebd
+      Port:          <none>
+      Host Port:     <none>
+      Command:
+        sh
+        -c
+        echo Username is $USERNAME && echo Password is $PASSWORD && sleep 3600
+      State:          Running
+        Started:      Tue, 28 May 2024 17:12:46 +0200
+      Ready:          True
+      Restart Count:  0
+      Environment:
+        USERNAME:  <set to the key 'username' in secret 'my-secret'>  Optional: false
+        PASSWORD:  <set to the key 'password' in secret 'my-secret'>  Optional: false
+      Mounts:
+        /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-lt9vg (ro)
+  Conditions:
+    Type              Status
+    Initialized       True 
+    Ready             True 
+    ContainersReady   True 
+    PodScheduled      True 
+  Volumes:
+    kube-api-access-lt9vg:
+      Type:                    Projected (a volume that contains injected data from multiple sources)
+      TokenExpirationSeconds:  3607
+      ConfigMapName:           kube-root-ca.crt
+      ConfigMapOptional:       <nil>
+      DownwardAPI:             true
+  QoS Class:                   BestEffort
+  Node-Selectors:              <none>
+  Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                               node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+  Events:
+    Type    Reason     Age   From               Message
+    ----    ------     ----  ----               -------
+    Normal  Scheduled  5s    default-scheduler  Successfully assigned rising/secret-pod to kubeadm-worker1
+    Normal  Pulling    4s    kubelet            Pulling image "alpine"
+    Normal  Pulled     3s    kubelet            Successfully pulled image "alpine" in 1.184s (1.184s including waiting)
+    Normal  Created    3s    kubelet            Created container secret-container
+    Normal  Started    3s    kubelet            Started container secret-container
+  #+end_example
+
+- Access the logs of the Pod:
+  #+BEGIN_SRC shell
+  kubectl wait --for=condition=Ready pod/secret-pod -n rising
+  kubectl -n rising logs secret-pod -c secret-container
+  #+END_SRC
+
+  #+RESULTS:
+  : pod/secret-pod condition met
+  : Username is admin
+  : Password is password
+
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl -n rising delete pod secret-pod
+  kubectl -n rising delete secret my-secret
+  #+END_SRC
+
+  #+RESULTS:
+  : pod "secret-pod" deleted
+  : secret "my-secret" deleted
+  
