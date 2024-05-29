@@ -13,6 +13,7 @@
 #+LATEX_HEADER: \usepackage{xcolor}
 #+SETUPFILE: latex.setup 
 
+ [[_TOC_]]
 
 * Log setups 
 :PROPERTIES:
