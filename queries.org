@@ -743,93 +743,10 @@ Pruning images on kubeadm-worker2
 kubectl get nodes
 #+END_SRC
 
-#+RESULTS:
-#+begin_src shell
-NAME              STATUS   ROLES           AGE    VERSION
-kubeadm-master    Ready    control-plane   100d   v1.28.6
-kubeadm-worker1   Ready    <none>          100d   v1.28.6
-kubeadm-worker2   Ready    <none>          35d    v1.28.6
-#+end_src
-
 - Inspect one of the nodes:
 #+BEGIN_SRC shell
 kubectl describe node kubeadm-worker1
 #+END_SRC
-
-#+RESULTS:
-#+begin_src shell
-Name:               kubeadm-worker1
-Roles:              <none>
-Labels:             beta.kubernetes.io/arch=amd64
-                    beta.kubernetes.io/os=linux
-                    kubernetes.io/arch=amd64
-                    kubernetes.io/hostname=kubeadm-worker1
-                    kubernetes.io/os=linux
-Annotations:        flannel.alpha.coreos.com/backend-data: {"VNI":1,"VtepMAC":"c6:ae:25:8b:09:38"}
-                    flannel.alpha.coreos.com/backend-type: vxlan
-                    flannel.alpha.coreos.com/kube-subnet-manager: true
-                    flannel.alpha.coreos.com/public-ip: 10.231.0.125
-                    kubeadm.alpha.kubernetes.io/cri-socket: unix:///var/run/containerd/containerd.sock
-                    node.alpha.kubernetes.io/ttl: 0
-                    volumes.kubernetes.io/controller-managed-attach-detach: true
-CreationTimestamp:  Mon, 19 Feb 2024 09:51:17 +0100
-Taints:             <none>
-Unschedulable:      false
-Lease:
-  HolderIdentity:  kubeadm-worker1
-  AcquireTime:     <unset>
-  RenewTime:       Wed, 29 May 2024 13:54:10 +0200
-Conditions:
-  Type                 Status  LastHeartbeatTime                 LastTransitionTime                Reason                       Message
-  ----                 ------  -----------------                 ------------------                ------                       -------
-  NetworkUnavailable   False   Tue, 21 May 2024 09:50:32 +0200   Tue, 21 May 2024 09:50:32 +0200   FlannelIsUp                  Flannel is running on this node
-  MemoryPressure       False   Wed, 29 May 2024 13:51:18 +0200   Tue, 30 Apr 2024 09:20:41 +0200   KubeletHasSufficientMemory   kubelet has sufficient memory available
-  DiskPressure         False   Wed, 29 May 2024 13:51:18 +0200   Wed, 22 May 2024 15:09:08 +0200   KubeletHasNoDiskPressure     kubelet has no disk pressure
-  PIDPressure          False   Wed, 29 May 2024 13:51:18 +0200   Tue, 30 Apr 2024 09:20:41 +0200   KubeletHasSufficientPID      kubelet has sufficient PID available
-  Ready                True    Wed, 29 May 2024 13:51:18 +0200   Wed, 08 May 2024 11:24:35 +0200   KubeletReady                 kubelet is posting ready status. AppArmor enabled
-Addresses:
-  InternalIP:  192.168.38.11
-  Hostname:    kubeadm-worker1
-Capacity:
-  cpu:                4
-  ephemeral-storage:  20134592Ki
-  hugepages-2Mi:      0
-  memory:             7395772Ki
-  pods:               110
-Allocatable:
-  cpu:                4
-  ephemeral-storage:  18556039957
-  hugepages-2Mi:      0
-  memory:             7293372Ki
-  pods:               110
-System Info:
-  Machine ID:                 41479085bc0642d3b8488951778a732d
-  System UUID:                41479085-bc06-42d3-b848-8951778a732d
-  Boot ID:                    3cefe34b-fdb3-4e85-b0a3-0357c52fbcd5
-  Kernel Version:             5.15.0-107-generic
-  OS Image:                   Ubuntu 22.04.4 LTS
-  Operating System:           linux
-  Architecture:               amd64
-  Container Runtime Version:  containerd://1.6.31
-  Kubelet Version:            v1.28.6
-  Kube-Proxy Version:         v1.28.6
-PodCIDR:                      10.244.1.0/24
-PodCIDRs:                     10.244.1.0/24
-Non-terminated Pods:          (2 in total)
-  Namespace                   Name                     CPU Requests  CPU Limits  Memory Requests  Memory Limits  Age
-  ---------                   ----                     ------------  ----------  ---------------  -------------  ---
-  kube-flannel                kube-flannel-ds-h64vt    100m (2%)     0 (0%)      50Mi (0%)        0 (0%)         100d
-  kube-system                 kube-proxy-r85g2         0 (0%)        0 (0%)      0 (0%)           0 (0%)         100d
-Allocated resources:
-  (Total limits may be over 100 percent, i.e., overcommitted.)
-  Resource           Requests   Limits
-  --------           --------   ------
-  cpu                100m (2%)  0 (0%)
-  memory             50Mi (0%)  0 (0%)
-  ephemeral-storage  0 (0%)     0 (0%)
-  hugepages-2Mi      0 (0%)     0 (0%)
-Events:              <none>
-#+end_src
 
 ** TODO Certificate log =CSR1= - Create a CertificateSigningRequest and approve it
 :PROPERTIES:
@@ -1081,3 +998,4 @@ Events:              <none>
 ** Role log =R3= - Create a ServiceAccount for a long-running Pod and bind it to a Role
 ** Access Review =AR1= - Use can-i to view permissions of self, other users, over different namespaces
 ** Access Review =AR2= - Use auth whoami to view the current user
+** Access Review =AR3= - Impersonating a user

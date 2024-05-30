@@ -23,7 +23,7 @@ if [[ $? -ne 0 ]]; then
 fi
 echo "Recording stopped."
 # Find last rotated file
-find "$AUDIT_FOLDER"/  -type f -name "*.log.gz" -printf '%T@ %p\n' | sort -n | tail -1
+sudo find "$AUDIT_FOLDER"/  -type f -name "*.log.gz" -printf '%T@ %p\n' | sort -n | tail -1
 echo "Is this the file you want to analyze? (y/n)"
 read -r answer
 if [[ "$answer" != "y" ]]; then
@@ -32,9 +32,10 @@ if [[ "$answer" != "y" ]]; then
 fi
 echo "How do you want to call the file? (omit the extension)"
 read -r filename
-mv $(find "$AUDIT_FOLDER"/  -type f -name "*.log.gz" -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2) "$DATASET_FOLDER/$filename.log.gz"
+sudo mv $(find "$AUDIT_FOLDER"/  -type f -name "*.log.gz" -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2) "$DATASET_FOLDER/$filename.log.gz"
 cd "$DATASET_FOLDER"
-gunzip "$filename.log.gz"
+sudo gunzip "$filename.log.gz"
+sudo chown "$USER" "$filename.log"
 echo "File moved to $DATASET_FOLDER/$filename.log"
 echo "Checking broken head: this is the first 20 characters of the file:"
 head -c 20 "$filename.log"
