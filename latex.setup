@@ -10,7 +10,7 @@
 #+LATEX_HEADER: \usepackage{graphicx}
 #+LATEX_HEADER: \usepackage{colortbl}
 #+LATEX_HEADER: \usepackage{enumitem}
-#+LATEX_HEADER: \usepackage[top=3cm, bottom=3cm, left=2.5cm, right=2.5cm]{geometry}
+#+LATEX_HEADER: \usepackage[top=2.5cm, bottom=2.5cm, left=2cm, right=2cm]{geometry}
 #+LATEX_HEADER: \usepackage[scaled=0.85]{FiraMono}
 #+LATEX_HEADER: \usepackage[ruled, lined, longend, linesnumbered]{algorithm2e}
 #+LATEX_HEADER: \usepackage{bm}
@@ -43,7 +43,7 @@
 #+LATEX_HEADER: \renewcommand{\arraystretch}{1.4}
 # final latex configuration and bibliography
 #+LATEX_CLASS: article
-#+LATEX_CLASS_OPTIONS: [a4paper,10pt]
+#+LATEX_CLASS_OPTIONS: [a4paper,11pt]
 # #+BIBLIOGRAPHY: cisco.bib
 # #+CITE_EXPORT: natbib plain
 # ----- end of latex customizations --------------------------------------------------
