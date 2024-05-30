@@ -23,7 +23,7 @@ echo "Recording stopped."
 # Find last rotated file
 find "$AUDIT_FOLDER"/  -type f -name "*.log.gz" -printf '%T@ %p\n' | sort -n | tail -1
 echo "Is this the file you want to analyze? (y/n)"
-read -r -s answer
+read -r answer
 if [[ "$answer" != "n" ]]; then
     echo "Please proceed manually from here."
     exit 0
