@@ -7,6 +7,7 @@ DATASET_FOLDER="$HOME/shared-audit-dataset"
 echo "Make sure you are in the same folder as $LOGROTATE_FILE"
 echo "Press any key to continue when you want to start recording..."
 read -r -s
+echo "Recording started."
 sudo logrotate "$LOGROTATE_FILE"
 if [[ $? -ne 0 ]]; then
     echo "Error while starting recording."
@@ -14,6 +15,7 @@ if [[ $? -ne 0 ]]; then
 fi
 echo "Press any key to stop recording..."
 read -r -s
+echo "Stopping recording..."
 sudo logrotate "$LOGROTATE_FILE"
 if [[ $? -ne 0 ]]; then
     echo "Error while stopping recording."
@@ -24,7 +26,7 @@ echo "Recording stopped."
 find "$AUDIT_FOLDER"/  -type f -name "*.log.gz" -printf '%T@ %p\n' | sort -n | tail -1
 echo "Is this the file you want to analyze? (y/n)"
 read -r answer
-if [[ "$answer" != "n" ]]; then
+if [[ "$answer" != "y" ]]; then
     echo "Please proceed manually from here."
     exit 0
 fi
