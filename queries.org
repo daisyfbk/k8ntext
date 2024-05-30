@@ -42,7 +42,7 @@
 
 - Get the namespace:
   #+BEGIN_SRC shell 
-  kubectl get namespaces
+    kubectl get namespaces
   #+END_SRC
 
   #+RESULTS:
@@ -736,19 +736,102 @@ Pruning images on kubeadm-worker2
   secret "my-secret" deleted
   #+end_src
   
-** TODO Node log =NO1= - Node inspection
+** Node log =NO1= - Node inspection
 - Assess the available nodes in the cluster:
 
 #+BEGIN_SRC shell
 kubectl get nodes
 #+END_SRC
 
+#+RESULTS:
+#+begin_src shell
+NAME              STATUS   ROLES           AGE    VERSION
+kubeadm-master    Ready    control-plane   101d   v1.28.6
+kubeadm-worker1   Ready    <none>          101d   v1.28.6
+kubeadm-worker2   Ready    <none>          36d    v1.28.6
+#+end_src
+
 - Inspect one of the nodes:
 #+BEGIN_SRC shell
 kubectl describe node kubeadm-worker1
 #+END_SRC
 
-** TODO Certificate log =CSR1= - Create a CertificateSigningRequest and approve it
+#+RESULTS:
+#+begin_src shell
+  Name:               kubeadm-worker1
+  Roles:              <none>
+  Labels:             beta.kubernetes.io/arch=amd64
+                      beta.kubernetes.io/os=linux
+                      kubernetes.io/arch=amd64
+                      kubernetes.io/hostname=kubeadm-worker1
+                      kubernetes.io/os=linux
+  Annotations:        flannel.alpha.coreos.com/backend-data: {"VNI":1,"VtepMAC":"c6:ae:25:8b:09:38"}
+                      flannel.alpha.coreos.com/backend-type: vxlan
+                      flannel.alpha.coreos.com/kube-subnet-manager: true
+                      flannel.alpha.coreos.com/public-ip: 10.231.0.125
+                      kubeadm.alpha.kubernetes.io/cri-socket: unix:///var/run/containerd/containerd.sock
+                      node.alpha.kubernetes.io/ttl: 0
+                      volumes.kubernetes.io/controller-managed-attach-detach: true
+  CreationTimestamp:  Mon, 19 Feb 2024 09:51:17 +0100
+  Taints:             <none>
+  Unschedulable:      false
+  Lease:
+    HolderIdentity:  kubeadm-worker1
+    AcquireTime:     <unset>
+    RenewTime:       Thu, 30 May 2024 13:22:16 +0200
+  Conditions:
+    Type                 Status  LastHeartbeatTime                 LastTransitionTime                Reason                       Message
+    ----                 ------  -----------------                 ------------------                ------                       -------
+    NetworkUnavailable   False   Tue, 21 May 2024 09:50:32 +0200   Tue, 21 May 2024 09:50:32 +0200   FlannelIsUp                  Flannel is running on this node
+    MemoryPressure       False   Thu, 30 May 2024 13:19:46 +0200   Tue, 30 Apr 2024 09:20:41 +0200   KubeletHasSufficientMemory   kubelet has sufficient memory available
+    DiskPressure         False   Thu, 30 May 2024 13:19:46 +0200   Wed, 22 May 2024 15:09:08 +0200   KubeletHasNoDiskPressure     kubelet has no disk pressure
+    PIDPressure          False   Thu, 30 May 2024 13:19:46 +0200   Tue, 30 Apr 2024 09:20:41 +0200   KubeletHasSufficientPID      kubelet has sufficient PID available
+    Ready                True    Thu, 30 May 2024 13:19:46 +0200   Wed, 08 May 2024 11:24:35 +0200   KubeletReady                 kubelet is posting ready status. AppArmor enabled
+  Addresses:
+    InternalIP:  192.168.38.11
+    Hostname:    kubeadm-worker1
+  Capacity:
+    cpu:                4
+    ephemeral-storage:  20134592Ki
+    hugepages-2Mi:      0
+    memory:             7395772Ki
+    pods:               110
+  Allocatable:
+    cpu:                4
+    ephemeral-storage:  18556039957
+    hugepages-2Mi:      0
+    memory:             7293372Ki
+    pods:               110
+  System Info:
+    Machine ID:                 41479085bc0642d3b8488951778a732d
+    System UUID:                41479085-bc06-42d3-b848-8951778a732d
+    Boot ID:                    3cefe34b-fdb3-4e85-b0a3-0357c52fbcd5
+    Kernel Version:             5.15.0-107-generic
+    OS Image:                   Ubuntu 22.04.4 LTS
+    Operating System:           linux
+    Architecture:               amd64
+    Container Runtime Version:  containerd://1.6.31
+    Kubelet Version:            v1.28.6
+    Kube-Proxy Version:         v1.28.6
+  PodCIDR:                      10.244.1.0/24
+  PodCIDRs:                     10.244.1.0/24
+  Non-terminated Pods:          (2 in total)
+    Namespace                   Name                     CPU Requests  CPU Limits  Memory Requests  Memory Limits  Age
+    ---------                   ----                     ------------  ----------  ---------------  -------------  ---
+    kube-flannel                kube-flannel-ds-h64vt    100m (2%)     0 (0%)      50Mi (0%)        0 (0%)         101d
+    kube-system                 kube-proxy-r85g2         0 (0%)        0 (0%)      0 (0%)           0 (0%)         101d
+  Allocated resources:
+    (Total limits may be over 100 percent, i.e., overcommitted.)
+    Resource           Requests   Limits
+    --------           --------   ------
+    cpu                100m (2%)  0 (0%)
+    memory             50Mi (0%)  0 (0%)
+    ephemeral-storage  0 (0%)     0 (0%)
+    hugepages-2Mi      0 (0%)     0 (0%)
+    Events:              <none>
+#+end_src
+
+** Certificate log =CSR1= - Create a CertificateSigningRequest and approve it
 :PROPERTIES:
 :header-args+: :session csr1
 :END:
@@ -769,7 +852,7 @@ kubectl describe node kubeadm-worker1
 
   #+RESULTS:
   #+begin_src bash
-  Key created, available in /var/folders/gh/9l_dnc_94b3f42yswbpmn0fc0000gn/T/tmp.z75e49ZbGi for user malicious-user
+  Key created, available in /var/folders/gh/9l_dnc_94b3f42yswbpmn0fc0000gn/T/tmp.M7dVzdtOLc for user malicious-user
   #+end_src
 
 - Create a CertificateSigningRequest:
@@ -815,7 +898,7 @@ kubectl describe node kubeadm-worker1
   #+RESULTS:
   #+begin_src bash
   certificatesigningrequest.certificates.k8s.io "malicious-user" deleted
-  Key created, available in /var/folders/gh/9l_dnc_94b3f42yswbpmn0fc0000gn/T/tmp.z75e49ZbGi for user rising-user
+  Key created, available in /var/folders/gh/9l_dnc_94b3f42yswbpmn0fc0000gn/T/tmp.M7dVzdtOLc for user rising-user
   #+end_src
 
 - Generate a new CertificateSigningRequest:
@@ -850,15 +933,15 @@ kubectl describe node kubeadm-worker1
   metadata:
     annotations:
       kubectl.kubernetes.io/last-applied-configuration: |
-        {"apiVersion":"certificates.k8s.io/v1","kind":"CertificateSigningRequest","metadata":{"annotations":{},"name":"rising-user"},"spec":{"request":"LS0tLS1CRUdJTiBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0KTUlHME1HZ0NBUUF3TlRFVU1CSUdBMVVFQXd3TGNtbHphVzVuTFhWelpYSXhEekFOQmdOVkJBb01CbkpwYzJsdQpaekVNTUFvR0ExVUVDZ3dEWm1Kck1Db3dCUVlESzJWd0F5RUFSZlpPN25tTTB3ckEzTHRkM3R1ZDUwUURNcTBMCkhQekVGQU1nYkRXLzJibWdBREFGQmdNclpYQURRUUJRUEF6VHJHU0RYMmlXeXlnL2ptU1VIVEtTSEpkUDdVMkMKcnBDcXlFVjdGWDJUTmlXbzltY2ZTYzNabjhNQW9mZUVXeG55OGJIbjMwNms3b3JZOXRrSgotLS0tLUVORCBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0K","signerName":"kubernetes.io/kube-apiserver-client","usages":["client auth"]}}
-    creationTimestamp: "2024-05-29T15:08:56Z"
+        {"apiVersion":"certificates.k8s.io/v1","kind":"CertificateSigningRequest","metadata":{"annotations":{},"name":"rising-user"},"spec":{"request":"LS0tLS1CRUdJTiBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0KTUlHME1HZ0NBUUF3TlRFVU1CSUdBMVVFQXd3TGNtbHphVzVuTFhWelpYSXhEekFOQmdOVkJBb01CbkpwYzJsdQpaekVNTUFvR0ExVUVDZ3dEWm1Kck1Db3dCUVlESzJWd0F5RUE0aGo3b3JSdHkwd0pYTjVsTmZNUzJIbmExdHlWCncxMTlFWmRwUURwQTdKcWdBREFGQmdNclpYQURRUUQ4bE53dGtOSTloUXFVNnF2dVFhaVI4NFFpRFNKeGIvNVoKSWZVMEViWUF3Nm0rcXZ1dUhWQ2lxMXRGYkJCTm9vRjNUbTdXOTZjQVZjZkRUNU9abUdvQgotLS0tLUVORCBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0K","signerName":"kubernetes.io/kube-apiserver-client","usages":["client auth"]}}
+    creationTimestamp: "2024-05-30T11:26:05Z"
     name: rising-user
-    resourceVersion: "2381625"
-    uid: d60ba8cc-7348-4a7e-89b0-06ee460aecca
+    resourceVersion: "2491043"
+    uid: a3c4e1b1-7d91-47ea-8098-3b5308cfa7be
   spec:
     groups:
     - system:authenticated
-    request: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0KTUlHME1HZ0NBUUF3TlRFVU1CSUdBMVVFQXd3TGNtbHphVzVuTFhWelpYSXhEekFOQmdOVkJBb01CbkpwYzJsdQpaekVNTUFvR0ExVUVDZ3dEWm1Kck1Db3dCUVlESzJWd0F5RUFSZlpPN25tTTB3ckEzTHRkM3R1ZDUwUURNcTBMCkhQekVGQU1nYkRXLzJibWdBREFGQmdNclpYQURRUUJRUEF6VHJHU0RYMmlXeXlnL2ptU1VIVEtTSEpkUDdVMkMKcnBDcXlFVjdGWDJUTmlXbzltY2ZTYzNabjhNQW9mZUVXeG55OGJIbjMwNms3b3JZOXRrSgotLS0tLUVORCBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0K
+    request: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0KTUlHME1HZ0NBUUF3TlRFVU1CSUdBMVVFQXd3TGNtbHphVzVuTFhWelpYSXhEekFOQmdOVkJBb01CbkpwYzJsdQpaekVNTUFvR0ExVUVDZ3dEWm1Kck1Db3dCUVlESzJWd0F5RUE0aGo3b3JSdHkwd0pYTjVsTmZNUzJIbmExdHlWCncxMTlFWmRwUURwQTdKcWdBREFGQmdNclpYQURRUUQ4bE53dGtOSTloUXFVNnF2dVFhaVI4NFFpRFNKeGIvNVoKSWZVMEViWUF3Nm0rcXZ1dUhWQ2lxMXRGYkJCTm9vRjNUbTdXOTZjQVZjZkRUNU9abUdvQgotLS0tLUVORCBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0K
     signerName: kubernetes.io/kube-apiserver-client
     usages:
     - client auth
@@ -885,7 +968,7 @@ kubectl describe node kubeadm-worker1
   #+RESULTS:
   #+begin_src bash
   -----BEGIN CERTIFICATE-----
-  MIICHjCCAQagAwIBAgIQJDnD+raf6+xNmPmR4+TIAjANBgkqhkiG9w0BAQsFADAV
+  MIICHzCCAQegAwIBAgIRAOgQrahJ0mPtk6Uu2d/HA9owDQYJKoZIhvcNAQELBQAw
   #+end_src
   
 - Use the certificate to generate a =.kubeconfig= for the user:
@@ -912,7 +995,7 @@ kubectl describe node kubeadm-worker1
   Switched to context "rising-user".
   #+end_src
 
-** TODO Role log =R1= - Create a Role and bind it to a User 
+** Role log =R1= - Create a Role and bind it to a User 
 - *Prerequisite*: complete =CSR1= and obtain the credentials for the user. Make sure
   they are available as =rising-user.kubeconfig= in the current directory.
   
@@ -933,7 +1016,7 @@ kubectl describe node kubeadm-worker1
 
   #+RESULTS:
   #+begin_src shell
-  role.rbac.authorization.k8s.io/rising-reader unchanged
+  role.rbac.authorization.k8s.io/rising-reader created
   #+end_src
 
 - List the roles in the namespace:
@@ -944,7 +1027,7 @@ kubectl describe node kubeadm-worker1
   #+RESULTS:
   #+begin_src shell
   NAME            CREATED AT
-  rising-reader   2024-05-29T14:13:38Z
+  rising-reader   2024-05-30T11:28:09Z
   #+end_src
 
 - We changed idea: let's also give =get=, =list=, =patch= and =watch= for Secrets:
@@ -977,7 +1060,7 @@ kubectl describe node kubeadm-worker1
 
   #+RESULTS:
   #+begin_src shell
-  rolebinding.rbac.authorization.k8s.io/pod-reader-binding configured
+  rolebinding.rbac.authorization.k8s.io/pod-reader-binding created
   #+end_src
 
 - Test the permissions of the user:
@@ -990,12 +1073,290 @@ kubectl describe node kubeadm-worker1
   #+RESULTS:
   #+begin_src shell
   No resources found in rising namespace.
-  Error from server (Forbidden): secrets is forbidden: User "rising-user" cannot list resource "secrets" in API group "" in the namespace "rising"
+  No resources found in rising namespace.
   Error from server (Forbidden): pods "non-existent-pod" is forbidden: User "rising-user" cannot delete resource "pods" in API group "" in the namespace "rising"
   #+end_src
-
+  
 ** Role log =R2= - Create a ClusterRole and bind it to a Group
+- *Prequisite*: complete =CSR1= and obtain the credentials for the user. Make sure
+  they are available as =rising-user.kubeconfig= in the current directory.
+- *Prequisite*: complete =R1= and keep the =rising-reader= Role. 
+
+- Create a ClusterRole:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: cluster-reader
+  rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "patch", "watch"]
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  clusterrole.rbac.authorization.k8s.io/cluster-reader created
+  #+end_src
+
+- Actually, let's straight out replace the ClusterRole with a new one:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: cluster-reader
+  rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  clusterrole.rbac.authorization.k8s.io/cluster-reader configured
+  #+end_src
+
+- Create a ClusterRoleBinding and assign it to the =fbk= group:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRoleBinding
+  metadata:
+    name: cluster-reader-binding
+  subjects:
+    - kind: Group
+      name: fbk
+  roleRef:
+    kind: ClusterRole
+    name: cluster-reader
+    apiGroup: rbac.authorization.k8s.io
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  clusterrolebinding.rbac.authorization.k8s.io/cluster-reader-binding created
+  #+end_src
+   
+- Test the permissions of the user:
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig rising-user.kubeconfig get nodes
+  kubectl --kubeconfig rising-user.kubeconfig get pods -n rising
+  kubectl --kubeconfig rising-user.kubeconfig get configmaps -n rising
+  kubectl --kubeconfig rising-user.kubeconfig get pods -n kube-system
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME              STATUS   ROLES           AGE    VERSION
+  kubeadm-master    Ready    control-plane   101d   v1.28.6
+  kubeadm-worker1   Ready    <none>          101d   v1.28.6
+  kubeadm-worker2   Ready    <none>          36d    v1.28.6
+  No resources found in rising namespace.
+  Error from server (Forbidden): configmaps is forbidden: User "rising-user" cannot list resource "configmaps" in API group "" in the namespace "rising"
+  Error from server (Forbidden): pods is forbidden: User "rising-user" cannot list resource "pods" in API group "" in the namespace "kube-system"
+  #+end_src
+  
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl delete rolebinding pod-reader-binding -n rising
+  kubectl delete role rising-reader -n rising
+  kubectl delete clusterrolebinding cluster-reader-binding
+  kubectl delete clusterrole cluster-reader
+  kubectl delete csr rising-user
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  rolebinding.rbac.authorization.k8s.io "pod-reader-binding" deleted
+  role.rbac.authorization.k8s.io "rising-reader" deleted
+  clusterrolebinding.rbac.authorization.k8s.io "cluster-reader-binding" deleted
+  clusterrole.rbac.authorization.k8s.io "cluster-reader" deleted
+  certificatesigningrequest.certificates.k8s.io "rising-user" deleted
+  #+end_src
+
 ** Role log =R3= - Create a ServiceAccount for a long-running Pod and bind it to a Role
-** Access Review =AR1= - Use can-i to view permissions of self, other users, over different namespaces
-** Access Review =AR2= - Use auth whoami to view the current user
-** Access Review =AR3= - Impersonating a user
+- Set up a ServiceAccount:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    name: long-running-sa
+    namespace: rising
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  serviceaccount/long-running-sa created
+  #+end_src
+
+- Create a Role:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: Role
+  metadata:
+    name: long-running-role
+    namespace: rising
+  rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  role.rbac.authorization.k8s.io/long-running-role created
+  #+end_src
+
+- Bind the ServiceAccount to the Role:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: RoleBinding
+  metadata:
+    name: long-running-role-binding
+    namespace: rising
+  subjects:
+  - kind: ServiceAccount
+    name: long-running-sa
+    namespace: rising
+  roleRef:
+    kind: Role
+    name: long-running-role
+    apiGroup: rbac.authorization.k8s.io
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  rolebinding.rbac.authorization.k8s.io/long-running-role-binding created
+  #+end_src
+
+- Create a Pod that uses the ServiceAccount:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: long-running-pod
+    namespace: rising
+  spec:
+    serviceAccountName: long-running-sa
+    containers:
+    - name: long-running-container
+      image: ubuntu 
+      command: ["sh", "-c", "echo Hello, Kubernetes! && sleep 3600"]
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/long-running-pod created
+  #+end_src
+
+- Inspect the Pod:
+  #+BEGIN_SRC shell
+  kubectl -n rising describe pod long-running-pod
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:             long-running-pod
+  Namespace:        rising
+  Priority:         0
+  Service Account:  long-running-sa
+  Node:             kubeadm-worker1/192.168.38.11
+  Start Time:       Thu, 30 May 2024 13:37:33 +0200
+  Labels:           <none>
+  Annotations:      <none>
+  Status:           Pending
+  IP:               
+  IPs:              <none>
+  Containers:
+    long-running-container:
+      Container ID:  
+      Image:         ubuntu
+      Image ID:      
+      Port:          <none>
+      Host Port:     <none>
+      Command:
+        sh
+        -c
+        echo Hello, Kubernetes! && sleep 3600
+      State:          Waiting
+        Reason:       ContainerCreating
+      Ready:          False
+      Restart Count:  0
+      Environment:    <none>
+      Mounts:
+        /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-nhvlf (ro)
+  Conditions:
+    Type              Status
+    Initialized       True 
+    Ready             False 
+    ContainersReady   False 
+    PodScheduled      True 
+  Volumes:
+    kube-api-access-nhvlf:
+      Type:                    Projected (a volume that contains injected data from multiple sources)
+      TokenExpirationSeconds:  3607
+      ConfigMapName:           kube-root-ca.crt
+      ConfigMapOptional:       <nil>
+      DownwardAPI:             true
+  QoS Class:                   BestEffort
+  Node-Selectors:              <none>
+  Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                               node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+  Events:
+    Type    Reason     Age   From               Message
+    ----    ------     ----  ----               -------
+    Normal  Scheduled  5s    default-scheduler  Successfully assigned rising/long-running-pod to kubeadm-worker1
+    Normal  Pulling    5s    kubelet            Pulling image "ubuntu"
+  #+end_src
+
+- Try to use the ServiceAccount from inside the Pod:
+  #+BEGIN_SRC shell
+    kubectl wait --for=condition=Ready pod/long-running-pod -n rising
+    kubectl -n rising exec long-running-pod -- sh -c 'apt update; apt install -y curl;
+            export KUBE_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token);
+            curl -sSk -H "Authorization: Bearer $KUBE_TOKEN" https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_PORT_443_TCP_PORT/api/v1/namespaces/rising/pods'
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  sh: apt: not found
+  sh: apt: not found
+  sh: curl: not found
+  command terminated with exit code 127
+  #+end_src
+  
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl -n rising delete pod long-running-pod
+  kubectl -n rising delete role long-running-role
+  kubectl -n rising delete rolebinding long-running-role-binding
+  kubectl -n rising delete serviceaccount long-running-sa
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod "long-running-pod" deleted
+  role.rbac.authorization.k8s.io "long-running-role" deleted
+  serviceaccount "long-running-sa" deleted
+  #+end_src
+  
+** TODO Access Review =AR1= - Use can-i to view permissions of self, other users, over different namespaces
+** TODO Access Review =AR2= - Use auth whoami to view the current user
+** TODO Access Review =AR3= - Impersonating a user
+65;56;23M

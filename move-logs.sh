@@ -42,7 +42,7 @@ echo "----------------------------------------"
 head -c 20 "$filename.log"
 echo "----------------------------------------"
 echo "Do you want to remove the first line? (y/n)"
-read -r -s answer
+read -r answer
 if [[ "$answer" != "n" ]]; then
 	tail -n +2 "$filename.log" > "$filename.log.tmp" && mv "$filename.log.tmp" "$filename.log"
 	echo "First line removed."
