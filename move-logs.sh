@@ -7,13 +7,13 @@ DATASET_FOLDER="$HOME/shared-audit-dataset"
 echo "Make sure you are in the same folder as $LOGROTATE_FILE"
 echo "Press any key to continue when you want to start recording..."
 read -r -s
-echo "Recording started."
+echo "Starting recording..."
 sudo logrotate "$LOGROTATE_FILE"
 if [[ $? -ne 0 ]]; then
     echo "Error while starting recording."
     exit 1
 fi
-echo "Press any key to stop recording..."
+echo "Recording started. Press any key to stop recording..."
 read -r -s
 echo "Stopping recording..."
 sudo logrotate "$LOGROTATE_FILE"
@@ -32,13 +32,15 @@ if [[ "$answer" != "y" ]]; then
 fi
 echo "How do you want to call the file? (omit the extension)"
 read -r filename
-sudo mv $(find "$AUDIT_FOLDER"/  -type f -name "*.log.gz" -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2) "$DATASET_FOLDER/$filename.log.gz"
-cd "$DATASET_FOLDER"
+sudo mv "$(find "$AUDIT_FOLDER"/  -type f -name "*.log.gz" -printf '%T@ %p\n' | sort -n | tail -1 | cut -d' ' -f2)" "$DATASET_FOLDER/$filename.log.gz"
+cd "$DATASET_FOLDER" || exit 1
 sudo gunzip "$filename.log.gz"
 sudo chown "$USER" "$filename.log"
 echo "File moved to $DATASET_FOLDER/$filename.log"
 echo "Checking broken head: this is the first 20 characters of the file:"
+echo "----------------------------------------"
 head -c 20 "$filename.log"
+echo "----------------------------------------"
 echo "Do you want to remove the first line? (y/n)"
 read -r -s answer
 if [[ "$answer" != "n" ]]; then
