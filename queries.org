@@ -1277,38 +1277,39 @@ kubectl describe node kubeadm-worker1
   Priority:         0
   Service Account:  long-running-sa
   Node:             kubeadm-worker1/192.168.38.11
-  Start Time:       Thu, 30 May 2024 13:37:33 +0200
+  Start Time:       Thu, 30 May 2024 15:01:11 +0200
   Labels:           <none>
   Annotations:      <none>
-  Status:           Pending
-  IP:               
-  IPs:              <none>
+  Status:           Running
+  IP:               10.244.1.57
+  IPs:
+    IP:  10.244.1.57
   Containers:
     long-running-container:
-      Container ID:  
+      Container ID:  containerd://315d3eff64f5d0b2fb82c0483364a76b10f65c6af98c91ed97176099f7a5072a
       Image:         ubuntu
-      Image ID:      
+      Image ID:      docker.io/library/ubuntu@sha256:3f85b7caad41a95462cf5b787d8a04604c8262cdcdf9a472b8c52ef83375fe15
       Port:          <none>
       Host Port:     <none>
       Command:
         sh
         -c
         echo Hello, Kubernetes! && sleep 3600
-      State:          Waiting
-        Reason:       ContainerCreating
-      Ready:          False
+      State:          Running
+        Started:      Thu, 30 May 2024 15:01:13 +0200
+      Ready:          True
       Restart Count:  0
       Environment:    <none>
       Mounts:
-        /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-nhvlf (ro)
+        /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-6n7qb (ro)
   Conditions:
     Type              Status
     Initialized       True 
-    Ready             False 
-    ContainersReady   False 
+    Ready             True 
+    ContainersReady   True 
     PodScheduled      True 
   Volumes:
-    kube-api-access-nhvlf:
+    kube-api-access-6n7qb:
       Type:                    Projected (a volume that contains injected data from multiple sources)
       TokenExpirationSeconds:  3607
       ConfigMapName:           kube-root-ca.crt
@@ -1321,24 +1322,33 @@ kubectl describe node kubeadm-worker1
   Events:
     Type    Reason     Age   From               Message
     ----    ------     ----  ----               -------
-    Normal  Scheduled  5s    default-scheduler  Successfully assigned rising/long-running-pod to kubeadm-worker1
-    Normal  Pulling    5s    kubelet            Pulling image "ubuntu"
+    Normal  Scheduled  3s    default-scheduler  Successfully assigned rising/long-running-pod to kubeadm-worker1
+    Normal  Pulling    3s    kubelet            Pulling image "ubuntu"
+    Normal  Pulled     2s    kubelet            Successfully pulled image "ubuntu" in 1.054s (1.054s including waiting)
+    Normal  Created    2s    kubelet            Created container long-running-container
+    Normal  Started    1s    kubelet            Started container long-running-container
   #+end_src
 
 - Try to use the ServiceAccount from inside the Pod:
   #+BEGIN_SRC shell
     kubectl wait --for=condition=Ready pod/long-running-pod -n rising
-    kubectl -n rising exec long-running-pod -- sh -c 'apt update; apt install -y curl;
-            export KUBE_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token);
-            curl -sSk -H "Authorization: Bearer $KUBE_TOKEN" https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_PORT_443_TCP_PORT/api/v1/namespaces/rising/pods'
+    kubectl -n rising exec long-running-pod -- sh -c 'apt -qq update; apt install -yqq curl; export KUBE_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token); curl -sSk -H "Authorization: Bearer $KUBE_TOKEN" "https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_PORT_443_TCP_PORT/api/v1/namespaces/rising/pods" > temp.json; head -n 5 temp.json'
   #+END_SRC
 
   #+RESULTS:
   #+begin_src shell
-  sh: apt: not found
-  sh: apt: not found
-  sh: curl: not found
-  command terminated with exit code 127
+  pod/long-running-pod condition met
+
+  WARNING: apt does not have a stable CLI interface. Use with caution in scripts.
+
+  3 packages can be upgraded. Run 'apt list --upgradable' to see them.
+
+  WARNING: apt does not have a stable CLI interface. Use with caution in scripts.
+  {
+    "kind": "PodList",
+    "apiVersion": "v1",
+    "metadata": {
+      "resourceVersion": "2499763"
   #+end_src
   
 - Clean everything up:
@@ -1353,6 +1363,7 @@ kubectl describe node kubeadm-worker1
   #+begin_src shell
   pod "long-running-pod" deleted
   role.rbac.authorization.k8s.io "long-running-role" deleted
+  rolebinding.rbac.authorization.k8s.io "long-running-role-binding" deleted
   serviceaccount "long-running-sa" deleted
   #+end_src
   
