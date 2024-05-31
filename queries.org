@@ -1267,7 +1267,7 @@ kubectl describe node kubeadm-worker1
 
 - Inspect the Pod:
   #+BEGIN_SRC shell
-  kubectl -n rising describe pod long-running-pod
+  kubectl -n rising describe pod long-running-pod | head -n 10
   #+END_SRC
 
   #+RESULTS:
@@ -1277,78 +1277,31 @@ kubectl describe node kubeadm-worker1
   Priority:         0
   Service Account:  long-running-sa
   Node:             kubeadm-worker1/192.168.38.11
-  Start Time:       Thu, 30 May 2024 15:01:11 +0200
+  Start Time:       Fri, 31 May 2024 10:31:49 +0200
   Labels:           <none>
   Annotations:      <none>
   Status:           Running
-  IP:               10.244.1.57
-  IPs:
-    IP:  10.244.1.57
-  Containers:
-    long-running-container:
-      Container ID:  containerd://315d3eff64f5d0b2fb82c0483364a76b10f65c6af98c91ed97176099f7a5072a
-      Image:         ubuntu
-      Image ID:      docker.io/library/ubuntu@sha256:3f85b7caad41a95462cf5b787d8a04604c8262cdcdf9a472b8c52ef83375fe15
-      Port:          <none>
-      Host Port:     <none>
-      Command:
-        sh
-        -c
-        echo Hello, Kubernetes! && sleep 3600
-      State:          Running
-        Started:      Thu, 30 May 2024 15:01:13 +0200
-      Ready:          True
-      Restart Count:  0
-      Environment:    <none>
-      Mounts:
-        /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-6n7qb (ro)
-  Conditions:
-    Type              Status
-    Initialized       True 
-    Ready             True 
-    ContainersReady   True 
-    PodScheduled      True 
-  Volumes:
-    kube-api-access-6n7qb:
-      Type:                    Projected (a volume that contains injected data from multiple sources)
-      TokenExpirationSeconds:  3607
-      ConfigMapName:           kube-root-ca.crt
-      ConfigMapOptional:       <nil>
-      DownwardAPI:             true
-  QoS Class:                   BestEffort
-  Node-Selectors:              <none>
-  Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
-                               node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
-  Events:
-    Type    Reason     Age   From               Message
-    ----    ------     ----  ----               -------
-    Normal  Scheduled  3s    default-scheduler  Successfully assigned rising/long-running-pod to kubeadm-worker1
-    Normal  Pulling    3s    kubelet            Pulling image "ubuntu"
-    Normal  Pulled     2s    kubelet            Successfully pulled image "ubuntu" in 1.054s (1.054s including waiting)
-    Normal  Created    2s    kubelet            Created container long-running-container
-    Normal  Started    1s    kubelet            Started container long-running-container
+  IP:               10.244.1.58
   #+end_src
 
 - Try to use the ServiceAccount from inside the Pod:
   #+BEGIN_SRC shell
     kubectl wait --for=condition=Ready pod/long-running-pod -n rising
-    kubectl -n rising exec long-running-pod -- sh -c 'apt -qq update; apt install -yqq curl; export KUBE_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token); curl -sSk -H "Authorization: Bearer $KUBE_TOKEN" "https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_PORT_443_TCP_PORT/api/v1/namespaces/rising/pods" > temp.json; head -n 5 temp.json'
+    kubectl -n rising exec long-running-pod -- sh -c 'apt-get -qq update; apt-get install -yqq curl yq >/dev/null;
+    export KUBE_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token);
+    curl -sSk -H "Authorization: Bearer $KUBE_TOKEN" "https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_PORT_443_TCP_PORT/apis/authentication.k8s.io/v1/selfsubjectaccessreviews" > temp.json; jq .message temp.json
+    curl -sSk -H "Authorization: Bearer $KUBE_TOKEN" "https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_PORT_443_TCP_PORT/api/v1/namespaces/rising/pods" > temp.json; head -n 5 temp.json'
   #+END_SRC
 
   #+RESULTS:
   #+begin_src shell
   pod/long-running-pod condition met
-
-  WARNING: apt does not have a stable CLI interface. Use with caution in scripts.
-
-  3 packages can be upgraded. Run 'apt list --upgradable' to see them.
-
-  WARNING: apt does not have a stable CLI interface. Use with caution in scripts.
+  "selfsubjectaccessreviews.authentication.k8s.io is forbidden: User \"system:serviceaccount:rising:long-running-sa\" cannot list resource \"selfsubjectaccessreviews\" in API group \"authentication.k8s.io\" at the cluster scope"
   {
     "kind": "PodList",
     "apiVersion": "v1",
     "metadata": {
-      "resourceVersion": "2499763"
+      "resourceVersion": "2605973"
   #+end_src
   
 - Clean everything up:
@@ -1367,7 +1320,434 @@ kubectl describe node kubeadm-worker1
   serviceaccount "long-running-sa" deleted
   #+end_src
   
-** TODO Access Review =AR1= - Use can-i to view permissions of self, other users, over different namespaces
+** Access Review =AR1= - Use can-i to view permissions of self, other users, over different namespaces
+- Create a set of ServiceAccounts for the logs (while this
+  should not be the case in a real-world scenario, it is done
+  since SAs and Users are equivalent once authorized):
+  #+BEGIN_SRC shell
+  kubectl apply -f - <<EOF
+  apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    name: alice
+    namespace: rising
+  ---
+  apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    name: bob
+    namespace: rising
+  ---
+  apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    name: charlie
+    namespace: rising
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  serviceaccount/alice created
+  serviceaccount/bob created
+  serviceaccount/charlie created
+  #+end_src
+
+- Create tokens for the ServiceAccounts:
+  #+BEGIN_SRC shell
+  kubectl apply -f - <<EOF
+  apiVersion: v1
+  kind: Secret
+  metadata:
+    name: alice-token
+    namespace: rising
+    annotations:
+      kubernetes.io/service-account.name: alice
+  type: kubernetes.io/service-account-token
+  ---
+  apiVersion: v1
+  kind: Secret
+  metadata:
+    name: bob-token
+    namespace: rising
+    annotations:
+      kubernetes.io/service-account.name: bob 
+  type: kubernetes.io/service-account-token
+  ---
+  apiVersion: v1
+  kind: Secret
+  metadata:
+    name: charlie-token
+    namespace: rising
+    annotations:
+      kubernetes.io/service-account.name: charlie
+  type: kubernetes.io/service-account-token
+  ---
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  secret/alice-token created
+  secret/bob-token created
+  secret/charlie-token created
+  #+end_src
+
+- Create two Roles, one for reading Pods and one for reading Secrets:
+  #+BEGIN_SRC shell
+  kubectl apply -f - <<EOF
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: Role
+  metadata:
+    name: pod-reader
+    namespace: rising
+  rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  ---
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: Role
+  metadata:
+    name: secret-reader
+    namespace: rising
+  rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  role.rbac.authorization.k8s.io/pod-reader created
+  role.rbac.authorization.k8s.io/secret-reader created
+  #+end_src
+
+- Bind the ServiceAccounts to the Roles:
+  #+BEGIN_SRC shell
+  kubectl apply -f - <<EOF
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: RoleBinding
+  metadata:
+    name: pod-reader-binding
+    namespace: rising
+  subjects:
+    - kind: ServiceAccount
+      name: alice
+      namespace: rising
+    - kind: ServiceAccount
+      name: bob
+      namespace: rising
+  roleRef:
+    kind: Role
+    name: pod-reader
+    apiGroup: rbac.authorization.k8s.io
+  ---
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: RoleBinding
+  metadata:
+    name: secret-reader-binding
+    namespace: rising
+  subjects:
+    - kind: ServiceAccount
+      name: charlie
+      namespace: rising
+  roleRef:
+    kind: Role
+    name: secret-reader
+    apiGroup: rbac.authorization.k8s.io
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  rolebinding.rbac.authorization.k8s.io/pod-reader-binding created
+  rolebinding.rbac.authorization.k8s.io/secret-reader-binding created
+  #+end_src
+
+- Obtain credentials for the ServiceAccounts and generate a kubeconfig for them:
+  #+BEGIN_SRC shell
+  kubectl get secret alice-token -n rising -o jsonpath='{.data.token}' | base64 -d > alice.token
+  kubectl get secret bob-token -n rising -o jsonpath='{.data.token}' | base64 -d > bob.token
+  kubectl get secret charlie-token -n rising -o jsonpath='{.data.token}' | base64 -d > charlie.token
+  cat <<EOF > alice.kubeconfig
+  apiVersion: v1
+  kind: Config
+  preferences: {}
+  clusters:
+  $(kubectl config view --raw --minify --flatten | yq .clusters)
+  contexts: []
+  users: []
+  EOF
+  cp alice.kubeconfig bob.kubeconfig
+  cp alice.kubeconfig charlie.kubeconfig
+  kubectl --kubeconfig alice.kubeconfig config set-credentials alice --token=$(cat alice.token)
+  kubectl --kubeconfig bob.kubeconfig config set-credentials bob --token=$(cat bob.token)
+  kubectl --kubeconfig charlie.kubeconfig config set-credentials charlie --token=$(cat charlie.token)
+  kubectl --kubeconfig alice.kubeconfig config set-context alice --cluster=kubernetes --user=alice --cluster=risinglab
+  kubectl --kubeconfig bob.kubeconfig config set-context bob --cluster=kubernetes --user=bob --cluster=risinglab
+  kubectl --kubeconfig charlie.kubeconfig config set-context charlie --cluster=kubernetes --user=charlie --cluster=risinglab
+  kubectl --kubeconfig alice.kubeconfig config use-context alice
+  kubectl --kubeconfig bob.kubeconfig config use-context bob
+  kubectl --kubeconfig charlie.kubeconfig config use-context charlie
+  rm alice.token bob.token charlie.token
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  User "alice" set.
+  User "bob" set.
+  User "charlie" set.
+  Context "alice" created.
+  Context "bob" created.
+  Context "charlie" created.
+  Switched to context "alice".
+  Switched to context "bob".
+  Switched to context "charlie".
+  #+end_src
+
+- Check as Alice if she can list Pods and Secrets in the namespace:
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig alice.kubeconfig auth can-i list pods -n rising
+  kubectl --kubeconfig alice.kubeconfig auth can-i list secrets -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  yes
+  no
+  #+end_src
+
+- Check as Bob if he can list Pods in the namespaces =rising= and =kube-system=:
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig bob.kubeconfig auth can-i list pods -n rising
+  kubectl --kubeconfig bob.kubeconfig auth can-i list pods -n kube-system
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  yes
+  no
+  #+end_src
+
+- Check as Charlie if he can list Secrets in the namespace:
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig charlie.kubeconfig auth can-i list secrets -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  yes
+  #+end_src
+
+- Check as Charlie if he can list nodes:
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig charlie.kubeconfig auth can-i list nodes
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Warning: resource 'nodes' is not namespace scoped
+
+  no
+  #+end_src
+
+- Check what Charlie can do in the =rising= namespace:
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig charlie.kubeconfig auth can-i --list -n rising 
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Resources                                       Non-Resource URLs                      Resource Names   Verbs
+  selfsubjectreviews.authentication.k8s.io        []                                     []               [create]
+  selfsubjectaccessreviews.authorization.k8s.io   []                                     []               [create]
+  selfsubjectrulesreviews.authorization.k8s.io    []                                     []               [create]
+  secrets                                         []                                     []               [get list]
+                                                  [/.well-known/openid-configuration/]   []               [get]
+                                                  [/.well-known/openid-configuration]    []               [get]
+                                                  [/api/*]                               []               [get]
+                                                  [/api]                                 []               [get]
+                                                  [/apis/*]                              []               [get]
+                                                  [/apis]                                []               [get]
+                                                  [/healthz]                             []               [get]
+                                                  [/healthz]                             []               [get]
+                                                  [/livez]                               []               [get]
+                                                  [/livez]                               []               [get]
+                                                  [/openapi/*]                           []               [get]
+                                                  [/openapi]                             []               [get]
+                                                  [/openid/v1/jwks/]                     []               [get]
+                                                  [/openid/v1/jwks]                      []               [get]
+                                                  [/readyz]                              []               [get]
+                                                  [/readyz]                              []               [get]
+                                                  [/version/]                            []               [get]
+                                                  [/version/]                            []               [get]
+                                                  [/version]                             []               [get]
+                                                  [/version]                             []               [get]
+  serviceaccounts                                 []                                     [alice]          [impersonate]
+  serviceaccounts                                 []                                     [bob]            [impersonate]
+  #+end_src
+  
 ** TODO Access Review =AR2= - Use auth whoami to view the current user
+- *Prerequisite*: complete =AR1= and obtain the credentials for the users. Make sure
+  they are available as =alice.kubeconfig=, =bob.kubeconfig= and =charlie.kubeconfig= in the current directory.
+
+- Check as each of the users who they are: 
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig alice.kubeconfig auth whoami
+  kubectl --kubeconfig bob.kubeconfig auth whoami
+  kubectl --kubeconfig charlie.kubeconfig auth whoami
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  ATTRIBUTE   VALUE
+  Username    system:serviceaccount:rising:alice
+  UID         4d26c60c-0786-43b2-ba36-7a2a0c878e01
+  Groups      [system:serviceaccounts system:serviceaccounts:rising system:authenticated]
+  ATTRIBUTE   VALUE
+  Username    system:serviceaccount:rising:bob
+  UID         8e31af98-4542-40a5-b37d-8d7f8c3b31d9
+  Groups      [system:serviceaccounts system:serviceaccounts:rising system:authenticated]
+  ATTRIBUTE   VALUE
+  Username    system:serviceaccount:rising:charlie
+  UID         5b50d6c3-fae2-4d06-8277-75e93a5db4ee
+  Groups      [system:serviceaccounts system:serviceaccounts:rising system:authenticated]
+  #+end_src
+
 ** TODO Access Review =AR3= - Impersonating a user
-65;56;23M
+- *Prerequisite*: complete =AR1= and obtain the credentials for the users. Make sure
+  they are available as =alice.kubeconfig=, =bob.kubeconfig= and =charlie.kubeconfig= in the current directory.
+  
+- Augment Charlie's capabilities to let him impersonate ServiceAccounts:
+  #+BEGIN_SRC shell
+  kubectl apply -f - <<EOF
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: impersonator
+  rules:
+    - apiGroups: [""]
+      resources: ["serviceaccounts"]
+      verbs: ["impersonate"]
+      resourceNames: ["alice", "bob"]
+  ---
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRoleBinding
+  metadata:
+    name: impersonator-binding
+  subjects:
+    - kind: ServiceAccount
+      name: charlie
+      namespace: rising
+  roleRef:
+    kind: ClusterRole
+    name: impersonator
+    apiGroup: rbac.authorization.k8s.io
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  clusterrole.rbac.authorization.k8s.io/impersonator created
+  clusterrolebinding.rbac.authorization.k8s.io/impersonator-binding created
+  #+end_src
+  
+- Check if Charlie can impersonate any user or SA: 
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig charlie.kubeconfig auth can-i impersonate users
+  kubectl --kubeconfig charlie.kubeconfig auth can-i impersonate serviceaccounts
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  no
+  #+end_src
+
+- Let Charlie see if Alice can list Pods in =rising=, and what she can do in =kube-system=:
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig charlie.kubeconfig auth can-i list pods -n rising --as system:serviceaccount:rising:alice
+  kubectl --kubeconfig charlie.kubeconfig auth can-i --list -n kube-system --as system:serviceaccount:rising:alice
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  yes
+  Resources                                       Non-Resource URLs                      Resource Names   Verbs
+  selfsubjectreviews.authentication.k8s.io        []                                     []               [create]
+  selfsubjectaccessreviews.authorization.k8s.io   []                                     []               [create]
+  selfsubjectrulesreviews.authorization.k8s.io    []                                     []               [create]
+                                                  [/.well-known/openid-configuration/]   []               [get]
+                                                  [/.well-known/openid-configuration]    []               [get]
+                                                  [/api/*]                               []               [get]
+                                                  [/api]                                 []               [get]
+                                                  [/apis/*]                              []               [get]
+                                                  [/apis]                                []               [get]
+                                                  [/healthz]                             []               [get]
+                                                  [/healthz]                             []               [get]
+                                                  [/livez]                               []               [get]
+                                                  [/livez]                               []               [get]
+                                                  [/openapi/*]                           []               [get]
+                                                  [/openapi]                             []               [get]
+                                                  [/openid/v1/jwks/]                     []               [get]
+                                                  [/openid/v1/jwks]                      []               [get]
+                                                  [/readyz]                              []               [get]
+                                                  [/readyz]                              []               [get]
+                                                  [/version/]                            []               [get]
+                                                  [/version/]                            []               [get]
+                                                  [/version]                             []               [get]
+                                                  [/version]                             []               [get]
+  #+end_src
+
+- As Charlie, let's impersonate Bob and create a Pod in the =rising= namespace, then list Pods:
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig charlie.kubeconfig --as system:serviceaccount:rising:bob run --image=ubuntu --restart=Never --namespace=rising --command -- sleep 3600
+  kubectl --kubeconfig charlie.kubeconfig --as system:serviceaccount:rising:bob get pods -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Error from server (Forbidden): pods is forbidden: User "system:serviceaccount:rising:bob" cannot create resource "pods" in API group "" in the namespace "rising"
+  No resources found in rising namespace.
+  #+end_src
+
+- As Charlie, let's impersonate Alice and try to list nodes:
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig charlie.kubeconfig --as system:serviceaccount:rising:alice get nodes
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Error from server (Forbidden): nodes is forbidden: User "system:serviceaccount:rising:alice" cannot list resource "nodes" in API group "" at the cluster scope
+  #+end_src
+
+- Clean everything up:
+  #+BEGIN_SRC shell
+    kubectl delete clusterrolebinding impersonator-binding
+    kubectl delete clusterrole impersonator
+    kubectl delete rolebinding pod-reader-binding -n rising
+    kubectl delete role pod-reader -n rising
+    kubectl delete rolebinding secret-reader-binding -n rising
+    kubectl delete role secret-reader -n rising
+    kubectl delete secret alice-token bob-token charlie-token -n rising
+    kubectl delete serviceaccount alice bob charlie -n rising
+    rm alice.kubeconfig bob.kubeconfig charlie.kubeconfig
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  clusterrolebinding.rbac.authorization.k8s.io "impersonator-binding" deleted
+  clusterrole.rbac.authorization.k8s.io "impersonator" deleted
+  rolebinding.rbac.authorization.k8s.io "pod-reader-binding" deleted
+  role.rbac.authorization.k8s.io "pod-reader" deleted
+  rolebinding.rbac.authorization.k8s.io "secret-reader-binding" deleted
+  role.rbac.authorization.k8s.io "secret-reader" deleted
+  secret "alice-token" deleted
+  secret "bob-token" deleted
+  secret "charlie-token" deleted
+  serviceaccount "alice" deleted
+  serviceaccount "bob" deleted
+  serviceaccount "charlie" deleted
+  #+end_src
+
