@@ -22,6 +22,29 @@ blacklisted_resources_liv10 = {"customresourcedefinitions", "apiservices", "toke
 blacklisted_resources_liv20 = {"bindings", "componentstatuses", "endpoints", "replicationcontrollers"}
 
 
+def is_whitelisted_request_uri(request_uri, json_data):
+    if request_uri not in blacklisted_requestURIs and not \
+            bool(re.search("/api(s)*\?timeout", request_uri)) and not \
+            bool(re.search("/openapi/v3\?timeout", request_uri)) and not \
+            (request_uri == "/api/v1" and bool(re.search("system:serviceaccount", json_data['user']['username']))):
+        return True
+    else:
+        return False
+
+
+def is_whitelisted_objectref_resource(objectref_resource):
+    if objectref_resource not in blacklisted_resources_liv2 and \
+            objectref_resource not in blacklisted_resources_liv3 and \
+            objectref_resource not in blacklisted_resources_liv4 and \
+            objectref_resource not in blacklisted_resources_liv7 and \
+            objectref_resource not in blacklisted_resources_liv9 and \
+            objectref_resource not in blacklisted_resources_liv10 and \
+            objectref_resource not in blacklisted_resources_liv20:
+        return True
+    else:
+        return False
+
+
 def main():
     parser.add_argument('-f', required=True, help='The log input file')
     args = parser.parse_args()
@@ -39,25 +62,16 @@ def main():
 
             # get the requestURI and filter out the unwanted ones
             request_uri = json_data['requestURI']
-            if request_uri not in blacklisted_requestURIs and not \
-                    bool(re.search("/api(s)*\?timeout", request_uri)) and not \
-                    bool(re.search("/openapi/v3\?timeout", request_uri)):
+            if is_whitelisted_request_uri(request_uri, json_data):
                 try:
                     # get the resource and filter out the unwanted ones
-                    resource = json_data['objectRef']['resource']
-                    if resource not in blacklisted_resources_liv2 and \
-                            resource not in blacklisted_resources_liv3 and \
-                            resource not in blacklisted_resources_liv4 and \
-                            resource not in blacklisted_resources_liv7 and \
-                            resource not in blacklisted_resources_liv9 and \
-                            resource not in blacklisted_resources_liv10 and \
-                            resource not in blacklisted_resources_liv20:
+                    objectref_resource = json_data['objectRef']['resource']
+                    if is_whitelisted_objectref_resource(objectref_resource):
                         print(line, file=output_file, end='')
-                except Exception as e:
-                    if request_uri == "/api/v1" and bool(re.search("system:serviceaccount", json_data['user']['username'])):
-                        continue
-                    else:
-                        print("Unmanaged log line. Check line: ", i)
+
+                except KeyError:
+                    # some unexpected log appears. Print a warning
+                    print("Unmanaged log line. Check line: ", i)
 
         output_file.close()
 
