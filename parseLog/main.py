@@ -32,7 +32,11 @@ def is_whitelisted_request_uri(request_uri, json_data):
         return False
 
 
-def is_whitelisted_objectref_resource(objectref_resource):
+def is_whitelisted_objectref_resource(objectref_resource, json_data):
+    # Firstly, check the 'nodes' special case (nodes checking themselves)
+    if objectref_resource == "nodes" and bool(re.search("system:node", json_data['user']['username'])):
+        return False
+
     if objectref_resource not in blacklisted_resources_liv2 and \
             objectref_resource not in blacklisted_resources_liv3 and \
             objectref_resource not in blacklisted_resources_liv4 and \
@@ -66,7 +70,7 @@ def main():
                 try:
                     # get the resource and filter out the unwanted ones
                     objectref_resource = json_data['objectRef']['resource']
-                    if is_whitelisted_objectref_resource(objectref_resource):
+                    if is_whitelisted_objectref_resource(objectref_resource, json_data):
                         print(line, file=output_file, end='')
 
                 except KeyError:
