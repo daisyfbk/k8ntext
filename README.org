@@ -12,6 +12,20 @@ performs audit log parsing, (possibly) reduction, and generation of a graph
 (or similar structure) that captures the interactions between the events in
 audit logs.
 
+** Motivation
+- Cloud Auditing is a powerful security feature that as it is does
+  not realise its full potential. Indeed, some tools present in the
+  market perform audit cruching and already provide some intelligence
+  over the incoming information, but no one performs actual cross-log
+  correlation between temporally distinct events.
+- Other academic works focus on doing data forensics and post-mortem
+  investigation over system audit logs. However, we want to
+  dynamically and in-real-time parse our log so that we can perform
+  anomaly detection rather than letting security experts do it.
+- GUI and querying are secondary: the graph should be quick to be
+  generated and to parse, but in the end a machine will query it.
+- To the best of our knowledge no one explored the capabilities of audit logging 
+  for doing real time anomaly detection over cloud environments.
 ** Objectives
 1. Parse audit logs, extracting relevant information and discarding
    redundant and non-informative data
@@ -148,29 +162,65 @@ audit logs.
 - A final version of the system
   
 * Misc notes
-- Create a scenario with two deployments being done by different users
-  (in different namespaces?)
+** Current TODOs :noexpo:
+*** TODO Investigate background noise
+*** TODO Investigate SA:
+- "/api/v1/serviceaccounts?allowWatchBookmarks=true&resourceVersion=2491375
+  &timeout=7m47s&timeoutSeconds=467&watch=true over non-namespaced SAs
+
+** Behaviour of the audit logs
+- A lot of actions are preceded by a =get=, making it difficult
+  to understand if it was =kubectl= or the user itself making that action.
+  - Using the stageTimestamp is an option but not a very strong one either:
+    what if the network conditions are put in jeopardy?
+  - Also deletes are always followed by a =get=, which returns correctly a 404. 
+- When a secret is created for a SA the secret is instantly patched
+  by the kube-controller-manager, which is in charge of actually generating
+  that secret along with an object like
+  #+BEGIN_SRC json
+  {"data":{"ca.crt":"...","namespace":"...","token":"..."}
+  #+END_SRC
+  where the three fields are base64 encoded.
+- Users with access to =kubectl exec= can access the secrets of the pods
+  they are exec-ing into using =printenv=. This is a security issue that
+  does not leave a trace in the audit logs.
+- ResourceQuotas can be used for more than just limiting resources, they
+  can also be used to limit the number of objects that can be created.
+  This also applies to things like =serviceaccounts=: thus, it seems
+  that every time a potentially limitable object is created, a =get=
+  request is made to =/api/v1/{object}= to assess the current state.
+- When CSRs are being approved or denied, the =update= verb is used
+  and the actual decision is in the payload of the request. This makes
+  it less straightforward to understand if the request was allowed or
+  denied. 
+
+** To talk at next meeting
+- Should we omit ResponseStarted?
+  - Used mainly for =watch= requests, usually made by control plane
+    components
+  - Used for =delete= requests, and ResponseComplete is sent once the
+    object is actually deleted
+  - Used for =kubectl exec= requests when the command is first sent
+- How should we handle impersonation?
+  - Users with access to the =impersonate= verb and one of =users=,
+    =groups=, and =serviceaccounts= can impersonate other identities.
+  - This is correctly reflected in the audit logs, but could be a problem
+    implementation-wise.
+- When resources are created there is an API request made to an object
+  that potentially does not exists. How do we handle this?
+  - This is especially apparent when =Roles= and =RoleBindings= are created
+    and the =Role= does not exist yet. While this could be acceptable
+    for users, as multiple auth mechanisms could be in place, it is
+    not acceptable for =ServiceAccounts=, which are namespaced.
+- How many nodes do we actually need to create?
+  - For deployments, we could create a single node that represents the
+    deployment itself, and then create a node for each pod.
+  - Amount of vertices must kept in check
+  
+* Future work
 - Using KWOK
 - Ask for a master's student to create a simulator with KWOK,
   defining scenarios and gathering the audit log
-- Don't need a node per pod, maybe create it as a deployment node?
-  Let's keep the graph size down
-- Motivation
-  - Cloud Auditing is a powerful security feature that as it is does
-    not realise its full potential. Indeed, some tools present in the
-    market perform audit cruching and already provide some intelligence
-    over the incoming information, but no one performs actual cross-log
-    correlation between temporally distinct events.
-  - Other academic works focus on doing data forensics and post-mortem
-    investigation over system audit logs. However, we want to
-    dynamically and in-real-time parse our log so that we can perform
-    anomaly detection rather than letting security experts do it.
-  - GUI and querying are secondary: the graph should be quick to be
-    generated and to parse, but in the end a machine will query it.
-  - To the best of our knowledge no one explored the capabilities of audit logging 
-    for doing real time anomaly detection over cloud environments.
-- Caveats
-  - Accessing secrets using printenv does not leave a trace in the audit logs
   
 * Old notes (from mzani, gfoletto internship) :noexpo: 
 ** Notes
