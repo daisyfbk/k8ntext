@@ -1589,7 +1589,7 @@ kubectl describe node kubeadm-worker1
   serviceaccounts                                 []                                     [bob]            [impersonate]
   #+end_src
   
-** TODO Access Review =AR2= - Use auth whoami to view the current user
+** Access Review =AR2= - Use auth whoami to view the current user
 - *Prerequisite*: complete =AR1= and obtain the credentials for the users. Make sure
   they are available as =alice.kubeconfig=, =bob.kubeconfig= and =charlie.kubeconfig= in the current directory.
 
@@ -1616,7 +1616,7 @@ kubectl describe node kubeadm-worker1
   Groups      [system:serviceaccounts system:serviceaccounts:rising system:authenticated]
   #+end_src
 
-** TODO Access Review =AR3= - Impersonating a user
+** Access Review =AR3= - Impersonating a user
 - *Prerequisite*: complete =AR1= and obtain the credentials for the users. Make sure
   they are available as =alice.kubeconfig=, =bob.kubeconfig= and =charlie.kubeconfig= in the current directory.
   
