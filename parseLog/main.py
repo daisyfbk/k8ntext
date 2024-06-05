@@ -21,6 +21,11 @@ blacklisted_resources_liv10 = {"customresourcedefinitions", "apiservices", "toke
                                "flowschemas", "prioritylevelconfigurations", "poddisruptionbudgets"}
 blacklisted_resources_liv20 = {"bindings", "componentstatuses", "endpoints", "replicationcontrollers"}
 
+# Resources that we do not exclude a priori but according to the user who performs them
+blacklisted_resources_user_based = {"configmaps", "nodes", "pods", "namespaces", "serviceaccounts", "rolebindings",
+                                    "resourcequotas", "clusterroles", "secrets", "clusterrolebindings", "roles",
+                                    "certificatesigningrequests"}
+
 
 def is_whitelisted_request_uri(request_uri, json_data):
     if request_uri not in blacklisted_requestURIs and not \
@@ -33,8 +38,24 @@ def is_whitelisted_request_uri(request_uri, json_data):
 
 
 def is_whitelisted_objectref_resource(objectref_resource, json_data):
-    # Firstly, check the 'nodes' special case (nodes checking themselves)
-    if objectref_resource == "nodes" and bool(re.search("system:node", json_data['user']['username'])):
+    # Filter logs done by system performing "watch" verb
+    verb = json_data['verb']
+    user_username = json_data['user']['username']
+    if verb == "watch" and (objectref_resource in blacklisted_resources_user_based) and \
+            (user_username == "system:apiserver" or
+             user_username == "system:kube-scheduler" or
+             user_username == "system:kube-controller-manager" or
+             bool(re.search("system:node:", user_username))):
+        return False
+
+    # Further specialize the filter on some resource
+    if (verb == "watch" and objectref_resource == "namespaces" and
+            user_username == "system:serviceaccount:kube-system:coredns"):
+        return False
+
+    if (verb == "watch" and objectref_resource == "nodes" and
+            (user_username == "system:serviceaccount:kube-flannel:flannel" or
+             user_username == 'system:serviceaccount:kube-system:kube-proxy')):
         return False
 
     if objectref_resource not in blacklisted_resources_liv2 and \
