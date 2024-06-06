@@ -163,10 +163,6 @@ audit logs.
   
 * Misc notes
 ** Current TODOs :noexpo:
-*** TODO Investigate background noise
-*** TODO Investigate SA:
-- "/api/v1/serviceaccounts?allowWatchBookmarks=true&resourceVersion=2491375
-  &timeout=7m47s&timeoutSeconds=467&watch=true over non-namespaced SAs
 
 ** Behaviour of the audit logs
 - A lot of actions are preceded by a =get=, making it difficult
@@ -193,6 +189,23 @@ audit logs.
   and the actual decision is in the payload of the request. This makes
   it less straightforward to understand if the request was allowed or
   denied. 
+- Every time a namespace is created, the following things happen:
+  - A =list= request is made to =/api/v1/namespaces/{}/resourcequotas=
+    by the =kube-apiserver= for no apparent reason
+    - To add insult to injury, usually this line is out of order in the log
+  - The =kube-controller-manager= gets the =service-account-controller= SA
+    and generates a token for it
+  - The SA =root-ca-publisher= puts the =root-ca.crt= in a ConfigMap
+    in the namespace
+  - The =service-account-controller= creates a SA called =default=
+    in the namespace
+- When a namespace is deleted, all subresources are deleted with a
+  =deletecollection= request followed by a =list=. Exceptions include
+  =pods=, that weirdly are deleted by a =list=, then =deletecollection=,
+  then =list= again. Also, when =configmaps= are deleted, the =kube-controller-manager=
+  (and not the =root-ca-cert-publisher=) tries to create again the CM
+  that was just deleted, but is rejected because the namespace is 
+  being terminated. 
 
 ** To talk at next meeting
 - Should we omit ResponseStarted?
@@ -206,6 +219,11 @@ audit logs.
     =groups=, and =serviceaccounts= can impersonate other identities.
   - This is correctly reflected in the audit logs, but could be a problem
     implementation-wise.
+- Background noise includes some components that generate tokens
+  for service accounts once every hour or so.
+- (!) When old-style ServiceAccount tokens are used, instead of the new
+  CSR style Users, the API server detects the /offending/ action and
+  adds a label =kubernetes.io/legacy-token-last-used= to the Secret.
 - When resources are created there is an API request made to an object
   that potentially does not exists. How do we handle this?
   - This is especially apparent when =Roles= and =RoleBindings= are created
