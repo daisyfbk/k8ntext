@@ -30,32 +30,54 @@
 ** Namespace log =N1= - Simple namespace creation and deletion
 - Create a namespace:
   #+BEGIN_SRC shell 
-    kubectl create namespace rising
+  kubectl create namespace rising
   #+END_SRC
 
   #+RESULTS:
   #+begin_src shell
-  Error from server (AlreadyExists): namespaces "rising" already exists
+  namespace/rising created
   #+end_src
 
-
-
-- Get the namespace:
+- List the namespaces:
   #+BEGIN_SRC shell 
-    kubectl get namespaces
+  kubectl get namespaces
   #+END_SRC
 
   #+RESULTS:
   #+begin_src shell
   NAME              STATUS   AGE
-  default           Active   99d
-  kube-flannel      Active   99d
-  kube-node-lease   Active   99d
-  kube-public       Active   99d
-  kube-system       Active   99d
-  limited           Active   99d
-  my-namespace      Active   20d
-  rising            Active   22h
+  default           Active   107d
+  kube-flannel      Active   107d
+  kube-node-lease   Active   107d
+  kube-public       Active   107d
+  kube-system       Active   107d
+  limited           Active   107d
+  my-namespace      Active   28d
+  rising            Active   10s
+  rising2           Active   71m
+  #+end_src
+  
+- Get the namespace using =-o yaml=:
+  #+BEGIN_SRC shell
+  kubectl get namespace rising -o yaml
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  apiVersion: v1
+  kind: Namespace
+  metadata:
+    creationTimestamp: "2024-06-05T12:46:46Z"
+    labels:
+      kubernetes.io/metadata.name: rising
+    name: rising
+    resourceVersion: "3274921"
+    uid: c7c2284a-f438-403e-bf6b-ce389d5c779c
+  spec:
+    finalizers:
+    - kubernetes
+  status:
+    phase: Active
   #+end_src
   
 - Describe the namespace:
