@@ -1,6 +1,8 @@
 import json
 import argparse
 import re
+import sys
+import datetime
 
 parser = argparse.ArgumentParser(
     prog='parseLog',
@@ -27,10 +29,12 @@ blacklisted_resources_user_based = {"configmaps", "nodes", "pods", "namespaces",
                                     "certificatesigningrequests"}
 
 
+SORTING_KEY = "requestReceivedTimestamp"
+
 def is_whitelisted_request_uri(request_uri, json_data):
     if request_uri not in blacklisted_requestURIs and not \
-            bool(re.search("/api(s)*\?timeout", request_uri)) and not \
-            bool(re.search("/openapi/v3\?timeout", request_uri)) and not \
+            bool(re.search(r"/api(s)*\?timeout", request_uri)) and not \
+            bool(re.search(r"/openapi/v3\?timeout", request_uri)) and not \
             (request_uri == "/api/v1" and bool(re.search("system:serviceaccount", json_data['user']['username']))):
         return True
     else:
@@ -77,9 +81,12 @@ def main():
     input_filename = args.f;
     output_filename = input_filename + "_edited"
 
+    array = []
     with (open(input_filename, 'r') as input_file):
         output_file = open(output_filename, "w")
         i = 0
+
+
         for line in input_file:
             i += 1
             # each line is a json, load it
@@ -92,13 +99,18 @@ def main():
                     # get the resource and filter out the unwanted ones
                     objectref_resource = json_data['objectRef']['resource']
                     if is_whitelisted_objectref_resource(objectref_resource, json_data):
-                        print(line, file=output_file, end='')
+                        array.append(json_data)
 
                 except KeyError:
                     # some unexpected log appears. Print a warning
                     print("Unmanaged log line. Check line: ", i)
 
-        output_file.close()
+    # sort the array by the key
+    array.sort(key=lambda x: x[SORTING_KEY])
+
+    with open(output_filename, 'w') as output_file:
+        for item in array:
+            output_file.write(json.dumps(item, separators=(',', ':')) + "\n")
 
 
 if __name__ == "__main__":
