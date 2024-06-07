@@ -223,7 +223,7 @@
   #+begin_src shell
   Error from server (Forbidden): pods "nginx" is forbidden: failed quota: rising-quota: must specify limits.cpu for: nginx; limits.memory for: nginx; requests.cpu for: nginx; requests.memory for: nginx
   #+end_src
-
+  
 - Clean everything up, one pod will fail because it was never created:
   #+BEGIN_SRC shell
     kubectl -n rising delete pod over-quota-pod
@@ -246,7 +246,7 @@
     kind: Pod
     metadata:
       name: rising-pod
-      namespace: rising
+      namespace: rising2
     spec:
       containers:
       - name: first-container 
@@ -735,8 +735,8 @@ Pruning images on kubeadm-worker2
 
 - Access the logs of the Pod:
   #+BEGIN_SRC shell
-  kubectl wait --for=condition=Ready pod/secret-pod -n rising
-  kubectl -n rising logs secret-pod -c secret-container
+    kubectl wait --for=condition=Ready pod/secret-pod -n rising
+    kubectl -n rising logs secret-pod -c secret-container
   #+END_SRC
 
   #+RESULTS:

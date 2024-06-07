@@ -163,7 +163,7 @@ audit logs.
   
 * Misc notes
 ** Current TODOs :noexpo:
-
+- Try to use curl or an external library
 ** Behaviour of the audit logs
 - A lot of actions are preceded by a =get=, making it difficult
   to understand if it was =kubectl= or the user itself making that action.
@@ -178,8 +178,7 @@ audit logs.
   #+END_SRC
   where the three fields are base64 encoded.
 - Users with access to =kubectl exec= can access the secrets of the pods
-  they are exec-ing into using =printenv=. This is a security issue that
-  does not leave a trace in the audit logs.
+  they are exec-ing into using =printenv=. 
 - ResourceQuotas can be used for more than just limiting resources, they
   can also be used to limit the number of objects that can be created.
   This also applies to things like =serviceaccounts=: thus, it seems
@@ -206,14 +205,15 @@ audit logs.
   (and not the =root-ca-cert-publisher=) tries to create again the CM
   that was just deleted, but is rejected because the namespace is 
   being terminated. 
-
-** To talk at next meeting
-- Should we omit ResponseStarted?
+- Usage of ResponseStarted?
   - Used mainly for =watch= requests, usually made by control plane
     components
   - Used for =delete= requests, and ResponseComplete is sent once the
     object is actually deleted
   - Used for =kubectl exec= requests when the command is first sent
+    - Both the first =get= and the subsequent =create= are long-running
+
+** To talk at next meeting
 - How should we handle impersonation?
   - Users with access to the =impersonate= verb and one of =users=,
     =groups=, and =serviceaccounts= can impersonate other identities.
