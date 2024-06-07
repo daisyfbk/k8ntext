@@ -1,5 +1,5 @@
-#+NAME: Commands used to generate logs
-#+AUTHOR: Matteo Franzil, Valentino Armani
+#+TITLE: Commands used to generate logs
+#+AUTHOR: Matteo Franzil, Valentino Armani, Luis Augusto Dias Knob
 #+DATE: 2024-05-28
 #+DESCRIPTION: This document contains the commands used to generate the logs for the Audit project
 #+OPTIONS: toc:2 
@@ -246,7 +246,7 @@
     kind: Pod
     metadata:
       name: rising-pod
-      namespace: rising2
+      namespace: rising
     spec:
       containers:
       - name: first-container 
