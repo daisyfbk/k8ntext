@@ -1,8 +1,6 @@
 import json
 import argparse
 import re
-import sys
-import datetime
 
 parser = argparse.ArgumentParser(
     prog='parseLog',
@@ -28,8 +26,6 @@ blacklisted_resources_user_based = {"configmaps", "nodes", "pods", "namespaces",
                                     "resourcequotas", "clusterroles", "secrets", "clusterrolebindings", "roles",
                                     "certificatesigningrequests"}
 
-
-SORTING_KEY = "requestReceivedTimestamp"
 
 def is_whitelisted_request_uri(request_uri, json_data):
     if request_uri not in blacklisted_requestURIs and not \
@@ -81,11 +77,9 @@ def main():
     input_filename = args.f;
     output_filename = input_filename + "_edited"
 
-    array = []
+    output_lines = []
     with (open(input_filename, 'r') as input_file):
-        output_file = open(output_filename, "w")
         i = 0
-
 
         for line in input_file:
             i += 1
@@ -99,18 +93,18 @@ def main():
                     # get the resource and filter out the unwanted ones
                     objectref_resource = json_data['objectRef']['resource']
                     if is_whitelisted_objectref_resource(objectref_resource, json_data):
-                        array.append(json_data)
+                        output_lines.append(json_data)
 
                 except KeyError:
                     # some unexpected log appears. Print a warning
                     print("Unmanaged log line. Check line: ", i)
 
-    # sort the array by the key
-    array.sort(key=lambda x: x[SORTING_KEY])
+    # sort the output_lines array by the requestReceivedTimestamp
+    output_lines.sort(key=lambda x: x['requestReceivedTimestamp'])
 
     with open(output_filename, 'w') as output_file:
-        for item in array:
-            output_file.write(json.dumps(item, separators=(',', ':')) + "\n")
+        for line in output_lines:
+            output_file.write(json.dumps(line, separators=(',', ':')) + "\n")
 
 
 if __name__ == "__main__":
