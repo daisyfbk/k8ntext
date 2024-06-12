@@ -164,6 +164,9 @@ audit logs.
 * Misc notes
 ** Current TODOs :noexpo:
 - Try to use curl or an external library
+- Finish clustering non-relevant events and implement them in the parser
+  - Start filtering out users also by group (important!)
+- Discuss how to implement initial graph representation and mapping
 ** Behaviour of the audit logs
 - A lot of actions are preceded by a =get=, making it difficult
   to understand if it was =kubectl= or the user itself making that action.
