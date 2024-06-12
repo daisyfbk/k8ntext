@@ -42,10 +42,10 @@ def is_whitelisted_request_uri(request_uri):
 def is_whitelisted_objectref_resource(objectref_resource, json_data):
     verb = json_data['verb']
     user_username = json_data['user']['username']
-    objectRef_name = json_data['objectRef']['name']
+    objectref_name = json_data.get('objectRef').get('name')  # can be None
 
     # Filter logs done by control plane components monitoring objects
-    if config.getboolean('ignore_log','control_plane_components'):
+    if config.getboolean('ignore_log', 'control_plane_components'):
         if verb == "watch" and (objectref_resource in blacklisted_resources_user_based) and \
                 (user_username == "system:apiserver" or
                  user_username == "system:kube-scheduler" or
@@ -87,21 +87,21 @@ def is_whitelisted_objectref_resource(objectref_resource, json_data):
     if config.getboolean('ignore_log', 'nodes_creating_cni_token'):
         if (verb == "create" and objectref_resource == "serviceaccounts" and
                 bool(re.search("system:node:", user_username)) and
-                objectRef_name == "flannel"):
+                objectref_name == "flannel"):
             return False
 
     # Filter logs done by Nodes creating a token for the Kubelet
     if config.getboolean('ignore_log', 'nodes_creating_kubelet_token'):
         if (verb == "create" and objectref_resource == "serviceaccounts" and
                 bool(re.search("system:node:", user_username)) and
-                objectRef_name == "kube-proxy"):
+                objectref_name == "kube-proxy"):
             return False
 
     # Filter logs done by Master node creates a token for CoreDNS
     if config.getboolean('ignore_log', 'nodes_creating_coredns_token'):
         if (verb == "create" and objectref_resource == "serviceaccounts" and
                 bool(re.search("system:node:", user_username)) and
-                objectRef_name == "coredns"):
+                objectref_name == "coredns"):
             return False
 
     # Filter logs done by Kube-controller-manager getting and creating tokens for GC and RQ controllers
@@ -109,7 +109,7 @@ def is_whitelisted_objectref_resource(objectref_resource, json_data):
         if ((verb == "create" or verb == "get")
                 and objectref_resource == "serviceaccounts" and
                 user_username == "system:kube-controller-manager" and
-                (objectRef_name == "generic-garbage-collector" or objectRef_name == "resourcequota-controller")):
+                (objectref_name == "generic-garbage-collector" or objectref_name == "resourcequota-controller")):
             return False
 
     if (config.getboolean('ignore_log','blacklisted_resources_liv2') and objectref_resource in blacklisted_resources_liv2) or \
