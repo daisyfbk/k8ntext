@@ -95,7 +95,7 @@ It then creates tokens for them, which expire in an hour.
 - Verb: =create=
 - Users: =system:kube-controller-manager=, groups =system:authenticated=
 - Objects: =/api/v1/namespaces/kube-system/serviceaccounts/resourcequota-controller/token=
-
+  
 * Log setups 
 # :PROPERTIES:
 # :header-args:shell: :var TERM=dumb
@@ -669,7 +669,7 @@ Pruning images on kubeadm-worker2
   configmap "my-config" deleted
   #+end_src
 
-** Secret =S1= - Create a Secret and use it in a Pod, then delete it
+** Secret =S1= - Create a Secret and use it as environment in a Pod, then delete it
 - Create a secret
   #+BEGIN_SRC shell
   cat <<EOF | kubectl apply -f -
@@ -835,6 +835,149 @@ Pruning images on kubeadm-worker2
   #+begin_src shell
   pod "secret-pod" deleted
   secret "my-secret" deleted
+  #+end_src
+** Secret =S2= - Create a Secret and mount it in a Pod 
+- Create a secret
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Secret
+  metadata:
+    name: my-secret-2
+    namespace: rising
+  type: Opaque
+  data:
+    username: $(echo -n "admin" | base64)
+    password: $(echo -n "password" | base64)
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  secret/my-secret-2 created
+  #+end_src
+
+- Create a Pod, but now, mount the secret as a volume:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: secret-pod-2
+      namespace: rising
+    spec:
+      containers:
+      - name: secret-container-2
+        image: alpine
+        command: ["sh", "-c", 'echo Username is \$USERNAME && echo Password is \$PASSWORD && sleep 3600']
+        volumeMounts:
+        - name: secret-volume
+          mountPath: /etc/secret
+      volumes:
+      - name: secret-volume
+        secret:
+          secretName: my-secret-2
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/secret-pod-2 created
+  #+end_src
+
+- Inspect the Pod:
+  #+BEGIN_SRC shell
+  kubectl -n rising describe pod secret-pod-2
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:             secret-pod-2
+  Namespace:        rising
+  Priority:         0
+  Service Account:  default
+  Node:             kubeadm-worker1/192.168.38.11
+  Start Time:       Thu, 13 Jun 2024 17:06:24 +0200
+  Labels:           <none>
+  Annotations:      <none>
+  Status:           Running
+  IP:               10.244.1.67
+  IPs:
+    IP:  10.244.1.67
+  Containers:
+    secret-container-2:
+      Container ID:  containerd://dea7b62b0c7dfff4ae79898080ff1f0ff5ee3ebe751d62a97725ed8b9b357946
+      Image:         alpine
+      Image ID:      docker.io/library/alpine@sha256:77726ef6b57ddf65bb551896826ec38bc3e53f75cdde31354fbffb4f25238ebd
+      Port:          <none>
+      Host Port:     <none>
+      Command:
+        sh
+        -c
+        echo Username is $USERNAME && echo Password is $PASSWORD && sleep 3600
+      State:          Running
+        Started:      Thu, 13 Jun 2024 17:06:26 +0200
+      Ready:          True
+      Restart Count:  0
+      Environment:    <none>
+      Mounts:
+        /etc/secret from secret-volume (rw)
+        /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-2bqg8 (ro)
+  Conditions:
+    Type              Status
+    Initialized       True 
+    Ready             True 
+    ContainersReady   True 
+    PodScheduled      True 
+  Volumes:
+    secret-volume:
+      Type:        Secret (a volume populated by a Secret)
+      SecretName:  my-secret-2
+      Optional:    false
+    kube-api-access-2bqg8:
+      Type:                    Projected (a volume that contains injected data from multiple sources)
+      TokenExpirationSeconds:  3607
+      ConfigMapName:           kube-root-ca.crt
+      ConfigMapOptional:       <nil>
+      DownwardAPI:             true
+  QoS Class:                   BestEffort
+  Node-Selectors:              <none>
+  Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                               node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+  Events:
+    Type    Reason     Age   From               Message
+    ----    ------     ----  ----               -------
+    Normal  Scheduled  5s    default-scheduler  Successfully assigned rising/secret-pod-2 to kubeadm-worker1
+    Normal  Pulling    5s    kubelet            Pulling image "alpine"
+    Normal  Pulled     3s    kubelet            Successfully pulled image "alpine" in 1.412s (1.412s including waiting)
+    Normal  Created    3s    kubelet            Created container secret-container-2
+    Normal  Started    3s    kubelet            Started container secret-container-2
+  #+end_src
+
+- Access the Secret from the Pod:
+  #+BEGIN_SRC shell
+  kubectl wait --for=condition=Ready pod/secret-pod-2 -n rising
+  kubectl -n rising exec secret-pod-2 -- cat /etc/secret/username
+  echo
+  kubectl -n rising exec secret-pod-2 -- cat /etc/secret/password
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/secret-pod-2 condition met
+  adminpassword
+  #+end_src
+
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl -n rising delete pod secret-pod-2
+  kubectl -n rising delete secret my-secret-2
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod "secret-pod-2" deleted
+  secret "my-secret-2" deleted
   #+end_src
   
 ** Node log =NO1= - Node inspection

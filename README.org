@@ -17,7 +17,10 @@ audit logs.
   not realise its full potential. Indeed, some tools present in the
   market perform audit cruching and already provide some intelligence
   over the incoming information, but no one performs actual cross-log
-  correlation between temporally distinct events.
+  correlation between temporally distinct events. Furthermore, the
+  such tools tend to be very verbose and generate a lot of false
+  positives due to the inherent background noise of the cloud
+  environment.
 - Other academic works focus on doing data forensics and post-mortem
   investigation over system audit logs. However, we want to
   dynamically and in-real-time parse our log so that we can perform
@@ -163,34 +166,38 @@ audit logs.
   
 * Misc notes
 ** Current TODOs :noexpo:
-- Try to use curl or an external library
-- Finish clustering non-relevant events and implement them in the parser
-  - Start filtering out users also by group (important!)
-- Discuss how to implement initial graph representation and mapping
+*** TODO Try to use curl or an external library
+*** TODO Inspect kubectl to see how api calls are made
+*** WAIT Finish clustering non-relevant events and implement them in the parser
+**** TODO Gather data for the weekend
+**** WAIT Start filtering out users also by group (important!)
+*** TODO Discuss how to implement initial graph representation and mapping
+** Motivation for the project
+- Signature-based detection is not enough. To demonstrate so, we can
+  use the example of Falco. Glossing over the nightmare that is
+  installing it, Falco comes with a pre-set of rules that are fairly basic.
+  For example, rules are triggered when SAs are created and deleted, secrets
+  are accessed, and so on. However, these rules are exceedingly verbose and
+  alerts are triggered for use cases that are not malicious at all.
+  For example, Flannel renewing SA tokens, or the kube-controller-manager
+  creating a secret for a SA when a namespace is created, are all examples
+  of false positives that are triggered by Falco.
 ** Behaviour of the audit logs
-- A lot of actions are preceded by a =get=, making it difficult
-  to understand if it was =kubectl= or the user itself making that action.
-  - Using the stageTimestamp is an option but not a very strong one either:
-    what if the network conditions are put in jeopardy?
-  - Also deletes are always followed by a =get=, which returns correctly a 404. 
-- When a secret is created for a SA the secret is instantly patched
-  by the kube-controller-manager, which is in charge of actually generating
-  that secret along with an object like
-  #+BEGIN_SRC json
-  {"data":{"ca.crt":"...","namespace":"...","token":"..."}
-  #+END_SRC
-  where the three fields are base64 encoded.
-- Users with access to =kubectl exec= can access the secrets of the pods
-  they are exec-ing into using =printenv=. 
-- ResourceQuotas can be used for more than just limiting resources, they
-  can also be used to limit the number of objects that can be created.
-  This also applies to things like =serviceaccounts=: thus, it seems
-  that every time a potentially limitable object is created, a =get=
-  request is made to =/api/v1/{object}= to assess the current state.
-- When CSRs are being approved or denied, the =update= verb is used
-  and the actual decision is in the payload of the request. This makes
-  it less straightforward to understand if the request was allowed or
-  denied. 
+*** Generic
+- =watch= requests are long-running and are usually made by control plane
+  components. Since the =ResponseStarted= and =ResponseComplete= events
+  can be in different times, we chose to *remove* the =ResponseStarted=
+  event from the logs.
+  - Indeed, for us it is important to have the =requestReceivedTimestamp=
+    that is present in all events anyway. With that, we can understand
+    when the request was made and when it was completed.
+  - =ResponseStarted= appears in =watch= requests, in =kubectl exec=
+    requests, and in =delete= requests. In the latter case, =ResponseComplete=
+    is sent once the object is actually deleted.
+- =kubectl= requests are internally translated into a set of API calls
+  that are made by the =kube-apiserver=. Further subsections detail
+  such calls and how they can help us derive templates for the parser.
+*** Namespaces
 - Every time a namespace is created, the following things happen:
   - A =list= request is made to =/api/v1/namespaces/{}/resourcequotas=
     by the =kube-apiserver= for no apparent reason
@@ -207,78 +214,43 @@ audit logs.
   then =list= again. Also, when =configmaps= are deleted, the =kube-controller-manager=
   (and not the =root-ca-cert-publisher=) tries to create again the CM
   that was just deleted, but is rejected because the namespace is 
-  being terminated. 
-- Usage of ResponseStarted?
-  - Used mainly for =watch= requests, usually made by control plane
-    components
-  - Used for =delete= requests, and ResponseComplete is sent once the
-    object is actually deleted
-  - Used for =kubectl exec= requests when the command is first sent
-    - Both the first =get= and the subsequent =create= are long-running
-
-** To talk at next meeting
-- How should we handle impersonation?
-  - Users with access to the =impersonate= verb and one of =users=,
-    =groups=, and =serviceaccounts= can impersonate other identities.
-  - This is correctly reflected in the audit logs, but could be a problem
-    implementation-wise.
-- Background noise includes some components that generate tokens
-  for service accounts once every hour or so.
-- (!) When old-style ServiceAccount tokens are used, instead of the new
+  being terminated.
+*** Other quirks
+- When a secret is created for a SA the secret is instantly patched
+  by the kube-controller-manager, which is in charge of actually generating
+  that secret along with an object like
+  #+BEGIN_SRC json
+  {"data":{"ca.crt":"...","namespace":"...","token":"..."}
+  #+END_SRC
+  where the three fields are base64 encoded.
+- Secrets can be traced back to the Pod they have been mounted into
+  by either looking at the spec or monitoring for =watch= requests
+  by the node that is hosting the pod.
+- Users with access to =kubectl exec= can access the secrets of the pods
+  they are exec-ing into using =printenv=. 
+- ResourceQuotas can be used for more than just limiting resources, they
+  can also be used to limit the number of objects that can be created.
+  This also applies to things like =serviceaccounts=: thus, it seems
+  that every time a potentially limitable object is created, a =get=
+  request is made to =/api/v1/{object}= to assess the current state.
+- When CSRs are being approved or denied, the =update= verb is used
+  and the actual decision is in the payload of the request. This makes
+  it less straightforward to understand if the request was allowed or
+  denied. 
+- When old-style ServiceAccount tokens are used, instead of the new
   CSR style Users, the API server detects the /offending/ action and
   adds a label =kubernetes.io/legacy-token-last-used= to the Secret.
-- When resources are created there is an API request made to an object
-  that potentially does not exists. How do we handle this?
-  - This is especially apparent when =Roles= and =RoleBindings= are created
-    and the =Role= does not exist yet. While this could be acceptable
-    for users, as multiple auth mechanisms could be in place, it is
-    not acceptable for =ServiceAccounts=, which are namespaced.
-- How many nodes do we actually need to create?
-  - For deployments, we could create a single node that represents the
-    deployment itself, and then create a node for each pod.
-  - Amount of vertices must kept in check
+*** Impersonation
+- Users with access to the =impersonate= verb and one of =users=,
+  =groups=, and =serviceaccounts= can impersonate other identities.
+- This is correctly reflected in the audit logs, but could be a problem
+  implementation-wise.
+*** Control plane components
+- Control plane components' "background noise" has been filtered out
+  and the details are available in [[./queries.org][queries.org]].
   
 * Future work
 - Using KWOK
 - Ask for a master's student to create a simulator with KWOK,
   defining scenarios and gathering the audit log
   
-* Old notes (from mzani, gfoletto internship) :noexpo: 
-** Notes
-- LogGC [1] performs garbage collection of /plain/ audit logs. Many entries in
-  audit logs regard objects which bear no influence on actual post mortem
-  investigation, and thus can be pruned. LogGC additionally puts some probes
-  around user applications that emit events that avoid false positives
-- [2] formalizes the notion of "forensic validity", i.e., a set of three
-  metrics that encode relationships between system events that must be
-  preserved in logs. In particular, the three are /lossless/,
-  /causality-preserving/, and /attack-preserving/. Furthermore, it proposes
-  LogApprox, a regex based approximation of audit logs that mainly targets file
-  I/O events, and showing how this approach can be used to generate multiple
-  regex that are realistic to processes and actually help in reducing logs.
-- KCAL [3], after performing an analysis on the Linux Auditing system, proposes
-  an inline auditing system that is able to reduce the amount of logs by
-  90% and overhead by 15/40%. By modifying the Linux kernel (!!!), they introduce
-  an in-memory cache that is triggered by the Linux auditing module and is able
-  to discard events which do not provide novel information.
-- CSCLog [4] proposes a method that captures the sequential dependencies in
-  subsequences and their implicit correlations. This is done using an
-  LSTM-based approach. They additionally perform an exhaustive SoA research
-  and justify their superiority against other papers in the area.
-- LogAnomaly [5] outlines a tool that converts a log stream into a structured,
-  templated form and proposes a way of identifying anomalies using
-  unsupervised techniques.
-- LogGraph [6] proposes a method that extracts the "structure" from a log,
-  generates subsequences out of the log, and constructs a graph in which every
-  node is an event and edges represent correlation between events. A GNN is
-  then used to learn the interactions between the events. This approach is
-  robust against log overlaps, missing, duplicated, and reordered data.
-** References
-#+BEGIN_SRC
-[1] K. H. Lee, X. Zhang, and D. Xu, “LogGC: garbage collecting audit log,” in Proceedings of the 2013 ACM SIGSAC conference on Computer & communications security - CCS ’13, Berlin, Germany: ACM Press, 2013, pp. 1005–1016. doi: 10.1145/2508859.2516731. Available: http://dl.acm.org/citation.cfm?doid=2508859.2516731. [Accessed: Nov. 10, 2023]
-[2] N. Michael, J. Mink, J. Liu, S. Gaur, W. U. Hassan, and A. Bates, “On the Forensic Validity of Approximated Audit Logs,” in Annual Computer Security Applications Conference, Austin USA: ACM, Dec. 2020, pp. 189–202. doi: 10.1145/3427228.3427272. Available: https://dl.acm.org/doi/10.1145/3427228.3427272. [Accessed: Nov. 10, 2023]
-[3] S. Ma et al., “Kernel-Supported Cost-Effective Audit Logging for Causality Tracking,” presented at the 2018 USENIX Annual Technical Conference (USENIX ATC 18), 2018, pp. 241–254. Available: https://www.usenix.org/conference/atc18/presentation/ma-shiqing. [Accessed: Nov. 16, 2023]
-[4] L. Chen, C. Song, X. Wang, D. Fu, and F. Li, “CSCLog: A Component Subsequence Correlation-Aware Log Anomaly Detection Method.” arXiv, Jul. 06, 2023. Available: http://arxiv.org/abs/2307.03359. [Accessed: Aug. 04, 2023]
-[5] W. Meng et al., “LogAnomaly: Unsupervised Detection of Sequential and Quantitative Anomalies in Unstructured Logs,” in Proceedings of the Twenty-Eighth International Joint Conference on Artificial Intelligence, Macao, China: International Joint Conferences on Artificial Intelligence Organization, Aug. 2019, pp. 4739–4745. doi: 10.24963/ijcai.2019/658. Available: https://www.ijcai.org/proceedings/2019/658. [Accessed: Aug. 07, 2023]
-[6] J. Li, H. He, S. Chen, and D. Jin, “LogGraph: Log Event Graph Learning Aided Robust Fine-Grained Anomaly Diagnosis,” IEEE Transactions on Dependable and Secure Computing, pp. 1–15, 2023, doi: 10.1109/TDSC.2023.3293111
-#+END_SRC
