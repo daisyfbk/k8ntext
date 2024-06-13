@@ -208,6 +208,7 @@ audit logs.
     in the namespace
   - The =service-account-controller= creates a SA called =default=
     in the namespace
+
 - When a namespace is deleted, all subresources are deleted with a
   =deletecollection= request followed by a =list=. Exceptions include
   =pods=, that weirdly are deleted by a =list=, then =deletecollection=,

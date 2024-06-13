@@ -22,7 +22,8 @@
 - Users: any
 - Objects: any
 - Endpoints: any other than =/api= or =/apis=
-** Control plane components monitoring objects
+** TODO Control plane components monitoring objects
+This has to be investigated further.
 - Verb: =watch= 
 - Users:
   - =system:apiserver=
@@ -45,36 +46,36 @@
 - Verb: =watch=
 - Users: =system:serviceaccount:kube-system:kube-proxy=
 - Objects: =nodes=
-** TODO Nodes getting their own status
+** Nodes getting their own status
 Nodes poll their own status every ten seconds.
 - Verb: =get=
 - Users: =system:node:.*=, groups =["system:nodes","system:authenticated"]=
 - Objects: =/api/v1/nodes/{the same node}=
-** TODO Nodes patching their status to update conditions
+** Nodes patching their status to update conditions
 Nodes update their status (e.g., MemoryPressure, DiskPressure, PIDPressure) by patching their own status
 every five minutes.
 - Verb: =patch=
 - Users: =system:node:.*=, groups =["system:nodes","system:authenticated"]=
 - Objects: =/api/v1/nodes/{the same node}=
-** TODO Nodes creating a token for the CNI
+** Nodes creating a token for the CNI
 Each node independently creates a token for the CNI to use. It expires in an hour.
 This token is re-created every 49 minutes (weird, but that's what the logs show).
 - Verb: =create=
 - Users: =system:node:.*=, groups =["system:nodes","system:authenticated"]=
 - Objects: =/api/v1/namespaces/kube-flannel/serviceaccounts/flannel/token=
-** TODO Nodes creating a token for the Kubelet
+** Nodes creating a token for the Kubelet
 Each node independently creates a token for the Kubelet to use. It expires in an hour.
 Just like the CNI token, this token is re-created every 49 minutes.
 - Verb: =create=
 - Users: =system:node:.*=, groups =["system:nodes","system:authenticated"]=
 - Objects: =/api/v1/namespaces/kube-system/serviceaccounts/kubelet/token=
-** TODO Master node creates a token for CoreDNS
+** Master node creates a token for CoreDNS
 The master node creates a token for CoreDNS to use.
 This token expires in a hour, and is re-created at unpredictable intervals before it expires.
 - Verb: =create=
 - Users: =system:node:kubeadm-master=
 - Objects: =/api/v1/namespaces/kube-system/serviceaccounts/coredns/token=
-** TODO Kube-controller-manager getting and creating tokens for GC and RQ controllers
+** Kube-controller-manager getting and creating tokens for GC and RQ controllers
 The =kube-controller-manager= gets every less than an hour the serviceaccounts
 =/api/v1/namespaces/kube-system/serviceaccounts/generic-garbage-collector= and
 =/api/v1/namespaces/kube-system/serviceaccounts/resourcequota-controller=.
@@ -897,16 +898,16 @@ Pruning images on kubeadm-worker2
   Priority:         0
   Service Account:  default
   Node:             kubeadm-worker1/192.168.38.11
-  Start Time:       Thu, 13 Jun 2024 17:06:24 +0200
+  Start Time:       Thu, 13 Jun 2024 17:10:20 +0200
   Labels:           <none>
   Annotations:      <none>
   Status:           Running
-  IP:               10.244.1.67
+  IP:               10.244.1.68
   IPs:
-    IP:  10.244.1.67
+    IP:  10.244.1.68
   Containers:
     secret-container-2:
-      Container ID:  containerd://dea7b62b0c7dfff4ae79898080ff1f0ff5ee3ebe751d62a97725ed8b9b357946
+      Container ID:  containerd://5fe421fbcca0caaed1008c0d1ef913f6dfd7b45c9bfa7cadf7e92f2ce8dadb21
       Image:         alpine
       Image ID:      docker.io/library/alpine@sha256:77726ef6b57ddf65bb551896826ec38bc3e53f75cdde31354fbffb4f25238ebd
       Port:          <none>
@@ -916,13 +917,13 @@ Pruning images on kubeadm-worker2
         -c
         echo Username is $USERNAME && echo Password is $PASSWORD && sleep 3600
       State:          Running
-        Started:      Thu, 13 Jun 2024 17:06:26 +0200
+        Started:      Thu, 13 Jun 2024 17:10:22 +0200
       Ready:          True
       Restart Count:  0
       Environment:    <none>
       Mounts:
         /etc/secret from secret-volume (rw)
-        /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-2bqg8 (ro)
+        /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-ghkd4 (ro)
   Conditions:
     Type              Status
     Initialized       True 
@@ -934,7 +935,7 @@ Pruning images on kubeadm-worker2
       Type:        Secret (a volume populated by a Secret)
       SecretName:  my-secret-2
       Optional:    false
-    kube-api-access-2bqg8:
+    kube-api-access-ghkd4:
       Type:                    Projected (a volume that contains injected data from multiple sources)
       TokenExpirationSeconds:  3607
       ConfigMapName:           kube-root-ca.crt
@@ -948,8 +949,8 @@ Pruning images on kubeadm-worker2
     Type    Reason     Age   From               Message
     ----    ------     ----  ----               -------
     Normal  Scheduled  5s    default-scheduler  Successfully assigned rising/secret-pod-2 to kubeadm-worker1
-    Normal  Pulling    5s    kubelet            Pulling image "alpine"
-    Normal  Pulled     3s    kubelet            Successfully pulled image "alpine" in 1.412s (1.412s including waiting)
+    Normal  Pulling    4s    kubelet            Pulling image "alpine"
+    Normal  Pulled     3s    kubelet            Successfully pulled image "alpine" in 963ms (963ms including waiting)
     Normal  Created    3s    kubelet            Created container secret-container-2
     Normal  Started    3s    kubelet            Started container secret-container-2
   #+end_src
@@ -965,7 +966,8 @@ Pruning images on kubeadm-worker2
   #+RESULTS:
   #+begin_src shell
   pod/secret-pod-2 condition met
-  adminpassword
+  admin
+  password
   #+end_src
 
 - Clean everything up:
