@@ -19,4 +19,3 @@ kubectl config view --raw -o json | jq -r '.clusters[0].cluster."certificate-aut
 curl -H "Content-Type: application/json" --key client.key --cert client.crt --cacert ca.crt -s  "$server/$path" "$@" | jq -c
 cd - || exit
 rm -rf "$tmp"
-
