@@ -44,6 +44,11 @@ def is_whitelisted_objectref_resource(objectref_resource, json_data):
     user_username = json_data['user']['username']
     objectref_name = json_data.get('objectRef').get('name')  # can be None
 
+    # Filter ResponseStarted watch logs
+    if config.getboolean('ignore_log', 'response_started_watch'):
+        if verb == 'watch' and json_data['stage'] == "ResponseStarted":
+            return False
+
     # Filter logs done by control plane components monitoring objects
     if config.getboolean('ignore_log', 'control_plane_components'):
         if verb == "watch" and (objectref_resource in blacklisted_resources_user_based) and \
