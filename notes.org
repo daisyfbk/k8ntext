@@ -15,9 +15,8 @@
 - Utter chaos, depending on the command the API calls are different:
   sometimes it uses the API objects, sometimes raw HTTP requests...
   plus it uses command builders that are not easy to follow.
-** WAIT Finish clustering non-relevant events and implement them in the parser
-*** TODO Gather data for the weekend
-*** WAIT Start filtering out users also by group (important!)
+** SCHE Finish clustering non-relevant events and implement them in the parser
+** TODO Start filtering out users also by group (important!)
 ** TODO Discuss how to implement initial graph representation and mapping
 * Using ML models for learning templates
 - Idea: use a ML model to generalize and attempt to match 'templates'
