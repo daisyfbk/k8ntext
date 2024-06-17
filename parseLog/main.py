@@ -25,9 +25,8 @@ blacklisted_resources_liv10 = {"customresourcedefinitions", "apiservices", "toke
 blacklisted_resources_liv20 = {"bindings", "componentstatuses", "endpoints", "replicationcontrollers"}
 
 # Resources that we do not exclude a priori but according to the user who performs them
-blacklisted_resources_user_based = {"configmaps", "nodes", "pods", "namespaces", "serviceaccounts", "rolebindings",
-                                    "resourcequotas", "clusterroles", "secrets", "clusterrolebindings", "roles",
-                                    "certificatesigningrequests"}
+blacklisted_resources_user_based = {"configmaps", "clusterroles", "namespaces", "serviceaccounts", "resourcequotas",
+                                    "clusterrolebindings", "rolebindings", "secrets", "nodes", "pods", "roles"}
 
 
 def is_whitelisted_request_uri(request_uri):
@@ -43,31 +42,66 @@ def is_whitelisted_objectref_resource(objectref_resource, json_data):
     verb = json_data['verb']
     user_username = json_data['user']['username']
     objectref_name = json_data.get('objectRef').get('name')  # can be None
+    objectref_namespace = json_data.get('objectRef').get('namespace')  # can be None
 
     # Filter ResponseStarted watch logs
     if config.getboolean('ignore_log', 'response_started_watch'):
         if verb == 'watch' and json_data['stage'] == "ResponseStarted":
             return False
 
-    # Filter logs done by control plane components monitoring objects
-    if config.getboolean('ignore_log', 'control_plane_components'):
+    # Filter CNI and external namespaces
+    if config.getboolean('ignore_log', 'cni_and_external_namespaces'):
+        if objectref_namespace in {"falco", "kube-flannel"}:
+            return False
+
+    # Filter logs done by API Server watching objects
+    if config.getboolean('ignore_log', 'api_server_watching_objects'):
         if verb == "watch" and (objectref_resource in blacklisted_resources_user_based) and \
-                (user_username == "system:apiserver" or
-                 user_username == "system:kube-scheduler" or
-                 user_username == "system:kube-controller-manager" or
-                 bool(re.search("system:node:", user_username))):
+                user_username == "system:apiserver":
+            return False
+
+    # Filter logs done by Kube Controller Manager watching objects
+    if config.getboolean('ignore_log', 'kube_controller_watching_objects'):
+        if verb == "watch" and (objectref_resource in blacklisted_resources_user_based or
+                                objectref_resource == "certificatesigningrequests") and \
+                user_username == "system:kube-controller-manager":
+            return False
+
+    # Filter logs done by Kube Scheduler watching objects
+    if config.getboolean('ignore_log', 'kube_scheduler_watching_objects'):
+        if verb == "watch" and (objectref_resource in {"pods", "nodes", "namespaces"}) and \
+                user_username == "system:kube-scheduler":
+            return False
+
+    # Filter logs done by Extension-apiserver-authentication
+    if config.getboolean('ignore_log', 'extension_apiserver_authentication'):
+        if verb == "watch" and objectref_resource == "configmaps" and \
+                objectref_name == "extension-apiserver-authentication" and user_username == "system:kube-scheduler":
+            return False
+
+    # Filter logs done by Nodes watching Pods and Nodes
+    if config.getboolean('ignore_log', 'nodes_watching_pods_and_nodes'):
+        if (verb == "watch" and (objectref_resource in {"pods", "nodes"}) and
+                bool(re.search("system:node:", user_username))):
+            return False
+
+    # Filter logs done by Nodes watching ConfigMaps
+    if config.getboolean('ignore_log', 'nodes_watching_configmaps'):
+        if (verb == "watch" and objectref_resource == "configmaps" and
+                objectref_namespace == "kube-system" and bool(re.search("system:node:", user_username))):
+            return False
+
+    # Filter logs done by Nodes creating tokens for SAs in the kube-system namespace
+    if config.getboolean('ignore_log', 'nodes_creating_sas_token'):
+        if (verb == "create" and objectref_resource == "serviceaccounts" and
+                bool(re.search("system:node:", user_username)) and
+                json_data.get('objectRef').get('subresource') == "token"):
             return False
 
     # Filter logs done by CoreDNS watching namespaces
     if config.getboolean('ignore_log', 'coredns_watching_namespaces'):
         if (verb == "watch" and objectref_resource == "namespaces" and
                 user_username == "system:serviceaccount:kube-system:coredns"):
-            return False
-
-    # Filter logs done by CNI watching nodes
-    if config.getboolean('ignore_log', 'cni_watching_nodes'):
-        if (verb == "watch" and objectref_resource == "nodes" and
-                user_username == "system:serviceaccount:kube-flannel:flannel"):
             return False
 
     # Filter logs done by Kube-proxy watching nodes
@@ -86,27 +120,6 @@ def is_whitelisted_objectref_resource(objectref_resource, json_data):
     if config.getboolean('ignore_log', 'nodes_patching_their_own_status'):
         if (verb == "patch" and objectref_resource == "nodes" and
                 bool(re.search("system:node:", user_username))):
-            return False
-
-    # Filter logs done by Nodes creating a token for the CNI
-    if config.getboolean('ignore_log', 'nodes_creating_cni_token'):
-        if (verb == "create" and objectref_resource == "serviceaccounts" and
-                bool(re.search("system:node:", user_username)) and
-                objectref_name == "flannel"):
-            return False
-
-    # Filter logs done by Nodes creating a token for the Kubelet
-    if config.getboolean('ignore_log', 'nodes_creating_kubelet_token'):
-        if (verb == "create" and objectref_resource == "serviceaccounts" and
-                bool(re.search("system:node:", user_username)) and
-                objectref_name == "kube-proxy"):
-            return False
-
-    # Filter logs done by Master node creates a token for CoreDNS
-    if config.getboolean('ignore_log', 'nodes_creating_coredns_token'):
-        if (verb == "create" and objectref_resource == "serviceaccounts" and
-                bool(re.search("system:node:", user_username)) and
-                objectref_name == "coredns"):
             return False
 
     # Filter logs done by Kube-controller-manager getting and creating tokens for GC and RQ controllers
