@@ -7,6 +7,8 @@
 #+SETUPFILE: latex.setup
 
 * Current TODOs :noexpo:
+** WAIT Ask PoliTO for a decent datasets
+- Stefano has contacted their IT guys, he will let me know
 ** DONE Try to use curl or an external library
 - Does not really change much, user agent apart. Some behaviours
   are still triggered by the KCM, and API calls made have no
@@ -15,7 +17,7 @@
 - Utter chaos, depending on the command the API calls are different:
   sometimes it uses the API objects, sometimes raw HTTP requests...
   plus it uses command builders that are not easy to follow.
-** SCHE Finish clustering non-relevant events and implement them in the parser
+** DONE Finish clustering non-relevant events and implement them in the parser
 ** TODO Start filtering out users also by group (important!)
 ** TODO Discuss how to implement initial graph representation and mapping
 * Using ML models for learning templates
