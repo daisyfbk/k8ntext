@@ -51,7 +51,8 @@ def is_whitelisted_objectref_resource(objectref_resource, json_data):
 
     # Filter CNI and external namespaces
     if config.getboolean('ignore_log', 'cni_and_external_namespaces'):
-        if objectref_namespace in {"falco", "kube-flannel"}:
+        if objectref_namespace in {"falco", "kube-flannel"} or \
+            user_username == "system:serviceaccount:kube-flannel:flannel":
             return False
 
     # Filter logs done by API Server watching objects
