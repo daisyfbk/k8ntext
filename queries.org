@@ -25,7 +25,6 @@ The following users/SAs are ignored:
   - =system:serviceaccount:kube-flannel:flannel=
 ** Endpoints different than api/apis
 We will ignore endpoints which are not the regular API ones.
-
 - Verb: any
 - Users: any
 - Objects: any
@@ -164,11 +163,12 @@ every five minutes.
 # :END:
 
 ** Namespace log =N1= - Simple namespace creation and deletion
+
 - Create a namespace:
   #+BEGIN_SRC shell 
   kubectl create namespace rising
   #+END_SRC
-
+  
   #+RESULTS:
   #+begin_src shell
   namespace/rising created
@@ -192,7 +192,7 @@ every five minutes.
   rising            Active   10s
   rising2           Active   71m
   #+end_src
-  
+
 - Get the namespace using =-o yaml=:
   #+BEGIN_SRC shell
   kubectl get namespace rising -o yaml
@@ -215,7 +215,7 @@ every five minutes.
   status:
     phase: Active
   #+end_src
-  
+
 - Describe the namespace:
   #+BEGIN_SRC shell
   kubectl describe namespace rising

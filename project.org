@@ -82,15 +82,14 @@ for doing real time anomaly detection over cloud environments.
   - Identify priority events to parse
     - Assess possible problematic areas
 **** Results
-- A literature review (shared) document
-- A shared cluster with K8s running to collect logs from
-- Initial rough idea of events to focus on
-*** Weeks 3-7 (May 21 - June 24)
+- [X] A literature review (shared) document
+- [X] A shared cluster with K8s running to collect logs from
+- [X] Initial rough idea of events to focus on
+*** Weeks 3-6 (May 21 - June 17)
 - (M+V) Designing the system 
   - Choosing which data structure to use
   - Outlining a definitive priority list of events to parse
     - This also includes which Service Accounts to focus on first
-  - Understanding how to include the temporal dimension
 - (V) Initial implementation of parser for logs
   - Parse JSON logs
   - Extract relevant information
@@ -100,18 +99,28 @@ for doing real time anomaly detection over cloud environments.
   - Understand: when I do X, what is generated? Who is involved?
   - Which events are related to each other? Which can be discarded?
 **** Results
-- A shared document with the design of the system
-- An ordered list of /milestones/ to reach, w.r.t. the capabilities
+- [X] The design of the system
+- [X] An ordered list of /milestones/ to reach, w.r.t. the capabilities
   of the system, along with the difficulties in doing so
-*** Weeks 8-10 (June 25 - July 16)
+*** Weeks 7-8 (June 18 - July 1)
+- (M+V) Studying and implementing the model
+- (V) Connect the parser to the data structure,
+  creating a pipeline that can parse logs, tag
+  and store the information, and on-demand
+  generate the graph
+**** Results
+- A working prototype of the system, able to parse
+  logs of category 1, that generates a graph that
+  summarizes the interactions
+*** Weeks 8-10 (July 2 - July 16)
 - Continuation of the work from the previous weeks,
   step by step adding more features to the parser
-  making it more capable of extracting information
-  from the logs.
+  following the categories and the priority list
+  defined in the previous weeks.
 **** Results
-- An early implementation of the parser that should
-  already be able to extract some information,
-  albeit not programmatically.
+- A prototype that over time evolves in a more
+  complete system, able to parse more events
+  and has a better precision and performance
 *** Weeks 11-12 (July 17 - July 30)
 - (V) Focus on: querying the data structure 
   - An user should be able to quickly find the information
@@ -120,6 +129,10 @@ for doing real time anomaly detection over cloud environments.
       the user did 
     - this possibly creates subgraphs that are "isolated"
       from the rest of the graph, on the fly
+    - we need to do so to provide motivation for the
+      next steps, as we need to highlight the importance
+      of using this method instead of a traditional
+      system like Falco
 - (M) Initial assessment of the system
   - Correctness of the extracted information
   - Effectiveness of the structured data and its usability
@@ -164,10 +177,8 @@ for doing real time anomaly detection over cloud environments.
     results should be easily interpretable
   - The system could have some kind of visualization
     to help users understand the data
-
 - If something went wrong, this is the correct moment to
   apply fixes and improvements to the system.
-
 **** Results
 - A first WIP of the publication, still in the early
   stages of writing

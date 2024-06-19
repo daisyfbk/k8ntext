@@ -2,32 +2,81 @@
 #+AUTHOR: Matteo Franzil, Valentino Armani, Luis Augusto Dias Knob, Domenico Siracusa
 #+LANGUAGE: en
 #+EXCLUDE_TAGS: noexpo
-#+OPTIONS: num:nil html-style:nil toc:nil
-# #+OPTIONS: ^:nil toc:nil num:3
+# #+OPTIONS: num:nil html-style:nil ^:nil
+#+OPTIONS: toc:2 num:3
 #+SETUPFILE: latex.setup
 
-* Current TODOs :noexpo:
-** WAIT Ask PoliTO for a decent datasets
-- Stefano has contacted their IT guys, he will let me know
-** DONE Try to use curl or an external library
+* TODOs 
+** DONE SoA research on log clustering, graph representation, and mapping
+*** DONE Inspect SoA for what other people did in the field
+- We did some SoA research to understand if other works performed
+  log clustering and pattern matching.
+  The results are quite unsatisfactory: most works - obviously - focus
+  on NLP processing for the log content, few attempt to actually clusterize
+  multiple lines.
+
+  [1] does so in a Hadoop context, a distributed MapReduce system where
+  failures are common. Starting from the assumption that events are limited
+  in quantity, they vectorize sequences over N dimensions (N different events)
+  and clusterize them using similarity.
+
+  [2] LogMiner (first author also wrote [1]) also does something similar
+  to what we want to do: transform log sequences into /behaviours/, depending
+  on the context the various items acted upon. They again use inverse document
+  frequency to assign weight to logs in each cluster, and partitions behaviours
+  using PIDs. The amount of behaviours is, again, quite limited.
+
+  1) Q. Lin, H. Zhang, J.-G. Lou, Y. Zhang, and X. Chen, “Log clustering based problem identification for online service systems,” in Proceedings of the 38th International Conference on Software Engineering Companion, in ICSE ’16. New York, NY, USA: Association for Computing Machinery, May 2016, pp. 102–111. doi: 10.1145/2889160.2889232. Available: https://dl.acm.org/doi/10.1145/2889160.2889232. [Accessed: Jun. 18, 2024]
+  2) H. Zhang, L. Cai, L. Zhao, A. Yu, J. Ma, and D. Meng, “LogMiner: A System Audit Log Reduction Strategy Based on Behavior Pattern Mining,” in MILCOM 2022 - 2022 IEEE Military Communications Conference (MILCOM), Rockville, MD, USA: IEEE, Nov. 2022, pp. 292–297. doi: 10.1109/MILCOM55135.2022.10017626. Available: https://ieeexplore.ieee.org/document/10017626/. [Accessed: May 09, 2024]
+** SCHE Strenghthen the motivation for the project
+See [[#motivation][motivation]] for a detailed explanation of the motivation
+behind the project. This section is WIP.
+** DONE Implement a rough parser and filter out background noise
+*** DONE Finish clustering non-relevant events and implement them in the parser
+We now have a parser that filters out background noise and
+separates control plane traffic from user traffic. The control
+plane traffic will be unlabeled, while the user traffic will
+be labeled depending on the behavior.
+** DONE Investigate difference between =kubectl= and other tools
+- =kubectl= performs a series of sanity checks before actually
+  sending the request to the API server. This is done by the
+  client itself, for example, getting the namespace and ResourceQuotas
+  before creating an object.
+- On the other hand, other behaviours are managed by the =KCM=,
+  for example, creating a secret for a ServiceAccount, or
+  creating a ConfigMap for the root CA.
+*** DONE Try to use curl or an external library
 - Does not really change much, user agent apart. Some behaviours
   are still triggered by the KCM, and API calls made have no
   effect on his decisions.
-** FAIL Inspect kubectl to see how api calls are made
+*** FAIL Inspect code to see how api calls are made
 - Utter chaos, depending on the command the API calls are different:
   sometimes it uses the API objects, sometimes raw HTTP requests...
   plus it uses command builders that are not easy to follow.
-** DONE Finish clustering non-relevant events and implement them in the parser
-** TODO Start filtering out users also by group (important!)
-** TODO Discuss how to implement initial graph representation and mapping
-* Using ML models for learning templates
+** SCHE Start collecting data of class 1
+*** DONE Take notes of weird behaviours
+Have a look at [[#behaviour-analysis][behaviour analysis]] for a detailed list of
+weird behaviours that we have found in the logs.
+*** TODO Label the data
+** SCHE Start implementing a ML model for learning templates
+*** TODO Try with CNN
+*** FAIL Scrapped: learn templates from the logs
 - Idea: use a ML model to generalize and attempt to match 'templates'
   of behaviour in the logs. For example: we already have an idea of
   how namespaces are created, deleted, and so on. We could use a model
   to learn these templates and then match them in the logs. If no match
   is found, then an attempt could be made to generate a new template
   based on the most similar ones.
+** Other things 
+*** DELE Ask PoliTO for a decent dataset
+- Stefano has contacted their IT guys, but it looks like
+  they have no remote idea what an audit log is. I explained it to
+  them, let's see... 
+*** TODO Start filtering out users also by group 
 * Strenghtening the motivation for the project
+:PROPERTIES:
+:CUSTOM_ID: motivation
+:END:
 - Signature-based detection is not enough. To demonstrate so, we can
   use the example of Falco. Glossing over the nightmare that is
   installing it, Falco comes with a pre-set of rules that are fairly basic.
@@ -43,6 +92,9 @@
   Furthermore, it is not easy to understand what is happening when
   a request is denied, as the logs are not very verbose.
 * Behaviour analysis of the audit logs
+:PROPERTIES:
+:CUSTOM_ID: behaviour-analysis
+:END:
 ** Generic
 - =watch= requests are long-running and are usually made by control plane
   components. Since the =ResponseStarted= and =ResponseComplete= events
