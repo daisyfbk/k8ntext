@@ -2,6 +2,7 @@ import json
 import argparse
 import re
 import configparser
+from enum import Enum
 
 parser = argparse.ArgumentParser(
     prog='parseLog',
@@ -29,107 +30,113 @@ blacklisted_resources_user_based = {"configmaps", "clusterroles", "namespaces", 
                                     "clusterrolebindings", "rolebindings", "secrets", "nodes", "pods", "roles"}
 
 
-def is_whitelisted_request_uri(request_uri):
+class Decision(Enum):
+    white_listed = 1
+    black_listed = 2
+    removed = 3
+
+
+def take_a_decision_about_log_line(json_data):
+    request_uri = json_data.get('requestURI')
+
+    # Blacklist Endpoints api/apis
     if request_uri in blacklisted_requestURIs or request_uri == "/api/v1" or \
             bool(re.search(r"/api(s)*\?timeout", request_uri)) or \
             bool(re.search(r"/openapi/v3\?timeout", request_uri)):
-        return False
-    else:
-        return True
+        return Decision.black_listed
 
+    verb = json_data.get('verb')
+    user_username = json_data.get('user').get('username')
+    objectref_namespace = json_data.get('objectRef').get('namespace')
+    objectref_name = json_data.get('objectRef').get('name')
+    objectref_resource = json_data.get('objectRef').get('resource')
 
-def is_whitelisted_objectref_resource(objectref_resource, json_data):
-    verb = json_data['verb']
-    user_username = json_data['user']['username']
-    objectref_name = json_data.get('objectRef').get('name')  # can be None
-    objectref_namespace = json_data.get('objectRef').get('namespace')  # can be None
-
-    # Filter ResponseStarted watch logs
+    # Remove ResponseStarted watch logs
     if config.getboolean('ignore_log', 'response_started_watch'):
-        if verb == 'watch' and json_data['stage'] == "ResponseStarted":
-            return False
+        if verb == 'watch' and json_data.get('stage') == "ResponseStarted":
+            return Decision.removed
 
-    # Filter CNI and external namespaces
+    # Remove CNI and external namespaces
     if config.getboolean('ignore_log', 'cni_and_external_namespaces'):
         if objectref_namespace in {"falco", "kube-flannel"} or \
-            user_username == "system:serviceaccount:kube-flannel:flannel":
-            return False
+                user_username == "system:serviceaccount:kube-flannel:flannel":
+            return Decision.removed
 
-    # Filter logs done by API Server watching objects
+    # Blacklist logs done by API Server watching objects
     if config.getboolean('ignore_log', 'api_server_watching_objects'):
         if verb == "watch" and (objectref_resource in blacklisted_resources_user_based) and \
                 user_username == "system:apiserver":
-            return False
+            return Decision.black_listed
 
-    # Filter logs done by Kube Controller Manager watching objects
+    # Blacklist logs done by Kube Controller Manager watching objects
     if config.getboolean('ignore_log', 'kube_controller_watching_objects'):
         if verb == "watch" and (objectref_resource in blacklisted_resources_user_based or
                                 objectref_resource == "certificatesigningrequests") and \
                 user_username == "system:kube-controller-manager":
-            return False
+            return Decision.black_listed
 
-    # Filter logs done by Kube Scheduler watching objects
+    # Blacklist logs done by Kube Scheduler watching objects
     if config.getboolean('ignore_log', 'kube_scheduler_watching_objects'):
         if verb == "watch" and (objectref_resource in {"pods", "nodes", "namespaces"}) and \
                 user_username == "system:kube-scheduler":
-            return False
+            return Decision.black_listed
 
-    # Filter logs done by Extension-apiserver-authentication
+    # Blacklist logs done by Extension-apiserver-authentication
     if config.getboolean('ignore_log', 'extension_apiserver_authentication'):
         if verb == "watch" and objectref_resource == "configmaps" and \
                 objectref_name == "extension-apiserver-authentication" and user_username == "system:kube-scheduler":
-            return False
+            return Decision.black_listed
 
-    # Filter logs done by Nodes watching Pods and Nodes
+    # Blacklist logs done by Nodes watching Pods and Nodes
     if config.getboolean('ignore_log', 'nodes_watching_pods_and_nodes'):
         if (verb == "watch" and (objectref_resource in {"pods", "nodes"}) and
                 bool(re.search("system:node:", user_username))):
-            return False
+            return Decision.black_listed
 
-    # Filter logs done by Nodes watching ConfigMaps
+    # Blacklist logs done by Nodes watching ConfigMaps
     if config.getboolean('ignore_log', 'nodes_watching_configmaps'):
         if (verb == "watch" and objectref_resource == "configmaps" and
                 objectref_namespace == "kube-system" and bool(re.search("system:node:", user_username))):
-            return False
+            return Decision.black_listed
 
-    # Filter logs done by Nodes creating tokens for SAs in the kube-system namespace
+    # Blacklist logs done by Nodes creating tokens for SAs in the kube-system namespace
     if config.getboolean('ignore_log', 'nodes_creating_sas_token'):
         if (verb == "create" and objectref_resource == "serviceaccounts" and
                 bool(re.search("system:node:", user_username)) and
                 json_data.get('objectRef').get('subresource') == "token"):
-            return False
+            return Decision.black_listed
 
-    # Filter logs done by CoreDNS watching namespaces
+    # Blacklist logs done by CoreDNS watching namespaces
     if config.getboolean('ignore_log', 'coredns_watching_namespaces'):
         if (verb == "watch" and objectref_resource == "namespaces" and
                 user_username == "system:serviceaccount:kube-system:coredns"):
-            return False
+            return Decision.black_listed
 
-    # Filter logs done by Kube-proxy watching nodes
+    # Blacklist logs done by Kube-proxy watching nodes
     if config.getboolean('ignore_log', 'kube_proxy_watching_nodes'):
         if (verb == "watch" and objectref_resource == "nodes" and
                 user_username == 'system:serviceaccount:kube-system:kube-proxy'):
-            return False
+            return Decision.black_listed
 
-    # Filter logs done by Nodes getting their own status
+    # Blacklist logs done by Nodes getting their own status
     if config.getboolean('ignore_log', 'nodes_getting_their_own_status'):
         if (verb == "get" and objectref_resource == "nodes" and
                 bool(re.search("system:node:", user_username))):
-            return False
+            return Decision.black_listed
 
-    # Filter logs done by Nodes patching their status to update conditions
+    # Blacklist logs done by Nodes patching their status to update conditions
     if config.getboolean('ignore_log', 'nodes_patching_their_own_status'):
         if (verb == "patch" and objectref_resource == "nodes" and
                 bool(re.search("system:node:", user_username))):
-            return False
+            return Decision.black_listed
 
-    # Filter logs done by Kube-controller-manager getting and creating tokens for GC and RQ controllers
+    # Blacklist logs done by Kube-controller-manager getting and creating tokens for GC and RQ controllers
     if config.getboolean('ignore_log', 'kube_controller_gc_and_rq_token'):
         if ((verb == "create" or verb == "get")
                 and objectref_resource == "serviceaccounts" and
                 user_username == "system:kube-controller-manager" and
                 (objectref_name == "generic-garbage-collector" or objectref_name == "resourcequota-controller")):
-            return False
+            return Decision.black_listed
 
     if (config.getboolean('ignore_log','blacklisted_resources_liv2') and objectref_resource in blacklisted_resources_liv2) or \
             (config.getboolean('ignore_log','blacklisted_resources_liv3') and objectref_resource in blacklisted_resources_liv3) or \
@@ -138,43 +145,86 @@ def is_whitelisted_objectref_resource(objectref_resource, json_data):
             (config.getboolean('ignore_log','blacklisted_resources_liv9') and objectref_resource in blacklisted_resources_liv9) or \
             (config.getboolean('ignore_log','blacklisted_resources_liv10') and objectref_resource in blacklisted_resources_liv10) or \
             (config.getboolean('ignore_log','blacklisted_resources_liv20') and objectref_resource in blacklisted_resources_liv20):
-        return False
-    else:
-        return True
+        return Decision.black_listed
+
+    return Decision.white_listed
+
+
+def get_informative_string(json_data):
+    request_uri = json_data.get('requestURI')
+    verb = json_data.get('verb')
+    user_username = json_data.get('user').get('username')
+    objectref_resource = json_data.get('objectRef').get('resource')
+    objectref_name = json_data.get('objectRef').get('name')
+    objectref_namespace = json_data.get('objectRef').get('namespace')
+    return (
+        "{{ 'requestURI': '{}', 'verb': '{}', 'username': '{}', 'resource': '{}', 'namespace': '{}', 'name': '{}' }}".
+        format(request_uri, verb, user_username, objectref_resource, objectref_name, objectref_namespace))
+
+
+def label_whitelisted_log_line(whitelisted_lines):
+    previous_line = ""
+    current_line = ""
+    next_line = ""
+    previous_label = ""
+
+    for x in range(len(whitelisted_lines)):
+        line = whitelisted_lines[x]
+
+        current_line = get_informative_string(line)
+        if x < len(whitelisted_lines) - 1:
+            next_line = get_informative_string(whitelisted_lines[x + 1])
+        else:
+            next_line = None
+
+        print("previous ->", previous_line)
+        print("current ->", current_line)
+        print("next ->", next_line)
+        input_label = input("label (default:" + previous_label + "): ")
+        if not input_label:
+            input_label = previous_label
+
+        print("\n")
+
+        line['label'] = input_label # add label to json
+
+        previous_line = current_line
+        previous_label = input_label
 
 
 def main():
     parser.add_argument('-f', required=True, help='The log input file')
+    parser.add_argument('--labelling', required=False, help='Labelling mode', action=argparse.BooleanOptionalAction)
     args = parser.parse_args()
 
     config.read('config.ini')
 
     input_filename = args.f;
+    labelling_mode = args.labelling;
     output_filename = input_filename + "_edited"
 
-    output_lines = []
+    whitelisted_lines = []
+    blacklisted_lines = []
     with (open(input_filename, 'r') as input_file):
-        i = 0
 
         for line in input_file:
-            i += 1
             # each line is a json, load it
             json_data = json.loads(line)
 
-            # get the requestURI and filter out the unwanted ones
-            request_uri = json_data['requestURI']
-            if is_whitelisted_request_uri(request_uri):
-                try:
-                    # get the resource and filter out the unwanted ones
-                    objectref_resource = json_data['objectRef']['resource']
-                    if is_whitelisted_objectref_resource(objectref_resource, json_data):
-                        output_lines.append(json_data)
+            output_decision = take_a_decision_about_log_line(json_data)
 
-                except KeyError:
-                    # some unexpected log appears. Print a warning
-                    print("Unmanaged log line. Check line: ", i)
+            if output_decision == Decision.white_listed:
+                whitelisted_lines.append(json_data)
+
+            elif output_decision == Decision.black_listed and labelling_mode:
+                json_data['label'] = "-1"  # add label to json
+                blacklisted_lines.append(json_data)
+
+    if labelling_mode:
+        label_whitelisted_log_line(whitelisted_lines)
 
     # sort the output_lines array by the requestReceivedTimestamp
+    output_lines = blacklisted_lines + whitelisted_lines
     output_lines.sort(key=lambda x: x['requestReceivedTimestamp'])
 
     with open(output_filename, 'w') as output_file:
