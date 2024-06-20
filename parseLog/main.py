@@ -159,9 +159,14 @@ def get_informative_string(json_data):
     objectref_resource = json_data.get('objectRef').get('resource')
     objectref_name = json_data.get('objectRef').get('name')
     objectref_namespace = json_data.get('objectRef').get('namespace')
-    return (
-        "{{'username': '{}', 'verb': '{}', 'resource': '{}', 'namespace': '{}', 'name': '{}',  'requestURI': '{}' }}".
-        format(user_username, verb, objectref_resource, objectref_name, objectref_namespace, request_uri))
+    return {
+        'username': user_username,
+        'verb': verb,
+        'resource': objectref_resource,
+        'namespace': objectref_namespace,
+        'name': objectref_name,
+        'requestURI': request_uri
+    }
 
 
 def label_whitelisted_log_line(whitelisted_lines):
@@ -180,9 +185,14 @@ def label_whitelisted_log_line(whitelisted_lines):
             next_line = None
 
         print("\033[H\033[J")
-        print(colored("previous ->", 'grey', 'on_black'), colored(previous_line, 'grey', 'on_black'))
-        print(colored("current ->", 'black', 'on_red', ['bold']), colored(current_line, 'black', 'on_red', ['bold']))
-        print(colored("next ->", 'grey', 'on_black'), colored(next_line, 'grey', 'on_black'))
+        print(colored("previous ->", 'dark_grey'), colored(previous_line, 'dark_grey'))
+        print("current -> {", end="")
+        for key, value in current_line.items():
+            print(f"'{key}': '", end="")
+            print(colored(value, 'light_yellow', 'on_magenta', ['bold']), end="', ")
+        print("}")
+        print(colored("next ->", 'dark_grey'), colored(next_line, 'dark_grey'))
+        print("\n")
 
         proposal = label_proposer.propose_label(line)
 
