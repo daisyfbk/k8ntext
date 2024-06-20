@@ -202,7 +202,7 @@ def label_whitelisted_log_line(whitelisted_lines):
         print("b. proposed: ", proposal)
         print("c. proposed of the next line: ", next_proposal)
         print("d. type it: ")
-        case = input("Choose a, b or c: ")
+        case = input("Choose {a, b, c, d}: ")
 
         match case:
             case "a":
@@ -238,7 +238,10 @@ def main():
 
     input_filename = args.f;
     labelling_mode = args.labelling;
-    output_filename = input_filename + "_edited"
+    if labelling_mode:
+        output_filename = input_filename + "_labelled"
+    else:
+        output_filename = input_filename + "_reduced"
 
     whitelisted_lines = []
     blacklisted_lines = []
