@@ -159,13 +159,16 @@ def get_informative_string(json_data):
     objectref_resource = json_data.get('objectRef').get('resource')
     objectref_name = json_data.get('objectRef').get('name')
     objectref_namespace = json_data.get('objectRef').get('namespace')
+    requestReceivedTimestamp = json_data.get('requestReceivedTimestamp')
+
     return {
         'username': user_username,
         'verb': verb,
         'resource': objectref_resource,
         'namespace': objectref_namespace,
         'name': objectref_name,
-        'requestURI': request_uri
+        'requestURI': request_uri,
+        'requestReceivedTimestamp': requestReceivedTimestamp
     }
 
 
