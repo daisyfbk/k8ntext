@@ -28,26 +28,26 @@ graph that can be used to understand the relationships between the events.
 
 ** Motivation
 - Cloud Auditing is a powerful security feature that as it is does not realise
-its full potential. Indeed, some tools present in the market perform audit
-cruching and already provide some intelligence over the incoming information,
-but no one performs actual cross-log correlation between temporally distinct
-events. Furthermore, the such tools tend to be very verbose and generate a lot
-of false positives due to the inherent background noise of the cloud
-environment.
+  its full potential. Indeed, some tools present in the market perform audit
+  cruching and already provide some intelligence over the incoming information,
+  but no one performs actual cross-log correlation between temporally distinct
+  events. Furthermore, the such tools tend to be very verbose and generate a lot
+  of false positives due to the inherent background noise of the cloud
+  environment.
 - Other academic works focus on doing data forensics and post-mortem
-investigation over system audit logs. However, these works usually work
-with a temporally limited snapshot of the logs, and do not provide a real-time
-analysis of the logs. Most importantly, their focus is on the human
-interpretability of the logs, as security experts are the ones that usually
-perform the analysis and need to quickly identify the relevant part of the
-logs that contains, e.g., an intrusion. In our case, our focus is to facilitate
-the machine analysis of the logs, so that we can perform real-time anomaly
-detection without putting unnecessary burden on the model to perform the
-interpretation of the log itself.
-  - GUI and querying are secondary: the graph should be quick to be generated and
+  investigation over system audit logs. However, these works usually work
+  with a temporally limited snapshot of the logs, and do not provide a real-time
+  analysis of the logs. Most importantly, their focus is on the human
+  interpretability of the logs, as security experts are the ones that usually
+  perform the analysis and need to quickly identify the relevant part of the
+  logs that contains, e.g., an intrusion. In our case, our focus is to facilitate
+  the machine analysis of the logs, so that we can perform real-time anomaly
+  detection without putting unnecessary burden on the model to perform the
+  interpretation of the log itself.
+- GUI and querying are secondary: the graph should be quick to be generated and
   to parse, but in the end a machine will query it.
 - To the best of our knowledge no one explored the capabilities of audit logging
-for doing real time anomaly detection over cloud environments.
+  for doing real time anomaly detection over cloud environments.
 ** Objectives
 1. Parse audit logs, extracting relevant information and discarding
    redundant and non-informative data
