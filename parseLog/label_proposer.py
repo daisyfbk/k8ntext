@@ -47,11 +47,11 @@ def propose_label(j: dict):
 
     if uri[0] not in ['api', 'apis']:
         # Not an API request
-        return 
+        return None
 
-    if len(uri) <= 1:
+    if len(uri) <= 2:
         # Probably a request to list all APIs
-        return
+        return None
 
     if "namespace" not in objectRef:
         objectRef["namespace"] = None
@@ -59,7 +59,7 @@ def propose_label(j: dict):
     if objectRef["namespace"] in IGNORED_NAMESPACES:
         # Ignore requests to some namespaces (they will be flagged
         # as control plane traffic for the moment)
-        return
+        return None
     
     if "apiGroup" not in objectRef:
         # We tagget the "" apiGroup as core
