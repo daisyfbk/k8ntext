@@ -101,8 +101,16 @@ def propose_label(j: dict):
 
 if __name__ == '__main__':
     import sys
+    from main import get_informative_string
+
     file = sys.argv[1]
     with open(file, 'r') as f:
         for line in f:
             j = json.loads(line)
-            propose_label(j)
+            label = propose_label(j)
+            if label is None:
+                continue
+            try:
+                print(f"{label} <- {get_informative_string(j)}")
+            except:
+                pass
