@@ -1,0 +1,9 @@
+#verb,id
+create,1
+delete,2
+deletecollection,2
+get,3
+list,3
+patch,4
+update,4
+watch,5

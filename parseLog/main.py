@@ -3,6 +3,8 @@ import argparse
 import re
 import configparser
 from enum import Enum
+import label_proposer
+from termcolor import colored
 
 parser = argparse.ArgumentParser(
     prog='parseLog',
@@ -151,15 +153,15 @@ def take_a_decision_about_log_line(json_data):
 
 
 def get_informative_string(json_data):
-    request_uri = json_data.get('requestURI')
+    request_uri = json_data.get('requestURI').split('?')[0]
     verb = json_data.get('verb')
     user_username = json_data.get('user').get('username')
     objectref_resource = json_data.get('objectRef').get('resource')
     objectref_name = json_data.get('objectRef').get('name')
     objectref_namespace = json_data.get('objectRef').get('namespace')
     return (
-        "{{ 'requestURI': '{}', 'verb': '{}', 'username': '{}', 'resource': '{}', 'namespace': '{}', 'name': '{}' }}".
-        format(request_uri, verb, user_username, objectref_resource, objectref_name, objectref_namespace))
+        "{{'username': '{}', 'verb': '{}', 'resource': '{}', 'namespace': '{}', 'name': '{}',  'requestURI': '{}' }}".
+        format(user_username, verb, objectref_resource, objectref_name, objectref_namespace, request_uri))
 
 
 def label_whitelisted_log_line(whitelisted_lines):
@@ -177,12 +179,33 @@ def label_whitelisted_log_line(whitelisted_lines):
         else:
             next_line = None
 
-        print("previous ->", previous_line)
-        print("current ->", current_line)
-        print("next ->", next_line)
-        input_label = input("label (default:" + previous_label + "): ")
-        if not input_label:
-            input_label = previous_label
+        print("\033[H\033[J")
+        print(colored("previous ->", 'grey', 'on_black'), colored(previous_line, 'grey', 'on_black'))
+        print(colored("current ->", 'black', 'on_red', ['bold']), colored(current_line, 'black', 'on_red', ['bold']))
+        print(colored("next ->", 'grey', 'on_black'), colored(next_line, 'grey', 'on_black'))
+
+        proposal = label_proposer.propose_label(line)
+
+        print("Labels: ")
+        print("a. previous (default): ", previous_label)
+        print("b. proposed: ", proposal)
+        print("c. type it: ")
+        case = input("Choose a, b or c: ")
+
+        match case:
+            case "a":
+                input_label = previous_label
+            case "b":
+                input_label = proposal
+            case "c":
+                while True:
+                    try:
+                        input_label = int(input("label: "))
+                        break
+                    except ValueError:
+                        print("Please enter a valid number")
+            case _:
+                input_label = previous_label
 
         print("\n")
 
@@ -221,6 +244,7 @@ def main():
                 blacklisted_lines.append(json_data)
 
     if labelling_mode:
+        whitelisted_lines.sort(key=lambda x: x['requestReceivedTimestamp'])
         label_whitelisted_log_line(whitelisted_lines)
 
     # sort the output_lines array by the requestReceivedTimestamp
