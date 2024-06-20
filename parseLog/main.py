@@ -195,11 +195,13 @@ def label_whitelisted_log_line(whitelisted_lines):
         print("\n")
 
         proposal = label_proposer.propose_label(line)
+        next_proposal = label_proposer.propose_label(whitelisted_lines[x + 1]) if x < len(whitelisted_lines) - 1 else None
 
         print("Labels: ")
         print("a. previous (default): ", previous_label)
         print("b. proposed: ", proposal)
-        print("c. type it: ")
+        print("c. proposed of the next line: ", next_proposal)
+        print("d. type it: ")
         case = input("Choose a, b or c: ")
 
         match case:
@@ -208,6 +210,8 @@ def label_whitelisted_log_line(whitelisted_lines):
             case "b":
                 input_label = proposal
             case "c":
+                input_label = next_proposal
+            case "d":
                 while True:
                     try:
                         input_label = int(input("label: "))
