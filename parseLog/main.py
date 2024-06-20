@@ -240,7 +240,7 @@ def main():
                 whitelisted_lines.append(json_data)
 
             elif output_decision == Decision.black_listed and labelling_mode:
-                json_data['label'] = "-1"  # add label to json
+                json_data['label'] = -1  # add label to json
                 blacklisted_lines.append(json_data)
 
     if labelling_mode:
