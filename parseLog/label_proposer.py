@@ -47,6 +47,9 @@ def generate_label(verb: str, objectRef: dict):
     apiVersion = objectRef['apiVersion']
     resource = objectRef['resource']
 
+    if "subresource" in objectRef and objectRef["subresource"]:
+        resource = resource + "/" + objectRef["subresource"]
+
     label = labels[(apiGroup, apiVersion, resource)]
     verb_label = verbs[verb]
 
@@ -155,7 +158,7 @@ if __name__ == '__main__':
             if label is None:
                 continue
             try:
-                print(bin(label))
+                # print(bin(label))
                 print(f"{label} <- {get_informative_string(j)}")
             except:
                 pass
