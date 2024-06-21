@@ -198,6 +198,8 @@ def label_whitelisted_log_line(whitelisted_lines):
         print("\n")
 
         proposal = label_proposer.propose_label(line)
+        if proposal is None:
+            proposal = -1
 
         print("Labels: ")
         print("a. previous (default): ", previous_label)
