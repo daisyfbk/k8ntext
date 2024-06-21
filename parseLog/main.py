@@ -198,14 +198,12 @@ def label_whitelisted_log_line(whitelisted_lines):
         print("\n")
 
         proposal = label_proposer.propose_label(line)
-        next_proposal = label_proposer.propose_label(whitelisted_lines[x + 1]) if x < len(whitelisted_lines) - 1 else None
 
         print("Labels: ")
         print("a. previous (default): ", previous_label)
         print("b. proposed: ", proposal)
-        print("c. proposed of the next line: ", next_proposal)
-        print("d. type it: ")
-        case = input("Choose {a, b, c, d}: ")
+        print("c. type it: ")
+        case = input("Choose {a, b, c}: ")
 
         match case:
             case "a":
@@ -213,8 +211,6 @@ def label_whitelisted_log_line(whitelisted_lines):
             case "b":
                 input_label = proposal
             case "c":
-                input_label = next_proposal
-            case "d":
                 while True:
                     try:
                         input_label = int(input("label: "))
@@ -222,9 +218,19 @@ def label_whitelisted_log_line(whitelisted_lines):
                     except ValueError:
                         print("Please enter a valid number")
             case _:
-                input_label = previous_label
+                # If a number, assume case d) was chosen and it's the number
+                # if empty, assume case a) was chosen
+                if case == "":
+                    input_label = previous_label
+                else:
+                    while True:
+                        try:
+                            input_label = int(case)
+                            break
+                        except ValueError:
+                            print("Please enter a valid number")
 
-        print("\n")
+        print()
 
         line['label'] = input_label # add label to json
 
