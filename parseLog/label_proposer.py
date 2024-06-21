@@ -3,7 +3,7 @@ import json
 
 LABELS_FILE = 'labels.csv'
 VERBS_FILE = 'verbs.csv'
-IGNORED_NAMESPACES = ['kube-system', 'kube-public', 'kube-node-lease', 'kube-flannel', 'falco']
+IGNORED_NAMESPACES = ['kube-flannel', 'falco']
 
 def load_labels():
     labels = {}
