@@ -1,4 +1,4 @@
-logs/
+/logs
 .vscode
 *.tex
 ssh/cluster-setup
