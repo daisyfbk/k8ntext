@@ -45,7 +45,7 @@ def take_a_decision_about_log_line(json_data):
     if request_uri in blacklisted_requestURIs or request_uri == "/api/v1" or \
             bool(re.search(r"/api(s)*\?timeout", request_uri)) or \
             bool(re.search(r"/openapi/v3\?timeout", request_uri)):
-        return Decision.black_listed
+        return Decision.removed
 
     verb = json_data.get('verb')
     user_username = json_data.get('user').get('username')
