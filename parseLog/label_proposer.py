@@ -125,8 +125,7 @@ def brute_force_label_space():
                             label = encode_label(label_id, label_sub_id, is_namespaced, is_single_object, verb_id)
                             decoded = decode_label(label)
                             if decoded != "Unknown label":
-                                print(f"Label: {label}, {bin(label)}")
-                                print(f"Meaning: verb {decoded['verb']} on {decoded['apiGroup']}/{decoded['version']}/{decoded['uri']}; resource is {'namespaced' if decoded['is_namespaced'] else 'not namespaced'}; {'single object' if decoded['is_single_object'] else 'list of objects'}")
+                                print(f"Label: {label}, {bin(label)}; Meaning: verb {decoded['verb']} on {decoded['apiGroup']}/{decoded['version']}/{decoded['uri']}; resource is {'namespaced' if decoded['is_namespaced'] else 'not namespaced'}; {'single object' if decoded['is_single_object'] else 'list of objects'}")
                         except:
                             continue
 
@@ -169,7 +168,8 @@ def propose_label(j: dict):
         label = generate_label(verb, objectRef)
         # print("Label: ", label)
         # print("Binary: ", format(label, '020b'))
-    except KeyError:
+    except KeyError as e:
+        # print("KeyError: ", e)
         return None
 
     return label
