@@ -6,6 +6,9 @@ import argparse
 LABELS_FILE = 'labels.csv'
 VERBS_FILE = 'verbs.csv'
 IGNORED_NAMESPACES = ['kube-flannel', 'falco']
+LABEL_UNKNOWN = -1
+LABEL_IGNORE = -2
+
 
 def load_labels():
     labels = {}
@@ -85,9 +88,9 @@ def encode_label(
 
 
 @functools.lru_cache(maxsize=None)
-def decode_label(label: int):
+def decode_label(label: int) -> dict:
     if label == -1:
-        return "Unknown label"
+        return {"error": "Unknown label"}
 
     label_id = (label >> 12) & 0xFF
     label_sub_id = (label >> 9) & 0x7
@@ -124,13 +127,15 @@ def brute_force_label_space():
                         try:
                             label = encode_label(label_id, label_sub_id, is_namespaced, is_single_object, verb_id)
                             decoded = decode_label(label)
-                            if decoded != "Unknown label":
+                            if "error" not in decoded:
                                 print(f"Label: {label}, {bin(label)}; Meaning: verb {decoded['verb']} on {decoded['apiGroup']}/{decoded['version']}/{decoded['uri']}; resource is {'namespaced' if decoded['is_namespaced'] else 'not namespaced'}; {'single object' if decoded['is_single_object'] else 'list of objects'}")
                         except:
                             continue
 
+# -1 == don't know
+# -2 == don't care
 
-def propose_label(j: dict):
+def propose_label(j: dict) -> int:
     uri = j['requestURI']
 
     try:
@@ -146,11 +151,11 @@ def propose_label(j: dict):
 
     if uri[0] not in ['api', 'apis']:
         # Not an API request
-        return None
+        return LABEL_IGNORE
 
     if len(uri) <= 2:
         # Probably a request to list all APIs
-        return None
+        return LABEL_IGNORE
 
     if "namespace" not in objectRef:
         objectRef["namespace"] = None
@@ -158,7 +163,7 @@ def propose_label(j: dict):
     if objectRef["namespace"] in IGNORED_NAMESPACES:
         # Ignore requests to some namespaces (they will be flagged
         # as control plane traffic for the moment)
-        return None
+        return LABEL_IGNORE
     
     if "apiGroup" not in objectRef:
         # We tagget the "" apiGroup as core
@@ -170,26 +175,12 @@ def propose_label(j: dict):
         # print("Binary: ", format(label, '020b'))
     except KeyError as e:
         # print("KeyError: ", e)
-        return None
+        return LABEL_UNKNOWN
 
     return label
 
 
-if __name__ == '__main__':
-    from main import get_informative_string
-
-    parser = argparse.ArgumentParser(
-    prog='propose_label',
-    description='Manage automated labels')
-    parser.add_argument('--brute-force', action='store_true', help='Brute force the label space')
-
-    parser.add_argument("-f", "--file", help="File to read from", type=str)
-    parser.add_argument("-e", "--encode", help="Encode a label", action='store_true')
-
-    parser.add_argument("-d", "--decode", help="Decode a label", action='store_true')
-    parser.add_argument("-l", "--label", help="Label to decode", type=int)
-
-    args = parser.parse_args()
+def main(args):
     if args.brute_force:
         brute_force_label_space()
         exit(0)
@@ -204,7 +195,7 @@ if __name__ == '__main__':
                     j = json.loads(line)
                     label = propose_label(j)
 
-                    if label is None:
+                    if label in [LABEL_IGNORE, LABEL_UNKNOWN]:
                         continue
                     try:
                         # print(bin(label))
@@ -220,3 +211,22 @@ if __name__ == '__main__':
             
         else:
             parser.print_help()
+
+
+if __name__ == '__main__':
+    from main import get_informative_string
+
+    parser = argparse.ArgumentParser(
+        prog='propose_label',
+        description='Manage automated labels')
+    parser.add_argument('--brute-force', action='store_true', help='Brute force the label space')
+
+    parser.add_argument("-f", "--file", help="File to read from", type=str)
+    parser.add_argument("-e", "--encode", help="Encode a label", action='store_true')
+
+    parser.add_argument("-d", "--decode", help="Decode a label", action='store_true')
+    parser.add_argument("-l", "--label", help="Label to decode", type=int)
+
+    args = parser.parse_args()
+
+    main(args)
