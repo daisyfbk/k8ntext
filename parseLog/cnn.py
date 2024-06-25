@@ -10,14 +10,15 @@ import keras.api.layers as layers
 import keras.api.models as models
 import numpy as np
 from keras.api.utils import to_categorical
+from keras.api.optimizers import Adam
 from matplotlib import pyplot as plt
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
 ATTEMPTS = 40
-WINDOW_LENGTH = 30
-EPOCHS = 200
+WINDOW_LENGTH = 40
+EPOCHS = 300
 PATIENCE = 40
 OUT_FOLDER = 'out'
 
@@ -162,33 +163,40 @@ def generate_cnn(data: list[dict]) -> dict:
     # classification model
     model = models.Sequential([
         layers.Input(shape=(WINDOW_LENGTH, len_features)),
-        # We have a tensor with shape (None, WINDOW_LENGTH, len_features)
-        layers.Conv1D(64, 9, activation='relu'),
-        layers.MaxPooling1D(2),
-        layers.Conv1D(128, 3, activation='relu'),
-        layers.MaxPooling1D(2),
-        layers.Conv1D(256, 3, activation='relu'),
-        layers.MaxPooling1D(2),
+        layers.Conv1D(WINDOW_LENGTH, 3, activation='relu'),
+        # layers.Dropout(0.1),
+        layers.Conv1D(WINDOW_LENGTH * 2, 3, activation='relu'),
+        # layers.Dropout(0.2),
+        layers.Conv1D(WINDOW_LENGTH * 4, 3, activation='relu'),
+        # layers.Dropout(0.3),
+        layers.Conv1D(WINDOW_LENGTH * 8, 3, activation='relu'),
         layers.Flatten(),
         layers.Dense(WINDOW_LENGTH * len_classes),
+        layers.Dropout(0.5),
         layers.Reshape((WINDOW_LENGTH, len_classes)),
         layers.Activation('softmax')
     ])
 
     cb = [
-        callbacks.EarlyStopping(monitor='val_loss', patience=PATIENCE),
-        callbacks.ModelCheckpoint(filepath='model.keras', save_best_only=True)
+        callbacks.EarlyStopping(monitor='val_loss', patience=PATIENCE, restore_best_weights=True),
+        callbacks.ModelCheckpoint(filepath=OUT_FOLDER + '/model-checkpoint.keras', save_best_only=True),
+        callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=40)
     ]
 
-    print(model.summary())
-
-    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['categorical_accuracy'])
+    model.compile(
+        optimizer=Adam(learning_rate=0.001),
+        loss='categorical_crossentropy',
+        metrics=['categorical_accuracy'],
+        
+    )
 
     indices = np.arange(len(X))
 
-    x_train, x_test, y_train, y_test, i_train, i_test = train_test_split(X, y, indices, test_size=0.25, shuffle=True)
+    x_train, x_test, y_train, y_test, i_train, i_test = train_test_split(X, y, indices, test_size=0.1, shuffle=True)
 
-    history = model.fit(x_train, y_train, epochs=EPOCHS, callbacks=cb)
+    print(model.summary())
+
+    history = model.fit(x_train, y_train, epochs=EPOCHS, callbacks=cb, validation_split=0.2, shuffle=True)
     y_pred = model.predict(x_test)
 
     # y_pred is a tensor of shape (len(x_test), WINDOW_LENGTH, len_classes)
@@ -209,34 +217,6 @@ def generate_cnn(data: list[dict]) -> dict:
     # Convert lists of arrays back to 2D arrays if necessary
     y_pred_decoded = np.array(y_pred_decoded)
     y_test_decoded = np.array(y_test_decoded)
-    
-    # accuracies = {}
-    # for i in i_test:
-    #     if i not in accuracies:
-    #         accuracies[i] = []
-    #     accuracies[i].append(accuracy_score(y_test_decoded[i], y_pred_decoded[i]))
-
-    # print(accuracies)    
-
-    
-#    predicted = {}
-#    actual = {}
-#    for i in range(len(y_pred_decoded)):
-#        for j in range(len(y_pred_decoded[i])):
-#            if i + j not in predicted:
-#                predicted[i + j] = []
-#            predicted[i + j].append(y_pred_decoded[i][j])
-#            if i + j not in actual:
-#                actual[i + j] = []
-#            actual[i + j].append(y_test_decoded[i][j])
-#
-#    print(actual)
-#
-#    # Select the majority class for each sequence
-#    predicted_classes = {}
-#    for k, v in predicted.items():
-#        predicted_classes[k] = max(set(v), key=v.count)
-#
 
     # print("Predicted and actual classes for all batches:")
     label_categorizations = {}
@@ -255,12 +235,6 @@ def generate_cnn(data: list[dict]) -> dict:
        #print(f"{k}: {accuracies[k]}")
 
     print("Weighted accuracy:", sum([len(v) * acc for k, v in label_categorizations.items() for acc in [accuracies[k]]]) / len(y_pred_decoded) / WINDOW_LENGTH)
-    # Re-add the labels to the original data
-    # We choose the majority class for each sequence
-
-    # plt.plot(history.history['loss'])
-    # plt.title('Model loss')
-    # plt.show()
 
     return {
         "model": model,
@@ -347,13 +321,13 @@ def open_file(file: str) -> list:
 
 
 def main(args):
-    if not args.file:
-        print('Please provide a valid file.')
-        exit(1)
-
-    data = open_file(args.file)
-
     if not args.model:
+        if not args.file:
+            print('Please provide a valid file.')
+            exit(1)
+
+        data = open_file(args.file)
+
         losses = []
         accuracies = []
 
@@ -426,6 +400,8 @@ def main(args):
             for i in range(len(y_pred)):
                 predicted = y_pred[i]
                 original = validation_data[i]['label']
+                if predicted != original:
+                    print("Predicted:", predicted, "Original:", original)
                 if original not in val_acc:
                     val_acc[original] = []
                 val_acc[original].append(predicted)
@@ -434,7 +410,6 @@ def main(args):
             for k, v in val_acc.items():
                 acc = len([x for x in v if x == k]) / len(v)
                 weights.append(len(v) * acc)
-                # print(f"Label {k}: {acc}")
 
             print("Total weighted accuracy:", sum(weights) / len(validation_data))
 
