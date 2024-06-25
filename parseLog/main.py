@@ -5,6 +5,7 @@ import configparser
 from enum import Enum
 import label_proposer
 from termcolor import colored
+from common import IGNORED_NAMESPACES
 
 parser = argparse.ArgumentParser(
     prog='parseLog',
@@ -60,7 +61,7 @@ def take_a_decision_about_log_line(json_data):
 
     # Remove CNI and external namespaces
     if config.getboolean('ignore_log', 'cni_and_external_namespaces'):
-        if objectref_namespace in {"falco", "kube-flannel"} or \
+        if objectref_namespace in IGNORED_NAMESPACES or \
                 user_username == "system:serviceaccount:kube-flannel:flannel":
             return Decision.removed
 

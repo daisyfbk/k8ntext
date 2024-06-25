@@ -2,10 +2,10 @@ import csv
 import json
 import functools
 import argparse
+from common import IGNORED_NAMESPACES
 
 LABELS_FILE = 'labels.csv'
 VERBS_FILE = 'verbs.csv'
-IGNORED_NAMESPACES = ['kube-flannel', 'falco']
 LABEL_UNKNOWN = -1
 LABEL_IGNORE = -2
 
