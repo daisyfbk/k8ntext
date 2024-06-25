@@ -5,6 +5,7 @@ ssh/cluster-setup
 /*.kubeconfig
 .#*
 .direnv
+out/
 
 ## Core latex/pdflatex auxiliary files:
 
