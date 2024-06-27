@@ -35,6 +35,8 @@ with open(args.file) as f:
         else:
             unlabelled.append(line)
 
+total = len(lines)
+print("Total lines: ", total)
 print("Total labelled: ", len(labelled))
 print("Total unlabelled: ", len(unlabelled))
 
@@ -147,12 +149,12 @@ print("Total newly labelled: ", len(newly_labelled) + count)
 
 if count == 0:
     print("All lines labelled automatically.")
-    out_lines = labelled + newly_labelled
-
 else:
     print("Fancy labelling manually the remaining lines? (y/n) ", end='')
     if input().lower() == 'y':
         from main import ParsingMode, main
+
+        old_line_count = len(newly_labelled)
 
         tmp2 = subprocess.check_output('mktemp', text=True).strip()
         with open(tmp2, 'w') as f:
@@ -164,11 +166,16 @@ else:
         with open(out_file) as f:
             newly_labelled = f.readlines()
 
-        subprocess.run(['rm', out_file, temp_file])
-        out_lines = newly_labelled
-    else:
-        out_lines = labelled + newly_labelled
+        print("Total newly labelled after manual labelling: ", len(newly_labelled))
 
+        if len(newly_labelled) == old_line_count:
+            print("All lines labelled successfully.")
+        else:
+            print("WARNING: Some lines have been dropped by the manual labelling process. Please check the code and rerun.")
+
+        subprocess.run(['rm', out_file, temp_file])
+
+out_lines = labelled + newly_labelled
 out_lines.sort(key=lambda x: json.loads(x)['requestReceivedTimestamp'])
 
 print("Total lines: ", len(out_lines))
