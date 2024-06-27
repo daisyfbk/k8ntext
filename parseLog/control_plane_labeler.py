@@ -152,7 +152,7 @@ if count == 0:
 else:
     print("Fancy labelling manually the remaining lines? (y/n) ", end='')
     if input().lower() == 'y':
-        from main import ParsingMode, main
+        from log_parser import ParsingMode, parse
 
         old_line_count = len(newly_labelled)
 
@@ -161,7 +161,7 @@ else:
             for line in newly_labelled:
                 f.write(line)
 
-        out_file = main(ParsingMode.labelling, input_filename=tmp2)
+        out_file = parse(ParsingMode.labelling, input_filename=tmp2)
 
         with open(out_file) as f:
             newly_labelled = f.readlines()

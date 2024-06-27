@@ -210,7 +210,7 @@ def main(args):
 
 
 if __name__ == '__main__':
-    from main import get_informative_string
+    from log_parser import get_informative_string
 
     parser = argparse.ArgumentParser(
         prog='propose_label',

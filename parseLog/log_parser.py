@@ -249,7 +249,7 @@ def label_whitelisted_log_line(whitelisted_lines):
         previous_label = input_label
 
 
-def main(mode: ParsingMode, input_filename: str = None):
+def parse(mode: ParsingMode, input_filename: str = None):
     config.read('config.ini')
 
     if mode == ParsingMode.labelling:
@@ -326,6 +326,6 @@ if __name__ == "__main__":
     else:
         raise ValueError("Invalid mode")
 
-    output_file = main(mode=mode, input_filename=args.f)
+    output_file = parse(mode=mode, input_filename=args.f)
 
     print(f"Output written to {output_file}")
