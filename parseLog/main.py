@@ -5,7 +5,7 @@ import configparser
 from enum import Enum
 import label_proposer
 from termcolor import colored
-from common import IGNORED_NAMESPACES
+from common import IGNORED_NAMESPACES, LABEL_UNKNOWN
 
 parser = argparse.ArgumentParser(
     prog='parseLog',
@@ -37,6 +37,12 @@ class Decision(Enum):
     white_listed = 1
     black_listed = 2
     removed = 3
+
+
+class ParsingMode(Enum):
+    labelling = 1
+    reduction = 2
+    light_reduction = 3
 
 
 def take_a_decision_about_log_line(json_data):
@@ -148,7 +154,7 @@ def take_a_decision_about_log_line(json_data):
             (config.getboolean('ignore_log','blacklisted_resources_liv9') and objectref_resource in blacklisted_resources_liv9) or \
             (config.getboolean('ignore_log','blacklisted_resources_liv10') and objectref_resource in blacklisted_resources_liv10) or \
             (config.getboolean('ignore_log','blacklisted_resources_liv20') and objectref_resource in blacklisted_resources_liv20):
-        return Decision.black_listed
+        return Decision.white_listed
 
     return Decision.white_listed
 
@@ -181,6 +187,8 @@ def label_whitelisted_log_line(whitelisted_lines):
 
     for x in range(len(whitelisted_lines)):
         line = whitelisted_lines[x]
+        if 'label' in line and line['label'] != LABEL_UNKNOWN:
+            continue
 
         current_line = get_informative_string(line)
         if x < len(whitelisted_lines) - 1:
@@ -200,7 +208,7 @@ def label_whitelisted_log_line(whitelisted_lines):
 
         proposal = label_proposer.propose_label(line)
         if proposal is None:
-            proposal = -1
+            proposal = LABEL_UNKNOWN
 
         print("Labels: ")
         print("a. previous (default): ", previous_label)
@@ -241,19 +249,17 @@ def label_whitelisted_log_line(whitelisted_lines):
         previous_label = input_label
 
 
-def main():
-    parser.add_argument('-f', required=True, help='The log input file')
-    parser.add_argument('--labelling', required=False, help='Labelling mode', action=argparse.BooleanOptionalAction)
-    args = parser.parse_args()
-
+def main(mode: ParsingMode, input_filename: str = None):
     config.read('config.ini')
 
-    input_filename = args.f;
-    labelling_mode = args.labelling;
-    if labelling_mode:
+    if mode == ParsingMode.labelling:
         output_filename = input_filename + "_labelled"
-    else:
+    elif mode == ParsingMode.reduction:
         output_filename = input_filename + "_reduced"
+    elif mode == ParsingMode.light_reduction:
+        output_filename = input_filename + "_apionly"
+    else:
+        raise ValueError("Invalid mode")
 
     whitelisted_lines = []
     blacklisted_lines = []
@@ -268,11 +274,14 @@ def main():
             if output_decision == Decision.white_listed:
                 whitelisted_lines.append(json_data)
 
-            elif output_decision == Decision.black_listed and labelling_mode:
-                json_data['label'] = -1  # add label to json
+            elif output_decision == Decision.black_listed and mode == ParsingMode.labelling:
+                json_data['label'] = LABEL_UNKNOWN  # add label to json
                 blacklisted_lines.append(json_data)
 
-    if labelling_mode:
+            elif output_decision == Decision.black_listed and mode == ParsingMode.light_reduction:
+                blacklisted_lines.append(json_data)
+
+    if mode == ParsingMode.labelling:
         whitelisted_lines.sort(key=lambda x: x['requestReceivedTimestamp'])
         label_whitelisted_log_line(whitelisted_lines)
 
@@ -284,6 +293,38 @@ def main():
         for line in output_lines:
             output_file.write(json.dumps(line, separators=(',', ':')) + "\n")
 
+    return output_filename
+
 
 if __name__ == "__main__":
-    main()
+    parser.add_argument('-f', required=True, help='The log input file')
+
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument('--labelling', required=False,
+                        help='Labelling mode: interactive labelling of the log file',
+                        action=argparse.BooleanOptionalAction, default=False)
+    action.add_argument('--reduction', required=False,
+                        help='Reduction mode: remove unnecessary content and blacklisted logs',
+                        action=argparse.BooleanOptionalAction, default=False)
+    action.add_argument('--light-reduction', required=False,
+                        help='Light reduction mode: take out unnecessary content only',
+                        action=argparse.BooleanOptionalAction, default=False)
+
+    args = parser.parse_args()
+
+    if sum([args.labelling, args.reduction, args.light_reduction]) != 1:
+        parser.print_help()
+        exit(1)
+
+    if args.labelling:
+        mode = ParsingMode.labelling
+    elif args.reduction:
+        mode = ParsingMode.reduction
+    elif args.light_reduction:
+        mode = ParsingMode.light_reduction
+    else:
+        raise ValueError("Invalid mode")
+
+    output_file = main(mode=mode, input_filename=args.f)
+
+    print(f"Output written to {output_file}")

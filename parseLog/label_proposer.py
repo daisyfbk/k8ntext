@@ -2,12 +2,10 @@ import csv
 import json
 import functools
 import argparse
-from common import IGNORED_NAMESPACES
+from common import IGNORED_NAMESPACES, LABEL_UNKNOWN, LABEL_IGNORE
 
 LABELS_FILE = 'labels.csv'
 VERBS_FILE = 'verbs.csv'
-LABEL_UNKNOWN = -1
-LABEL_IGNORE = -2
 
 
 def load_labels():
@@ -89,7 +87,7 @@ def encode_label(
 
 @functools.lru_cache(maxsize=None)
 def decode_label(label: int) -> dict:
-    if label == -1:
+    if label == LABEL_UNKNOWN:
         return {"error": "Unknown label"}
 
     label_id = (label >> 12) & 0xFF
@@ -132,8 +130,6 @@ def brute_force_label_space():
                         except:
                             continue
 
-# -1 == don't know
-# -2 == don't care
 
 def propose_label(j: dict) -> int:
     uri = j['requestURI']

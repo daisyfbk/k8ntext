@@ -4,8 +4,10 @@ import json
 from label_proposer import propose_label
 import argparse
 import subprocess
-import os, sys
+import os
+import sys
 from tqdm import tqdm
+from common import LABEL_IGNORE, LABEL_UNKNOWN
 
 parser = argparse.ArgumentParser(description='Label control plane logs')
 parser.add_argument('-f', '--file', type=str, help='Input file', required=True)
@@ -27,7 +29,8 @@ unlabelled = []
 with open(args.file) as f:
     lines = f.readlines()
     for line in tqdm(lines):
-        if '"label":' in line:
+        o = json.loads(line)
+        if 'label' in o and o['label'] != LABEL_UNKNOWN:
             labelled.append(line)
         else:
             unlabelled.append(line)
@@ -41,7 +44,11 @@ temp_file = subprocess.check_output('mktemp', text=True).strip()
 with open(temp_file, 'w') as f:
     for line in tqdm(unlabelled):
         o = json.loads(line)
-        if 'objectRef' in o and o['objectRef']["resource"] == 'leases' \
+
+        if not 'objectRef' in o:
+            # if o['requestURI'] in ('/api','/api/v1','/apis'):
+            o['label'] = propose_label(o)
+        elif o['objectRef']["resource"] == 'leases' \
             and o['verb'] in ('get', 'update', 'patch'):
             # Routine lease renewals
             # mapped to patch events on leases
@@ -68,6 +75,10 @@ with open(temp_file, 'w') as f:
             # mapped to create events on pods
             if o['requestObject']['involvedObject']['kind'] == 'Pod':
                 o['label'] = 4496
+        elif "system:nodes" in o['user']['groups'] and \
+            o['verb'] in ('patch',) and \
+            o['objectRef']['resource'] == 'events':
+            o['label'] = propose_label(o)
         elif 'system:nodes' in o['user']['groups'] and \
             o['verb'] in ('patch', 'get') and \
             o['objectRef']['resource'] == 'pods':
@@ -100,20 +111,64 @@ with open(temp_file, 'w') as f:
             o['objectRef']['subresource'] == 'token':
             # Nodes renewing tokens for SAs they monitor
             o['label'] = propose_label(o)
+        elif o['user']['username'] == 'system:apiserver' and \
+            o['verb'] in ('watch',) and \
+            o['objectRef']['resource'] == 'leases' and \
+            o['objectRef']['namespace'] == 'kube-system':
+            # API server watching leases
+            o['label'] = propose_label(o)
+        elif o['user']['username'] == 'system:apiserver' and \
+            o['verb'] in ('list','get') and \
+            o['objectRef']['resource'] in ('services', 'limitranges','endpoints','endpointslices'):
+            o['label'] = propose_label(o)
+        elif o['user']['username'] == 'system:apiserver' and \
+            o['verb'] in ('watch',) and \
+            o['objectRef']['namespace'] == 'kube-system' and \
+            o['objectRef']['resource'] in ('configmaps', 'secrets'):
+            o['label'] = propose_label(o)
+        elif o['user']['username'] == 'system:kube-scheduler' and \
+            o['verb'] in ('watch',) and \
+            o['objectRef']['namespace'] == 'kube-system' and \
+            o['objectRef']['resource'] in ('configmaps', 'secrets'):
+            o['label'] = propose_label(o)
 
-        if not 'label' in o:
+        if not 'label' in o or o['label'] == LABEL_UNKNOWN:
             count -= 1
+        else:
+            o['cplabel'] = True
         
         f.write(json.dumps(o, separators=(',', ':')) + '\n')
 
-newly_labelled = []
 with open(temp_file) as f:
     newly_labelled = f.readlines()
 
 print("Total parsed: ", len(newly_labelled))
 print("Total newly labelled: ", len(newly_labelled) + count)
 
-out_lines = labelled + newly_labelled
+if count == 0:
+    print("All lines labelled automatically.")
+    out_lines = labelled + newly_labelled
+
+else:
+    print("Fancy labelling manually the remaining lines? (y/n) ", end='')
+    if input().lower() == 'y':
+        from main import ParsingMode, main
+
+        tmp2 = subprocess.check_output('mktemp', text=True).strip()
+        with open(tmp2, 'w') as f:
+            for line in newly_labelled:
+                f.write(line)
+
+        out_file = main(ParsingMode.labelling, input_filename=tmp2)
+
+        with open(out_file) as f:
+            newly_labelled = f.readlines()
+
+        subprocess.run(['rm', out_file, temp_file])
+        out_lines = newly_labelled
+    else:
+        out_lines = labelled + newly_labelled
+
 out_lines.sort(key=lambda x: json.loads(x)['requestReceivedTimestamp'])
 
 print("Total lines: ", len(out_lines))
