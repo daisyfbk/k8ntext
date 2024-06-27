@@ -271,15 +271,16 @@ def main(mode: ParsingMode, input_filename: str = None):
 
             output_decision = take_a_decision_about_log_line(json_data)
 
-            if output_decision == Decision.white_listed:
-                whitelisted_lines.append(json_data)
-
-            elif output_decision == Decision.black_listed and mode == ParsingMode.labelling:
-                json_data['label'] = LABEL_UNKNOWN  # add label to json
-                blacklisted_lines.append(json_data)
-
-            elif output_decision == Decision.black_listed and mode == ParsingMode.light_reduction:
-                blacklisted_lines.append(json_data)
+            if ParsingMode.labelling:
+                if output_decision == Decision.white_listed:
+                    whitelisted_lines.append(json_data)
+                else: # in labelling we do not trash any logs
+                    blacklisted_lines.append(json_data)
+            elif ParsingMode.reduction or ParsingMode.light_reduction:
+                if output_decision == Decision.white_listed:
+                    whitelisted_lines.append(json_data)
+                elif output_decision == Decision.black_listed:
+                    blacklisted_lines.append(json_data)
 
     if mode == ParsingMode.labelling:
         whitelisted_lines.sort(key=lambda x: x['requestReceivedTimestamp'])
