@@ -49,9 +49,11 @@ def take_a_decision_about_log_line(json_data):
     request_uri = json_data.get('requestURI')
 
     # Blacklist Endpoints api/apis
-    if request_uri in blacklisted_requestURIs or request_uri == "/api/v1" or \
+    if request_uri in blacklisted_requestURIs \
+            or 'objectRef' not in json_data \
+            or request_uri == "/api/v1" or \
             bool(re.search(r"/api(s)*\?timeout", request_uri)) or \
-            bool(re.search(r"/openapi/v3\?timeout", request_uri)):
+            bool(re.search(r"/openapi/v[2-3].*$", request_uri)):
         return Decision.removed
 
     verb = json_data.get('verb')
@@ -147,14 +149,14 @@ def take_a_decision_about_log_line(json_data):
                 (objectref_name == "generic-garbage-collector" or objectref_name == "resourcequota-controller")):
             return Decision.black_listed
 
-    if (config.getboolean('ignore_log','blacklisted_resources_liv2') and objectref_resource in blacklisted_resources_liv2) or \
-            (config.getboolean('ignore_log','blacklisted_resources_liv3') and objectref_resource in blacklisted_resources_liv3) or \
-            (config.getboolean('ignore_log','blacklisted_resources_liv4') and objectref_resource in blacklisted_resources_liv4) or \
-            (config.getboolean('ignore_log','blacklisted_resources_liv7') and objectref_resource in blacklisted_resources_liv7) or \
-            (config.getboolean('ignore_log','blacklisted_resources_liv9') and objectref_resource in blacklisted_resources_liv9) or \
-            (config.getboolean('ignore_log','blacklisted_resources_liv10') and objectref_resource in blacklisted_resources_liv10) or \
-            (config.getboolean('ignore_log','blacklisted_resources_liv20') and objectref_resource in blacklisted_resources_liv20):
-        return Decision.white_listed
+#     if (config.getboolean('ignore_log','blacklisted_resources_liv2') and objectref_resource in blacklisted_resources_liv2) or \
+#             (config.getboolean('ignore_log','blacklisted_resources_liv3') and objectref_resource in blacklisted_resources_liv3) or \
+#             (config.getboolean('ignore_log','blacklisted_resources_liv4') and objectref_resource in blacklisted_resources_liv4) or \
+#             (config.getboolean('ignore_log','blacklisted_resources_liv7') and objectref_resource in blacklisted_resources_liv7) or \
+#             (config.getboolean('ignore_log','blacklisted_resources_liv9') and objectref_resource in blacklisted_resources_liv9) or \
+#             (config.getboolean('ignore_log','blacklisted_resources_liv10') and objectref_resource in blacklisted_resources_liv10) or \
+#             (config.getboolean('ignore_log','blacklisted_resources_liv20') and objectref_resource in blacklisted_resources_liv20):
+#         return Decision.white_listed
 
     return Decision.white_listed
 
@@ -271,12 +273,12 @@ def parse(mode: ParsingMode, input_filename: str = None):
 
             output_decision = take_a_decision_about_log_line(json_data)
 
-            if ParsingMode.labelling:
+            if mode == ParsingMode.labelling:
                 if output_decision == Decision.white_listed:
                     whitelisted_lines.append(json_data)
                 else: # in labelling we do not trash any logs
                     blacklisted_lines.append(json_data)
-            elif ParsingMode.reduction or ParsingMode.light_reduction:
+            elif mode == ParsingMode.reduction or mode == ParsingMode.light_reduction:
                 if output_decision == Decision.white_listed:
                     whitelisted_lines.append(json_data)
                 elif output_decision == Decision.black_listed:
@@ -303,13 +305,13 @@ if __name__ == "__main__":
     action = parser.add_mutually_exclusive_group()
     action.add_argument('--labelling', required=False,
                         help='Labelling mode: interactive labelling of the log file',
-                        action=argparse.BooleanOptionalAction, default=False)
+                        action='store_true', default=False)
     action.add_argument('--reduction', required=False,
                         help='Reduction mode: remove unnecessary content and blacklisted logs',
-                        action=argparse.BooleanOptionalAction, default=False)
+                        action='store_true', default=False)
     action.add_argument('--light-reduction', required=False,
                         help='Light reduction mode: take out unnecessary content only',
-                        action=argparse.BooleanOptionalAction, default=False)
+                        action='store_true', default=False)
 
     args = parser.parse_args()
 
