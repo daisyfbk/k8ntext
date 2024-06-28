@@ -11,15 +11,14 @@ import keras.api.models as models
 import numpy as np
 from keras.api.utils import to_categorical
 from keras.api.optimizers import Adam
-from matplotlib import pyplot as plt
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
-ATTEMPTS = 20
-WINDOW_LENGTH = 40
-EPOCHS = 300
-PATIENCE = 20
+from parseLog.cnn_options import STATISTICS_ATTEMPTS, WINDOW_LENGTH, MAX_EPOCHS, INITIAL_LEARNING_RATE, \
+    EARLY_STOPPING_PATIENCE, REDUCE_LR_FACTOR, REDUCE_LR_PATIENCE, TEST_TRAIN_SPLIT, TRAIN_VALID_SPLIT
+from parseLog.cnn_visualize import plot_loss, plot_accuracy
+
 OUT_FOLDER = 'out'
 
 # Features
@@ -163,23 +162,22 @@ def generate_cnn(data: list[dict]) -> dict:
     # classification model
     model = models.Sequential([
         layers.Input(shape=(WINDOW_LENGTH, len_features)),
-        layers.LSTM(WINDOW_LENGTH * 3, return_sequences=True),
-        layers.LSTM(WINDOW_LENGTH * 2, return_sequences=True),
-        layers.LSTM(WINDOW_LENGTH, return_sequences=True),
+        layers.LSTM(len_features * 8, return_sequences=True),
+        layers.LSTM(len_features * 4, return_sequences=True),
+        layers.LSTM(len_features * 2, return_sequences=True),
         layers.Dropout(0.2),
         layers.TimeDistributed(layers.Dense(len_classes)),
         layers.Activation('softmax')
     ])
 
-
     cb = [
-        callbacks.EarlyStopping(monitor='val_loss', patience=PATIENCE, restore_best_weights=True),
+        callbacks.EarlyStopping(monitor='val_loss', patience=EARLY_STOPPING_PATIENCE, restore_best_weights=True),
         callbacks.ModelCheckpoint(filepath=OUT_FOLDER + '/model-checkpoint.keras', save_best_only=True),
-        callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=40)
+        callbacks.ReduceLROnPlateau(monitor='val_loss', factor=REDUCE_LR_FACTOR, patience=REDUCE_LR_PATIENCE)
     ]
 
     model.compile(
-        optimizer=Adam(learning_rate=0.001),
+        optimizer=Adam(learning_rate=INITIAL_LEARNING_RATE),
         loss='categorical_crossentropy',
         metrics=['categorical_accuracy'],
         
@@ -187,11 +185,11 @@ def generate_cnn(data: list[dict]) -> dict:
 
     indices = np.arange(len(X))
 
-    x_train, x_test, y_train, y_test, i_train, i_test = train_test_split(X, y, indices, test_size=0.1, shuffle=True)
+    x_train, x_test, y_train, y_test, i_train, i_test = train_test_split(X, y, indices, test_size=TEST_TRAIN_SPLIT, shuffle=True)
 
     print(model.summary())
 
-    history = model.fit(x_train, y_train, epochs=EPOCHS, callbacks=cb, validation_split=0.2)
+    history = model.fit(x_train, y_train, epochs=MAX_EPOCHS, callbacks=cb, validation_split=TRAIN_VALID_SPLIT)
     y_pred = model.predict(x_test)
 
     # y_pred is a tensor of shape (len(x_test), WINDOW_LENGTH, len_classes)
@@ -220,17 +218,19 @@ def generate_cnn(data: list[dict]) -> dict:
             pred = y_pred_decoded[j][i]
             actual = y_test_decoded[j][i]
 
-            if pred not in label_categorizations:
-                label_categorizations[pred] = []
-            label_categorizations[pred].append(actual)
+            if actual not in label_categorizations:
+                label_categorizations[actual] = []
+
+            label_categorizations[actual].append(pred)
 
     accuracies = {}
+    weights = {}
     for k, v in label_categorizations.items():
         accuracies[k] = accuracy_score(v, [k] * len(v))
-       #print(f"{k}: {accuracies[k]}")
+        weights[k] = len(v)
 
-    print("Weighted accuracy:", sum([len(v) * acc for k, v in label_categorizations.items() for acc in [accuracies[k]]]) / len(y_pred_decoded) / WINDOW_LENGTH)
-
+    print("Weighted class accuracy:", sum([a * w for a, w in zip(accuracies.values(), weights.values())]) / sum(weights.values()))
+    
     return {
         "model": model,
         "y_encoders": yle,
@@ -316,6 +316,7 @@ def open_file(file: str) -> list:
 
 
 def main(args):
+
     if not args.model:
         if not args.file:
             print('Please provide a valid file.')
@@ -332,7 +333,7 @@ def main(args):
         accuracies = []
 
         if args.stats_mode:
-            for i in range(ATTEMPTS):
+            for i in range(STATISTICS_ATTEMPTS):
                 result = generate_cnn(data)
                 history = result['history']
                 acc = result['accuracies']
@@ -351,6 +352,8 @@ def main(args):
             model = result['model']
             features = result['features']
             yle = result['y_encoders']
+            losses.append(result['history'])
+            accuracies.append(result['accuracies'])
 
             # Save the model and the features
             model.save(OUT_FOLDER + '/model.keras')
@@ -363,19 +366,18 @@ def main(args):
             with open(OUT_FOLDER + '/model.keras' + '.y_encoders', 'w') as f:
                 json.dump(yle.classes_.tolist(), f)
 
-        # Plot all losses over the epochs
-        for loss in losses:
-            plt.plot(loss.history['loss'])
-        plt.title('Model loss')
-        plt.savefig(OUT_FOLDER + '/loss.png')
+        # Always save the loss and accuracy data
+        with open(OUT_FOLDER + '/loss.json', 'w') as f:
+            json.dump([loss.history for loss in losses], f)
+        accuracies_serializable = [{int(k): v for k, v in attempt_acc.items()} for attempt_acc in accuracies]
+        with open(OUT_FOLDER + '/accuracy.json', 'w') as f:
+            json.dump(accuracies_serializable, f)
 
-        # Plot all accuracies
-        for acc in accuracies:
-            for k, v in acc.items():
-                plt.plot(v)
-        plt.title('Model accuracy')
-        plt.savefig(OUT_FOLDER + '/accuracy.png')
+        plot_loss(losses)
+        plot_accuracy(accuracies)
 
+        print("Average loss over all attempts:", np.mean([loss.history['loss'][-1] for loss in losses]))
+        print("Average accuracy over all attempts:", np.mean([sum(acc.values()) / len(acc) for acc in accuracies]))
 
     else:
         model = models.load_model(args.model)
@@ -388,7 +390,6 @@ def main(args):
             y_encoders = json.load(f)
             yle = LabelEncoder().fit(y_encoders)
 
-    if args.validation_file:
         validation_data = open_file(args.validation_file)
         y_pred = validate_cnn(model, features, yle, validation_data)
 
@@ -400,7 +401,7 @@ def main(args):
                 predicted = y_pred[i]
                 original = validation_data[i]['label']
                 if predicted != original:
-                    print("Predicted:", predicted, "Original:", original)
+                    print("Predicted: ", predicted, "Original: ", original)
                 if original not in val_acc:
                     val_acc[original] = []
                 val_acc[original].append(predicted)
@@ -433,10 +434,11 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='model')
-    parser.add_argument('-f', '--file', type=str, help='Path to the training/test data', nargs='+')
-    parser.add_argument('-V', '--validation_file', type=str, help='Path to the validation data')
-    parser.add_argument('-m', '--model', type=str, help='Path to the model file')
-    parser.add_argument('-s', '--stats-mode', action='store_true', help='Repeat training multiple times to get stats')
+    parser.add_argument('-f', '--file', type=str, help='Path to the files, one or many', nargs='+')
+    parser.add_argument('-m', '--model', type=str,
+                        help='Path to the model file; if provided, will do inference instead of training')
+    parser.add_argument('-s', '--stats-mode', action='store_true',
+                        help='Repeat process multiple times for statistics')
 
     args = parser.parse_args()
 
@@ -447,6 +449,5 @@ if __name__ == '__main__':
     if args.model and args.file:
         print('Cannot train a model and use a model file at the same time.')
         exit(1)
-
 
     main(args)
