@@ -23,7 +23,7 @@ PATIENCE = 20
 OUT_FOLDER = 'out'
 
 # Features
-INITIAL_FEATURES = [
+FEATURES = [
     # "requestURI",
     "verb",
     "user",
