@@ -6,8 +6,7 @@ import argparse
 import subprocess
 import os
 import sys
-from tqdm import tqdm
-from common import LABEL_IGNORE, LABEL_UNKNOWN
+from common import LABEL_IGNORE, LABEL_UNKNOWN, tqdm
 
 parser = argparse.ArgumentParser(description='Label control plane logs')
 parser.add_argument('-f', '--file', type=str, help='Input file', required=True)
@@ -21,6 +20,9 @@ if not os.path.exists(args.file):
 labelled = []
 unlabelled = []
 
+print("------")
+print("Reading input file...")
+
 with open(args.file) as f:
     lines = f.readlines()
     for line in tqdm(lines):
@@ -31,9 +33,12 @@ with open(args.file) as f:
             unlabelled.append(line)
 
 total = len(lines)
-print("Total lines: ", total)
+print("Total lines read: ", total)
 print("Total labelled: ", len(labelled))
 print("Total unlabelled: ", len(unlabelled))
+
+print("------")
+print("Automatically labelling...")
 
 count = 0
 temp_file = subprocess.check_output('mktemp', text=True).strip()
@@ -125,7 +130,7 @@ with open(temp_file, 'w') as f:
             and o['objectRef']['subresource'] == 'token' \
             and o['verb'] in ('create',):
             # Node creating tokens for service accounts
-            o = propose_label(o) # should be 17808
+            o['label'] = propose_label(o) # should be 17808
 
         # Other
         elif o['user']['username'] == 'system:serviceaccount:kube-system:kube-proxy' \
@@ -164,15 +169,18 @@ print("Total newly labelled: ", len(newly_labelled) + count)
 if count == 0:
     print("All lines labelled automatically.")
 else:
-    print("Fancy labelling manually the remaining lines? (y/n) ", end='')
-    try:
-        with open('/dev/tty') as tty:
-            user_response = tty.readline().strip().lower()
-    except FileNotFoundError:
-        print("Error: Could not open /dev/tty for input. Defaulting to 'n'.")
-        user_response = 'n'
-
+    print("-------\nFancy labelling manually the remaining lines? (y/n) ", end='')
+    user_response = input().lower()
+    
+    # try:
+    #     with open('/dev/tty') as tty:
+    #         user_response = tty.readline().strip().lower()
+    # except FileNotFoundError:
+    #     print("Error: Could not open /dev/tty for input. Defaulting to 'n'.")
+    #     user_response = 'n'
+    manual_labelled = False
     if input().lower() == 'y':
+        manual_labelled = True
         from log_parser import ParsingMode, parse
 
         old_line_count = len(newly_labelled)
@@ -201,10 +209,22 @@ out_lines.sort(key=lambda x: json.loads(x)['requestReceivedTimestamp'])
 
 print("Total lines: ", len(out_lines))
 
-final_out_file = args.file + "_cplabel"
+if not manual_labelled:
+    final_out_file = args.file + "_cplabel"
+else:
+    final_out_file = args.file + "_cplabel_mnlabel"
+
+if os.path.exists(final_out_file):
+    print("Output file already exists. Overwrite? (y/n) ", end='')
+    user_response = input().lower()
+    if user_response != 'y':
+        tmp3 = subprocess.check_output('mktemp', text=True).strip()
+        final_out_file = tmp3
 
 with open(final_out_file, 'w') as f:
     for line in out_lines:
         f.write(line)
+
+print("Output written to ", final_out_file)
 
 subprocess.run(['rm', temp_file])
