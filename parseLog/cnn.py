@@ -16,14 +16,14 @@ from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
-ATTEMPTS = 40
+ATTEMPTS = 20
 WINDOW_LENGTH = 40
 EPOCHS = 300
-PATIENCE = 40
+PATIENCE = 20
 OUT_FOLDER = 'out'
 
 # Features
-FEATURES = [
+INITIAL_FEATURES = [
     # "requestURI",
     "verb",
     "user",
@@ -163,19 +163,14 @@ def generate_cnn(data: list[dict]) -> dict:
     # classification model
     model = models.Sequential([
         layers.Input(shape=(WINDOW_LENGTH, len_features)),
-        layers.Conv1D(WINDOW_LENGTH, 3, activation='relu'),
-        # layers.Dropout(0.1),
-        layers.Conv1D(WINDOW_LENGTH * 2, 3, activation='relu'),
-        # layers.Dropout(0.2),
-        layers.Conv1D(WINDOW_LENGTH * 4, 3, activation='relu'),
-        # layers.Dropout(0.3),
-        layers.Conv1D(WINDOW_LENGTH * 8, 3, activation='relu'),
-        layers.Flatten(),
-        layers.Dropout(0.3),
-        layers.Dense(WINDOW_LENGTH * len_classes),
-        layers.Reshape((WINDOW_LENGTH, len_classes)),
+        layers.LSTM(WINDOW_LENGTH * 3, return_sequences=True),
+        layers.LSTM(WINDOW_LENGTH * 2, return_sequences=True),
+        layers.LSTM(WINDOW_LENGTH, return_sequences=True),
+        layers.Dropout(0.2),
+        layers.TimeDistributed(layers.Dense(len_classes)),
         layers.Activation('softmax')
     ])
+
 
     cb = [
         callbacks.EarlyStopping(monitor='val_loss', patience=PATIENCE, restore_best_weights=True),
