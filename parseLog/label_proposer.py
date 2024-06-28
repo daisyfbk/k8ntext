@@ -199,7 +199,7 @@ def main(args):
                         continue
                     try:
                         # print(bin(label))
-                        print(f"{label} <- {get_informative_string(j)}")
+                        print(f"{label} <- {get_informative_dict(j)}")
                     except:
                         pass
         elif args.decode:
@@ -214,7 +214,7 @@ def main(args):
 
 
 if __name__ == '__main__':
-    from log_parser import get_informative_string
+    from log_parser import get_informative_dict
 
     parser = argparse.ArgumentParser(
         prog='propose_label',

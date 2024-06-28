@@ -161,11 +161,12 @@ def take_a_decision_about_log_line(json_data):
     return Decision.white_listed
 
 
-def get_informative_string(json_data):
+def get_informative_dict(json_data):
     request_uri = json_data.get('requestURI').split('?')[0]
     verb = json_data.get('verb')
     user_username = json_data.get('user').get('username')
     objectref_resource = json_data.get('objectRef').get('resource')
+    objectref_subresource = json_data.get('objectRef').get('subresource')
     objectref_name = json_data.get('objectRef').get('name')
     objectref_namespace = json_data.get('objectRef').get('namespace')
     requestReceivedTimestamp = json_data.get('requestReceivedTimestamp')
@@ -174,6 +175,7 @@ def get_informative_string(json_data):
         'username': user_username,
         'verb': verb,
         'resource': objectref_resource,
+        'subresource': objectref_subresource,
         'namespace': objectref_namespace,
         'name': objectref_name,
         'requestURI': request_uri,
@@ -192,9 +194,9 @@ def label_whitelisted_log_line(whitelisted_lines):
         if 'label' in line and line['label'] != LABEL_UNKNOWN:
             continue
 
-        current_line = get_informative_string(line)
+        current_line = get_informative_dict(line)
         if x < len(whitelisted_lines) - 1:
-            next_line = get_informative_string(whitelisted_lines[x + 1])
+            next_line = get_informative_dict(whitelisted_lines[x + 1])
         else:
             next_line = None
 
