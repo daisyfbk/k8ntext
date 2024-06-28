@@ -169,7 +169,7 @@ print("Total newly labelled: ", len(newly_labelled) + count)
 if count == 0:
     print("All lines labelled automatically.")
 else:
-    print("-------\nFancy labelling manually the remaining lines? (y/n) ", end='')
+    print("Fancy labelling manually the remaining lines? (y/n) ", end='')
     user_response = input().lower()
     
     # try:
@@ -184,6 +184,7 @@ else:
         from log_parser import ParsingMode, parse
 
         old_line_count = len(newly_labelled)
+        old_label_count = len([line for line in newly_labelled if json.loads(line)['label'] != LABEL_UNKNOWN])
 
         tmp2 = subprocess.check_output('mktemp', text=True).strip()
         with open(tmp2, 'w') as f:
@@ -195,14 +196,18 @@ else:
         with open(out_file) as f:
             newly_labelled = f.readlines()
 
-        print("Total newly labelled after manual labelling: ", len(newly_labelled))
+        new_line_count = len(newly_labelled)
+        new_label_count = len([line for line in newly_labelled if json.loads(line)['label'] != LABEL_UNKNOWN])
 
+        print("Total newly labelled after manual labelling: ", new_label_count)
+        print(f"Amount of labels: {old_label_count} -> {new_label_count}")
+        
         if len(newly_labelled) == old_line_count:
             print("All lines labelled successfully.")
         else:
             print("WARNING: Some lines have been dropped by the manual labelling process. Please check the code and rerun.")
 
-        subprocess.run(['rm', out_file, temp_file])
+        subprocess.run(['rm', out_file, tmp2])
 
 out_lines = labelled + newly_labelled
 out_lines.sort(key=lambda x: json.loads(x)['requestReceivedTimestamp'])

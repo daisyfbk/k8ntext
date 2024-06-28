@@ -265,7 +265,9 @@ def main(args):
                         continue
                     try:
                         # print(bin(label))
-                        print(f"{label} <- {get_informative_string(j)}")
+                        infstr = get_informative_string(j)
+                        infstr['label'] = label
+                        print(json.dumps(infstr))
                     except:
                         pass
         elif args.decode:

@@ -220,10 +220,12 @@ def label_whitelisted_log_line(whitelisted_lines):
         if create_proposal is None:
             create_proposal = LABEL_UNKNOWN
 
+        print("Progress: ", x + 1, "/", len(whitelisted_lines))
         print("Labels: ")
         print("[a/ENTER] previous (default):\t", previous_label)
         print("[b]       proposed:\t\t", proposal)
         print("[c]       create equivalent:\t", create_proposal)
+        print("[s]       suspend")
         print("[number]  type it directly")
 
         while True:
@@ -239,6 +241,9 @@ def label_whitelisted_log_line(whitelisted_lines):
                     input_label = proposal
                 case "c":
                     input_label = create_proposal
+                case "s":
+                    input_label = ""
+                    return
                 case _:
                     if case == "":
                         input_label = previous_label
@@ -301,8 +306,13 @@ def parse(mode: ParsingMode, input_filename: str = None):
         whitelisted_lines.sort(key=lambda x: x['requestReceivedTimestamp'])
         label_whitelisted_log_line(whitelisted_lines)
 
+        output_lines = blacklisted_lines + whitelisted_lines
+    elif mode == ParsingMode.reduction:
+        output_lines = whitelisted_lines
+    elif mode == ParsingMode.light_reduction:
+        output_lines = whitelisted_lines + blacklisted_lines
+
     # sort the output_lines array by the requestReceivedTimestamp
-    output_lines = blacklisted_lines + whitelisted_lines
     output_lines.sort(key=lambda x: x['requestReceivedTimestamp'])
 
     with open(output_filename, 'w') as output_file:
