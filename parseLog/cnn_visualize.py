@@ -1,7 +1,7 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
-from parseLog.cnn import OUT_FOLDER
+from cnn import OUT_FOLDER
 
 
 def plot_loss(losses: list) -> None:
