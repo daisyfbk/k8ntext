@@ -10,14 +10,29 @@ VERBS_FILE = 'verbs.csv'
 
 def load_labels():
     labels = {}
+    available_verbs = {}
+    namespaced_labels = {}
     with open(LABELS_FILE, 'r') as f:
         reader = csv.reader(f)
         for row in reader:
             if row[0].startswith('#'):
                 continue
-            apigroup, version, uri, __id, sub_id = row
+            apigroup, version, uri, __id, sub_id, *rest = row
+
+            namespaced, *rest = rest
+            if namespaced == 'true':
+                namespaced_labels[(apigroup, version, uri)] = True
+            else:
+                namespaced_labels[(apigroup, version, uri)] = False
+
+            local_available_verbs = set(rest)
+
+            if '' in local_available_verbs:
+                local_available_verbs.remove('')
+            available_verbs[(apigroup, version, uri)] = local_available_verbs
             labels[(apigroup, version, uri)] = (int(__id), int(sub_id))
-    return labels
+        
+    return labels, available_verbs, namespaced_labels
 
 
 def load_verbs():
@@ -31,9 +46,8 @@ def load_verbs():
             verbs[verb] = int(__id)
     return verbs
 
-labels = load_labels()
+labels, available_verbs, namespaced_labels = load_labels()
 verbs = load_verbs()
-
 
 def generate_label(verb: str, objectRef: dict) -> int:
     """
@@ -67,6 +81,10 @@ def generate_label(verb: str, objectRef: dict) -> int:
         is_single_object = 0
 
     # print(bin(label[0]), ", ", bin(label[1]), ", ", bin(is_namespaced), ", ", bin(is_single_object), ", ", bin(verb_label))
+
+    is_allowed, _ = validate_operation(apiGroup, apiVersion, resource, verb, is_namespaced == 1)
+    if not is_allowed:
+        raise KeyError(f"Operation {verb} on {apiGroup}/{apiVersion}/{resource} is not allowed")
 
     return encode_label(label[0], label[1], is_namespaced, is_single_object, verb_label)
 
@@ -112,12 +130,51 @@ def decode_label(label: int) -> dict:
         "uri": uri,
         "label_id": label_id,
         "label_sub_id": label_sub_id,
-        "is_namespaced": is_namespaced,
+        "is_namespaced": is_namespaced == 1,
         "is_single_object": is_single_object,
         "verb": verb,
         "verb_id": verb_id,
         "alternate": alternate,
     }
+
+
+def validate_operation(
+        apiGroup: str,
+        version: str,
+        uri: str,
+        verb: str,
+        is_namespaced: bool,
+) -> bool:
+    allowed_operation = False
+    match verb:
+        case "get" | "list":
+            allowed_operation = (
+                "list" in available_verbs[(apiGroup, version, uri)] \
+                or "get" in available_verbs[(apiGroup, version, uri)]
+            )
+            verb = "get/list"
+        case "create":
+            allowed_operation = "create" in available_verbs[(apiGroup, version, uri)]
+        case "update" | "patch":
+            allowed_operation = (
+                "update" in available_verbs[(apiGroup, version, uri)] \
+                or "patch" in available_verbs[(apiGroup, version, uri)]
+            )
+            verb = "update/patch"
+        case "delete" | "deletecollection":
+            allowed_operation = (
+                "delete" in available_verbs[(apiGroup, version, uri)] \
+                or "deletecollection" in available_verbs[(apiGroup, version, uri)]
+            )
+            verb = "delete/deletecollection"
+        case "watch":
+            allowed_operation = "watch" in available_verbs[(apiGroup, version, uri)]
+        case _:
+            raise ValueError(f"Unknown verb: {verb}")
+        
+    allowed_operation = allowed_operation and is_namespaced == namespaced_labels[(apiGroup, version, uri)]
+
+    return allowed_operation, verb
 
 
 def brute_force_label_space():
@@ -129,8 +186,17 @@ def brute_force_label_space():
                         try:
                             label = encode_label(label_id, label_sub_id, is_namespaced, is_single_object, verb_id)
                             decoded = decode_label(label)
-                            if "error" not in decoded:
-                                print(f"Label: {label}, {bin(label)}; Meaning: verb {decoded['verb']} on {decoded['apiGroup']}/{decoded['version']}/{decoded['uri']}; resource is {'namespaced' if decoded['is_namespaced'] else 'not namespaced'}; {'single object' if decoded['is_single_object'] else 'list of objects'}")
+                            
+                            verb = decoded['verb']
+                            apiGroup = decoded['apiGroup']
+                            version = decoded['version']
+                            uri = decoded['uri']
+                            is_namespaced = decoded['is_namespaced']
+
+                            allowed_operation, verb = validate_operation(apiGroup, version, uri, verb, is_namespaced)
+                                
+                            if "error" not in decoded and allowed_operation:
+                                print(f"Label: {label}, {bin(label)}; Meaning: verb {verb} on {apiGroup}/{version}/{uri}; resource is {'namespaced' if decoded['is_namespaced'] else 'not namespaced'}; {'single object' if decoded['is_single_object'] else 'list of objects'}")
                         except:
                             continue
 
