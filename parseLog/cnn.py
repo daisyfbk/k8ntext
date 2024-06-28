@@ -15,11 +15,8 @@ from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
-from cnn_options import STATISTICS_ATTEMPTS, WINDOW_LENGTH, MAX_EPOCHS, INITIAL_LEARNING_RATE, \
-    EARLY_STOPPING_PATIENCE, REDUCE_LR_FACTOR, REDUCE_LR_PATIENCE, TEST_TRAIN_SPLIT, TRAIN_VALID_SPLIT
+from cnn_options import *
 from cnn_visualize import plot_loss, plot_accuracy
-
-OUT_FOLDER = 'out'
 
 # Features
 FEATURES = [
