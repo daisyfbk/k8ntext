@@ -171,8 +171,8 @@ def generate_cnn(data: list[dict]) -> dict:
         # layers.Dropout(0.3),
         layers.Conv1D(WINDOW_LENGTH * 8, 3, activation='relu'),
         layers.Flatten(),
+        layers.Dropout(0.3),
         layers.Dense(WINDOW_LENGTH * len_classes),
-        layers.Dropout(0.5),
         layers.Reshape((WINDOW_LENGTH, len_classes)),
         layers.Activation('softmax')
     ])
@@ -196,7 +196,7 @@ def generate_cnn(data: list[dict]) -> dict:
 
     print(model.summary())
 
-    history = model.fit(x_train, y_train, epochs=EPOCHS, callbacks=cb, validation_split=0.2, shuffle=True)
+    history = model.fit(x_train, y_train, epochs=EPOCHS, callbacks=cb, validation_split=0.2)
     y_pred = model.predict(x_test)
 
     # y_pred is a tensor of shape (len(x_test), WINDOW_LENGTH, len_classes)
@@ -326,7 +326,12 @@ def main(args):
             print('Please provide a valid file.')
             exit(1)
 
-        data = open_file(args.file)
+        if type(args.file) == list:
+            data = []
+            for file in args.file:
+                data += open_file(file)
+        else:
+            data = open_file(args.file)
 
         losses = []
         accuracies = []
@@ -375,7 +380,6 @@ def main(args):
                 plt.plot(v)
         plt.title('Model accuracy')
         plt.savefig(OUT_FOLDER + '/accuracy.png')
-
 
 
     else:
@@ -434,7 +438,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='model')
-    parser.add_argument('-f', '--file', type=str, help='Path to the training/test data')
+    parser.add_argument('-f', '--file', type=str, help='Path to the training/test data', nargs='+')
     parser.add_argument('-V', '--validation_file', type=str, help='Path to the validation data')
     parser.add_argument('-m', '--model', type=str, help='Path to the model file')
     parser.add_argument('-s', '--stats-mode', action='store_true', help='Repeat training multiple times to get stats')
