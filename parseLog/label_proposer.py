@@ -37,8 +37,8 @@ verbs = load_verbs()
 
 def generate_label(verb: str, objectRef: dict) -> int:
     """
-    We use 20 bits to encode the label
-    A First 8 bits: type (at most 255 types, I expect less than 100 types in total)
+    We use 22 bits to encode the label
+    A First 10 bits: type (at most 1024 types, I expect 100-200 types, upper range is for less important types)
     B Next 3 bits: sub-type (at most 15 sub-types, I expect 1-2 sub-types per type)
     C Next bit: is the resource namespaced
     D Next bit: is it querying a single object or a list of objects? check if objectRef.name exists
@@ -77,26 +77,29 @@ def encode_label(
     label_sub_id: int,
     is_namespaced: int,
     is_single_object: int,
-    verb_id: int
+    verb_id: int,
+    alternate: int = 0
 ) -> int:
     label = (label_id << 8) | (label_sub_id << 5) | (is_namespaced << 4) | (is_single_object << 3) | verb_id
     label = label << 4
+    label = label | alternate
 
     return label
 
 
 @functools.lru_cache(maxsize=None)
 def decode_label(label: int) -> dict:
+    if label == LABEL_IGNORE:
+        return {"error": "Label is ignored"}
     if label == LABEL_UNKNOWN:
-        return {"error": "Unknown label"}
-
-    label_id = (label >> 12) & 0xFF
-    label_sub_id = (label >> 9) & 0x7
-    is_namespaced = (label >> 8) & 0x1
-    is_single_object = (label >> 7) & 0x1
-    verb_id = (label >> 4) & 0x7
-
-    # print(bin(label_id), ", ", bin(label_sub_id), ", ", bin(is_namespaced), ", ", bin(is_single_object), ", ", bin(verb_id))
+        return {"error": "Label is unknown"}
+    
+    label_id =         (label & 0b1111111111000000000000) >> 12
+    label_sub_id =     (label & 0b0000000000111000000000) >> 9
+    is_namespaced =    (label & 0b0000000000000100000000) >> 8
+    is_single_object = (label & 0b0000000000000010000000) >> 7
+    verb_id =          (label & 0b0000000000000001110000) >> 4
+    alternate =        (label & 0b0000000000000000001111)
 
     key = [k for k, v in labels.items() if v == (label_id, label_sub_id)][0]
     apigroup, version, uri = key
@@ -112,7 +115,8 @@ def decode_label(label: int) -> dict:
         "is_namespaced": is_namespaced,
         "is_single_object": is_single_object,
         "verb": verb,
-        "verb_id": verb_id
+        "verb_id": verb_id,
+        "alternate": alternate,
     }
 
 

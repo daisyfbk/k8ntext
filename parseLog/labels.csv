@@ -74,9 +74,9 @@ core,v1,services/status,26,1
 discovery.k8s.io,v1,endpointslices,23,0
 events.k8s.io,v1,events,903,0
 flowcontrol.apiserver.k8s.io,v1beta3,flowschemas,802,0
-flowcontrol.apiserver.k9s.io,v1beta3,flowschemas/status,802,1
+flowcontrol.apiserver.k8s.io,v1beta3,flowschemas/status,802,1
 flowcontrol.apiserver.k8s.io,v1beta3,prioritylevelconfigurations,805,0
-flowcontrol.apiserver.k9s.io,v1beta3,prioritylevelconfigurations/status,805,1
+flowcontrol.apiserver.k8s.io,v1beta3,prioritylevelconfigurations/status,805,1
 networking.k8s.io,v1,ingressclasses,24,0
 networking.k8s.io,v1,ingresses,25,0
 networking.k8s.io,v1,ingresses/status,25,1
