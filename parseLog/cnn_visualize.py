@@ -5,15 +5,35 @@ from cnn_options import OUT_FOLDER
 
 
 def plot_loss(losses: list) -> None:
-    all_losses = [loss.history['loss'] for loss in losses]
-    all_val_losses = [loss.history['val_loss'] for loss in losses]
-
-    mean_loss = np.mean(all_losses, axis=0)
-    std_loss = np.std(all_losses, axis=0)
-    mean_val_loss = np.mean(all_val_losses, axis=0)
-    std_val_loss = np.std(all_val_losses, axis=0)
-
-    epochs = range(1, len(mean_loss) + 1)
+    # Find the maximum length of loss histories
+    max_length = max(max(len(loss.history['loss']), len(loss.history['val_loss'])) for loss in losses)
+    
+    # Initialize lists to store adjusted loss histories
+    all_losses = []
+    all_val_losses = []
+    
+    # Adjust all loss histories to have the same maximum length
+    for loss in losses:
+        adjusted_loss = np.full(max_length, np.nan)
+        adjusted_val_loss = np.full(max_length, np.nan)
+        
+        adjusted_loss[:len(loss.history['loss'])] = loss.history['loss']
+        adjusted_val_loss[:len(loss.history['val_loss'])] = loss.history['val_loss']
+        
+        all_losses.append(adjusted_loss)
+        all_val_losses.append(adjusted_val_loss)
+    
+    # Convert lists to NumPy arrays
+    all_losses = np.array(all_losses)
+    all_val_losses = np.array(all_val_losses)
+    
+    # Calculate mean and standard deviation safely
+    mean_loss = np.nanmean(all_losses, axis=0)
+    std_loss = np.nanstd(all_losses, axis=0)
+    mean_val_loss = np.nanmean(all_val_losses, axis=0)
+    std_val_loss = np.nanstd(all_val_losses, axis=0)
+    
+    epochs = range(1, max_length + 1)
 
     plt.figure(figsize=(10, 6))
     plt.plot(epochs, mean_loss, label='Average Training Loss')
