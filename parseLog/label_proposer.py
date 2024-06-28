@@ -276,7 +276,7 @@ def main(args):
                         continue
                     try:
                         # print(bin(label))
-                        infstr = get_informative_string(j)
+                        infstr = get_informative_dict(j)
                         infstr['label'] = label
                         print(json.dumps(infstr))
                     except:
@@ -293,7 +293,7 @@ def main(args):
 
 
 if __name__ == '__main__':
-    from log_parser import get_informative_string
+    from log_parser import get_informative_dict
 
     parser = argparse.ArgumentParser(
         prog='propose_label',
