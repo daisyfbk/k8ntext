@@ -5,7 +5,7 @@ import configparser
 from enum import Enum
 import label_proposer
 from termcolor import colored
-from common import IGNORED_NAMESPACES, LABEL_UNKNOWN
+from common import IGNORED_NAMESPACES, LABEL_UNKNOWN, tqdm
 
 parser = argparse.ArgumentParser(
     prog='parseLog',
@@ -212,36 +212,49 @@ def label_whitelisted_log_line(whitelisted_lines):
         if proposal is None:
             proposal = LABEL_UNKNOWN
 
-        print("Labels: ")
-        print("a. previous (default): ", previous_label)
-        print("b. proposed: ", proposal)
-        print("c. type it: ")
-        case = input("Choose {a, b, c}: ")
+        # Try proposing a label of the equivalent of the current,
+        # but with the 'create' verb instead of 'watch'
+        line_copy = line.copy()
+        line_copy['verb'] = 'create'
+        create_proposal = label_proposer.propose_label(line_copy)
+        if create_proposal is None:
+            create_proposal = LABEL_UNKNOWN
 
-        match case:
-            case "a":
-                input_label = previous_label
-            case "b":
-                input_label = proposal
-            case "c":
-                while True:
-                    try:
-                        input_label = int(input("label: "))
-                        break
-                    except ValueError:
-                        print("Please enter a valid number")
-            case _:
-                # If a number, assume case d) was chosen and it's the number
-                # if empty, assume case a) was chosen
-                if case == "":
+        print("Labels: ")
+        print("[a/ENTER] previous (default):\t", previous_label)
+        print("[b]       proposed:\t\t", proposal)
+        print("[c]       create equivalent:\t", create_proposal)
+        print("[number]  type it directly")
+
+        while True:
+            case = input("Choose {a, b, type it, ENTER to default}: ").lower()
+
+            match case:
+                case "a":
                     input_label = previous_label
-                else:
-                    while True:
+                    if previous_label is None or previous_label == "":
+                        print("Previous label is empty, please choose another one")
+                        continue
+                case "b":
+                    input_label = proposal
+                case "c":
+                    input_label = create_proposal
+                case _:
+                    if case == "":
+                        input_label = previous_label
+                        if previous_label is None or previous_label == "":
+                            print("Previous label is empty, please choose another one")
+                            continue
+                    else:
                         try:
                             input_label = int(case)
-                            break
+                            if input_label < 0:
+                                print("Invalid input")
+                                continue
                         except ValueError:
-                            print("Please enter a valid number")
+                            print("Invalid input")
+                            continue
+            break
 
         print()
 
@@ -266,8 +279,8 @@ def parse(mode: ParsingMode, input_filename: str = None):
     whitelisted_lines = []
     blacklisted_lines = []
     with (open(input_filename, 'r') as input_file):
-
-        for line in input_file:
+        print("Filtering logs...")
+        for line in tqdm(input_file):
             # each line is a json, load it
             json_data = json.loads(line)
 
