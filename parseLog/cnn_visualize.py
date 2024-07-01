@@ -52,7 +52,7 @@ def plot_accuracy(accuracies: list[dict]) -> None:
 
     # Step 1: Collect data for each class across all attempts
     class_accuracies = {}
-    for attempt_acc in accuracies:
+    for attempt_acc in accuracies['per_class_accuracies']
         for class_label, acc in attempt_acc.items():
             class_label = int(class_label)
             if class_label not in class_accuracies:
@@ -62,7 +62,7 @@ def plot_accuracy(accuracies: list[dict]) -> None:
     class_descriptions = {}
     from label_proposer import decode_label
     for class_label in class_accuracies.keys():
-        class_descriptions[class_label] = decode_label(class_label, as_string=True)
+        class_descriptions[class_label] = decode_label(class_label, as_string=True) + f' ({class_label})'
             
     # Prepare data for boxplot
     sorted_labels = sorted(class_accuracies.keys(), key=lambda x: -int(x))
@@ -81,3 +81,20 @@ def plot_accuracy(accuracies: list[dict]) -> None:
 
     plt.legend()
     plt.savefig(OUT_FOLDER + '/accuracy.png')
+
+    # Step 3: print a confusion matrix for the top 10% of classes by amount of data
+    class_accuracies.sort(key=lambda x: -accuracies['per_class_weights'][x])
+    top_classes = class_accuracies[:len(class_accuracies) // 10]
+
+    confusion_matrix = np.zeros((len(top_classes), len(top_classes)))
+
+    for i, class_i in enumerate(top_classes):
+        for j, class_j in enumerate(top_classes):
+            confusion_matrix[i, j] = accuracies['confusion_matrix'][class_i, class_j]
+
+    plt.figure(figsize=(20, 20))
+    plt.imshow(confusion_matrix, cmap='hot', interpolation='nearest')
+    plt.colorbar()
+    plt.savefig(OUT_FOLDER + '/confusion_matrix.png')
+
+    
