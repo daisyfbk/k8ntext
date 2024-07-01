@@ -1,22 +1,22 @@
 import argparse
 import json
+import logging as log
 
 import keras.api.callbacks as callbacks
 import keras.api.layers as layers
+import keras.api.losses as losses
+import keras.api.metrics as keras_metrics
 import keras.api.models as models
 import numpy as np
-import keras.api.losses as losses
 from keras.api.optimizers import Adam
 from keras.api.utils import to_categorical
-import keras.api.metrics as keras_metrics
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import confusion_matrix
 
 import parameters as pm
 from support.log import initialize_log
-import logging as log
 
 # Features
 FEATURES = [
@@ -201,7 +201,7 @@ def generate_model(data: list[dict]) -> dict:
 
     y_pred_labels = np.argmax(y_pred, axis=-1)
     y_test_labels = np.argmax(y_test, axis=-1)
-    
+
     # original_positions = np.argsort(i_test)
 
     # y_pred_labels_unshuffled = y_pred_labels[original_positions]
@@ -221,11 +221,10 @@ def generate_model(data: list[dict]) -> dict:
     y_test_decoded = np.array(y_test_decoded)
 
     metrics = calculate_metrics(y_test_decoded, y_pred_decoded,
-                                                       include_per_class=True,
-                                                       include_confusion_matrix=True)
+                                include_per_class=True,
+                                include_confusion_matrix=True)
 
     log.info(f"Model metrics (core): {metrics['core_metrics']}")
-
 
     return {
         "model": model,
@@ -238,13 +237,13 @@ def generate_model(data: list[dict]) -> dict:
 
 
 def calculate_metrics(y_true, y_pred,
-                       include_majority_accuracy = False,
-                       include_per_class = False,
-                       include_confusion_matrix = False) -> tuple[dict, list | None, list | None]:
+                      include_majority_accuracy=False,
+                      include_per_class=False,
+                      include_confusion_matrix=False) -> dict:
     if y_true.shape != y_pred.shape:
         raise ValueError("Shapes of y_true and y_pred do not match.")
-    
-    accuracy  = float(accuracy_score(y_true.flatten(), y_pred.flatten()))
+
+    accuracy = float(accuracy_score(y_true.flatten(), y_pred.flatten()))
     precision = float(precision_score(y_true.flatten(), y_pred.flatten(), average='macro', zero_division=0))
     recall = float(recall_score(y_true.flatten(), y_pred.flatten(), average='macro', zero_division=0))
     f1 = float(f1_score(y_true.flatten(), y_pred.flatten(), average='macro', zero_division=0))
@@ -275,7 +274,7 @@ def calculate_metrics(y_true, y_pred,
         for i in range(len(original_sequence)):
             if original_sequence[i] == predicted_sequence[i]:
                 absolute_accuracy += 1
-                
+
         majority_accuracy = absolute_accuracy / len(original_sequence)
         majority_accuracy = float(majority_accuracy)
 
@@ -346,7 +345,7 @@ def calculate_metrics(y_true, y_pred,
         "per_class_metrics": per_class_metrics,
         "confusion_matrix": cm,
     }
-    
+
 
 def validate_model(model: models.Model, features: list[str], yle, data: list[dict]) -> list:
     # flattened_data, _ = preprocess_data(data, features)
@@ -496,7 +495,7 @@ def main(args):
             model = result['model']
             losses.append(result['history'])
             metrics.append(result['metrics'])
-    
+
             # Save the model and the features
             model.save(pm.OUT_FOLDER + '/model.keras')
             with open(pm.OUT_FOLDER + '/model.keras' + '.x_encoders', 'w') as f:
