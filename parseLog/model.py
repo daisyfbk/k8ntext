@@ -5,9 +5,11 @@ import keras.api.callbacks as callbacks
 import keras.api.layers as layers
 import keras.api.models as models
 import numpy as np
+import keras.api.losses as losses
 from keras.api.optimizers import Adam
 from keras.api.utils import to_categorical
-from sklearn.metrics import accuracy_score
+import keras.api.metrics as keras_metrics
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import confusion_matrix
@@ -172,11 +174,16 @@ def generate_model(data: list[dict]) -> dict:
         callbacks.ReduceLROnPlateau(monitor='val_loss', factor=pm.REDUCE_LR_FACTOR, patience=pm.REDUCE_LR_PATIENCE)
     ]
 
+    mt = [
+        # keras_metrics.Precision(),
+        # keras_metrics.Recall(),
+        keras_metrics.CategoricalAccuracy()
+    ]
+
     model.compile(
         optimizer=Adam(learning_rate=pm.INITIAL_LEARNING_RATE),
-        loss='categorical_crossentropy',
-        metrics=['categorical_accuracy'],
-
+        loss=losses.CategoricalCrossentropy(),
+        metrics=mt
     )
 
     indices = np.arange(len(X))
@@ -213,35 +220,34 @@ def generate_model(data: list[dict]) -> dict:
     y_pred_decoded = np.array(y_pred_decoded)
     y_test_decoded = np.array(y_test_decoded)
 
-    accuracies, ori_seq, pred_seq = calculate_accuracy(y_test_decoded, y_pred_decoded,
-                                                       include_majority_accuracy=False,
-                                                       include_class_accuracies=True,
+    metrics = calculate_metrics(y_test_decoded, y_pred_decoded,
+                                                       include_per_class=True,
                                                        include_confusion_matrix=True)
 
-    log.info(f"Model accuracy (accuracy_score): {accuracies['model_accuracy']}")
-    log.info(f"Majority class accuracy: {accuracies['majority_accuracy']}")
+    log.info(f"Model metrics (core): {metrics['core_metrics']}")
+
 
     return {
         "model": model,
         "y_encoders": yle,
         "x_encoders": xenc,
         "features": total_features,
-        "accuracies": accuracies,
-        "original_sequence": ori_seq,
-        "predicted_sequence": pred_seq,
+        "metrics": metrics,
         "history": history
     }
 
 
-def calculate_accuracy(y_true, y_pred,
+def calculate_metrics(y_true, y_pred,
                        include_majority_accuracy = False,
-                       include_class_accuracies = False,
+                       include_per_class = False,
                        include_confusion_matrix = False) -> tuple[dict, list | None, list | None]:
     if y_true.shape != y_pred.shape:
         raise ValueError("Shapes of y_true and y_pred do not match.")
     
-    model_accuracy = accuracy_score(y_true.flatten(), y_pred.flatten())
-    model_accuracy = float(model_accuracy)
+    accuracy  = float(accuracy_score(y_true.flatten(), y_pred.flatten()))
+    precision = float(precision_score(y_true.flatten(), y_pred.flatten(), average='macro', zero_division=0))
+    recall = float(recall_score(y_true.flatten(), y_pred.flatten(), average='macro', zero_division=0))
+    f1 = float(f1_score(y_true.flatten(), y_pred.flatten(), average='macro', zero_division=0))
 
     if include_majority_accuracy:
         original_sequence_y_true = {}
@@ -273,15 +279,15 @@ def calculate_accuracy(y_true, y_pred,
         majority_accuracy = absolute_accuracy / len(original_sequence)
         majority_accuracy = float(majority_accuracy)
 
-        original_sequence = [int(x) for x in original_sequence]
-        predicted_sequence = [int(x) for x in predicted_sequence]
+        # original_sequence = [int(x) for x in original_sequence]
+        # predicted_sequence = [int(x) for x in predicted_sequence]
     else:
         majority_accuracy = None
-        original_sequence = None
-        predicted_sequence = None
+        # original_sequence = None
+        # predicted_sequence = None
 
     # Weighted accuracies for each class
-    if include_class_accuracies:
+    if include_per_class:
         label_categorizations = {}
         for i in range(pm.WINDOW_LENGTH):
             for j in range(len(y_pred)):
@@ -293,16 +299,23 @@ def calculate_accuracy(y_true, y_pred,
 
                 label_categorizations[actual].append(pred)
 
-        per_class_accuracies = {}
-        per_class_weights = {}
+        per_class_metrics = {
+            'accuracy': {},
+            'precision': {},
+            'recall': {},
+            'f1': {},
+            'weight': {}
+        }
         for k, v in label_categorizations.items():
             k = int(k)
-            per_class_accuracies[k] = float(accuracy_score(v, [k] * len(v)))
-            per_class_weights[k] = len(v)
+            per_class_metrics['accuracy'][k] = float(accuracy_score(v, [k] * len(v)))
+            per_class_metrics['precision'][k] = precision_score([k] * len(v), v, average='macro', zero_division=0)
+            per_class_metrics['recall'][k] = recall_score([k] * len(v), v, average='macro', zero_division=0)
+            per_class_metrics['f1'][k] = f1_score([k] * len(v), v, average='macro', zero_division=0)
+            per_class_metrics['weight'][k] = len(v)
 
     else:
-        per_class_accuracies = None
-        per_class_weights = None
+        per_class_metrics = None
 
     if include_confusion_matrix:
         # Ensure labels are only from y_true
@@ -323,15 +336,19 @@ def calculate_accuracy(y_true, y_pred,
         cm = None
 
     return {
-        "model_accuracy": model_accuracy,
+        "core_metrics": {
+            "accuracy": accuracy,
+            "precision": precision,
+            "recall": recall,
+            "f1": f1
+        },
         "majority_accuracy": majority_accuracy,
-        "per_class_accuracies": per_class_accuracies,
-        "per_class_weights": per_class_weights,
-        "confusion_matrix": cm
-    }, original_sequence, predicted_sequence
+        "per_class_metrics": per_class_metrics,
+        "confusion_matrix": cm,
+    }
     
 
-def validate_model(model: models.Model, features: list[str], yle, data: list[dict]) -> list:#
+def validate_model(model: models.Model, features: list[str], yle, data: list[dict]) -> list:
     # flattened_data, _ = preprocess_data(data, features)
     # x_before = []
 
@@ -457,17 +474,17 @@ def main(args):
             data = open_file(args.file)
 
         losses = []
-        accuracies = []
+        metrics = []
 
         if args.stats_mode:
             for i in range(pm.STATISTICS_ATTEMPTS):
                 result = generate_model(data)
                 history = result['history']
-                acc = result['accuracies']
+                metr = result['metrics']
 
                 # Plot ALL the losses over the epochs
                 losses.append(history)
-                accuracies.append(acc)
+                metrics.append(metr)
                 log.info(f"Attempt {i + 1} done.")
                 log.info(f"Final loss: {history.history['loss'][-1]}")
 
@@ -478,7 +495,7 @@ def main(args):
 
             model = result['model']
             losses.append(result['history'])
-            accuracies.append(result['accuracies'])
+            metrics.append(result['metrics'])
     
             # Save the model and the features
             model.save(pm.OUT_FOLDER + '/model.keras')
@@ -488,24 +505,20 @@ def main(args):
                 json.dump(result['y_encoders'].classes_.tolist(), f)
             with open(pm.OUT_FOLDER + '/model.keras' + '.features', 'w') as f:
                 json.dump(result['features'], f)
-            with open(pm.OUT_FOLDER + '/model.keras' + '.original_sequence', 'w') as f:
-                json.dump(result['original_sequence'], f)
-            with open(pm.OUT_FOLDER + '/model.keras' + '.predicted_sequence', 'w') as f:
-                json.dump(result['predicted_sequence'], f)
-
-
-            from model_visualize import plot_confusion_matrix
-            plot_confusion_matrix(accuracies[0])
+            # with open(pm.OUT_FOLDER + '/model.keras' + '.original_sequence', 'w') as f:
+            #     json.dump(result['original_sequence'], f)
+            # with open(pm.OUT_FOLDER + '/model.keras' + '.predicted_sequence', 'w') as f:
+            #     json.dump(result['predicted_sequence'], f)
 
         # Always save the loss and accuracy data
         with open(pm.OUT_FOLDER + '/loss.json', 'w') as f:
             json.dump([loss.history for loss in losses], f)
-        with open(pm.OUT_FOLDER + '/accuracy.json', 'w') as f:
-            json.dump(accuracies, f)
+        with open(pm.OUT_FOLDER + '/metrics.json', 'w') as f:
+            json.dump(metrics, f)
 
-        from model_visualize import plot_loss, plot_accuracy
+        from model_visualize import plot_loss, plot_metrics
         plot_loss(losses)
-        plot_accuracy(accuracies)
+        plot_metrics(metrics)
 
     else:
         model = models.load_model(args.model)

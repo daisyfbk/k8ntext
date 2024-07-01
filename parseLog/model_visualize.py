@@ -47,56 +47,82 @@ def plot_loss(losses: list) -> None:
     plt.savefig(OUT_FOLDER + '/loss.png')
 
 
-def plot_accuracy(accuracies: list[dict]) -> None:
+def plot_metrics(metrics: list[dict]) -> None:
     plt.clf()
 
-    # Step 1: Collect data for each class across all attempts
-    class_accuracies = {}
-    for attempt_acc in accuracies:
-        attempt_acc = attempt_acc['per_class_accuracies']
-        for class_label, acc in attempt_acc.items():
-            class_label = int(class_label)
-            if class_label not in class_accuracies:
-                class_accuracies[class_label] = []
-            class_accuracies[class_label].append(acc)
+    if len(metrics) == 1:
+        plot_confusion_matrix(metrics[0])
+    else:    
+        # Plot core metrics: accuracy, precision, recall, f1
+        available_metrics = ['accuracy', 'precision', 'recall', 'f1']
+        data = {}
+        for metric_name in available_metrics:
+            values = [metric['core_metrics'][metric_name] for metric in metrics]
+            mean = np.mean(values)
+            std = np.std(values)
+            data[metric_name] = (mean, std)
 
-    class_descriptions = {}
-    from label_proposer import decode_label
-    for class_label in class_accuracies.keys():
-        class_descriptions[class_label] = decode_label(class_label, as_string=True) + f' ({class_label})'
-            
-    # Prepare data for boxplot
-    sorted_labels = sorted(class_accuracies.keys(), key=lambda x: -int(x))
-    data = [class_accuracies[label] for label in sorted_labels]
+        # Plot metrics for scalar values
+        plt.figure(figsize=(10, 6))
+        x_positions = np.arange(len(available_metrics))
+        means = [data[metric_name][0] for metric_name in available_metrics]
+        stds = [data[metric_name][1] for metric_name in available_metrics]
+        plt.bar(x_positions, means, yerr=stds, align='center', alpha=0.7, ecolor='black', capsize=10)
+        plt.xticks(x_positions, available_metrics)
 
-    # Substitute class labels with descriptions
-    sorted_labels = [class_descriptions[label] for label in sorted_labels]
+        plt.title('Core Metrics')
+        plt.xlabel('Metric')
+        plt.ylabel('Value')
+        plt.savefig(OUT_FOLDER + '/core_metrics.png')
 
-    # Step 2: Create a boxplot
-    plt.figure(figsize=(20, 25))
-    plt.subplots_adjust(left=0.4)
-    box = plt.boxplot(data, vert=False, patch_artist=True, labels=sorted_labels)
+# def plot_boxplot(metrics: list[dict], metric_name: str) -> None:
+#     # Step 1: Collect data for each class across all attempts
+#     class_accuracies = {}
+#     for attempt_acc in metrics:
+#         attempt_acc = attempt_acc['per_class_metrics']
+#         for class_label, acc in attempt_acc.items():
+#             class_label = int(class_label)
+#             if class_label not in class_accuracies:
+#                 class_accuracies[class_label] = []
+#             class_accuracies[class_label].append(acc)
+# 
+#     class_descriptions = {}
+#     from label_proposer import decode_label
+#     for class_label in class_accuracies.keys():
+#         class_descriptions[class_label] = decode_label(class_label, as_string=True) + f' ({class_label})'
+#             
+#     # Prepare data for boxplot
+#     sorted_labels = sorted(class_accuracies.keys(), key=lambda x: -int(x))
+#     data = [class_accuracies[label] for label in sorted_labels]
+# 
+#     # Substitute class labels with descriptions
+#     sorted_labels = [class_descriptions[label] for label in sorted_labels]
+# 
+#     # Step 2: Create a boxplot
+#     plt.figure(figsize=(20, 25))
+#     plt.subplots_adjust(left=0.4)
+#     box = plt.boxplot(data, vert=False, patch_artist=True, labels=sorted_labels)
+# 
+#     plt.title('Class Accuracies')
+#     plt.xlabel('Accuracy')
+# 
+#     plt.legend()
+#     plt.savefig(OUT_FOLDER + '/' + metric_name + '_boxplot.png')
 
-    plt.title('Class Accuracies')
-    plt.xlabel('Accuracy')
 
-    plt.legend()
-    plt.savefig(OUT_FOLDER + '/accuracy.png')
-
-
-def plot_confusion_matrix(accuracies: dict) -> None:
+def plot_confusion_matrix(metrics: dict) -> None:
     # Step 3: print a confusion matrix for the top 10% of classes by amount of data
-    class_accuracies = accuracies['per_class_accuracies']
+    class_accuracies = metrics['per_class_metrics']["accuracy"]
 
     class_accuracy_keys = list(class_accuracies.keys())
-    class_accuracy_keys.sort(key=lambda x: -accuracies['per_class_weights'][x])
+    class_accuracy_keys.sort(key=lambda x: -metrics['per_class_metrics']['weight'][x])
     top_classes = class_accuracy_keys[:len(class_accuracies) // 5]
 
     confusion_matrix = np.zeros((len(top_classes), len(top_classes)))
 
     for i, class_i in enumerate(top_classes):
         for j, class_j in enumerate(top_classes):
-            confusion_matrix[i, j] = accuracies['confusion_matrix'].get(class_i, {int(class_j): 0}).get(int(class_j), 0)
+            confusion_matrix[i, j] = metrics['confusion_matrix'].get(class_i, {int(class_j): 0}).get(int(class_j), 0)
 
     plt.figure(figsize=(20, 20))
     plt.imshow(confusion_matrix, interpolation='nearest', cmap='Blues')
