@@ -179,8 +179,7 @@ def generate_cnn(data: list[dict]) -> dict:
 
     indices = np.arange(len(X))
 
-    x_train, x_test, y_train, y_test, i_train, i_test = train_test_split(X, y, indices, test_size=pm.TEST_TRAIN_SPLIT,
-                                                                         shuffle=True)
+    x_train, x_test, y_train, y_test, i_train, i_test = train_test_split(X, y, indices, test_size=pm.TEST_TRAIN_SPLIT)
 
     print(model.summary())
 
@@ -193,6 +192,12 @@ def generate_cnn(data: list[dict]) -> dict:
 
     y_pred_labels = np.argmax(y_pred, axis=-1)
     y_test_labels = np.argmax(y_test, axis=-1)
+    
+    # original_positions = np.argsort(i_test)
+
+    # y_pred_labels_unshuffled = y_pred_labels[original_positions]
+    # y_test_labels_unshuffled = y_test_labels[original_positions]
+
     y_pred_decoded = []
     y_test_decoded = []
 
@@ -206,25 +211,12 @@ def generate_cnn(data: list[dict]) -> dict:
     y_pred_decoded = np.array(y_pred_decoded)
     y_test_decoded = np.array(y_test_decoded)
 
-    # print("Predicted and actual classes for all batches:")
-    label_categorizations = {}
-    for i in range(pm.WINDOW_LENGTH):
-        for j in range(len(y_pred_decoded)):
-            pred = y_pred_decoded[j][i]
-            actual = y_test_decoded[j][i]
+    accuracies, ori_seq, pred_seq = calculate_accuracy(y_test_decoded, y_pred_decoded,
+                                                       include_majority_accuracy=False,
+                                                       include_class_accuracies=True)
 
-            if actual not in label_categorizations:
-                label_categorizations[actual] = []
-
-            label_categorizations[actual].append(pred)
-
-    accuracies = {}
-    weights = {}
-    for k, v in label_categorizations.items():
-        accuracies[k] = accuracy_score(v, [k] * len(v))
-        weights[k] = len(v)
-
-    log.info(f"Weighted class accuracy: {sum([a * w for a, w in zip(accuracies.values(), weights.values())]) / sum(weights.values())}")
+    log.info(f"Model accuracy (accuracy_score): {accuracies['model_accuracy']}")
+    log.info(f"Majority class accuracy: {accuracies['majority_accuracy']}")
 
     return {
         "model": model,
@@ -232,11 +224,92 @@ def generate_cnn(data: list[dict]) -> dict:
         "x_encoders": xenc,
         "features": total_features,
         "accuracies": accuracies,
+        "original_sequence": ori_seq,
+        "predicted_sequence": pred_seq,
         "history": history
     }
 
 
-def validate_cnn(model: models.Model, features: list[str], yle, data: list[dict]) -> list:
+def calculate_accuracy(y_true, y_pred,
+                       include_majority_accuracy = False,
+                       include_class_accuracies = False) -> tuple[dict, list | None, list | None]:
+    if y_true.shape != y_pred.shape:
+        raise ValueError("Shapes of y_true and y_pred do not match.")
+    
+    model_accuracy = accuracy_score(y_true.flatten(), y_pred.flatten())
+    model_accuracy = float(model_accuracy)
+
+    if include_majority_accuracy:
+        original_sequence_y_true = {}
+        original_sequence_y_pred = {}
+
+        for i in range(len(y_true)):
+            for j in range(len(y_true[i])):
+                index = i + j
+                if index not in original_sequence_y_pred:
+                    original_sequence_y_pred[index] = []
+                    original_sequence_y_true[index] = []
+
+                original_sequence_y_pred[index].append(y_pred[i][j])
+                original_sequence_y_true[index].append(y_true[i][j])
+
+        # Check that in y_true all the values are the same for each key
+        for k, v in original_sequence_y_true.items():
+            assert len(set(v)) == 1, f"Values in y_true are not the same for key {k}"
+
+        # Majority class accuracy
+        original_sequence = [list(set(v))[0] for k, v in original_sequence_y_true.items()]
+        predicted_sequence = [max(set(v), key=v.count) for k, v in original_sequence_y_pred.items()]
+
+        absolute_accuracy = 0
+        for i in range(len(original_sequence)):
+            if original_sequence[i] == predicted_sequence[i]:
+                absolute_accuracy += 1
+                
+        majority_accuracy = absolute_accuracy / len(original_sequence)
+        majority_accuracy = float(majority_accuracy)
+
+        original_sequence = [int(x) for x in original_sequence]
+        predicted_sequence = [int(x) for x in predicted_sequence]
+    else:
+        majority_accuracy = None
+        original_sequence = None
+        predicted_sequence = None
+
+    # Weighted accuracies for each class
+    if include_class_accuracies:
+        label_categorizations = {}
+        for i in range(pm.WINDOW_LENGTH):
+            for j in range(len(y_pred)):
+                pred = y_pred[j][i]
+                actual = y_true[j][i]
+
+                if actual not in label_categorizations:
+                    label_categorizations[actual] = []
+
+                label_categorizations[actual].append(pred)
+
+        per_class_accuracies = {}
+        per_class_weights = {}
+        for k, v in label_categorizations.items():
+            k = int(k)
+            per_class_accuracies[k] = float(accuracy_score(v, [k] * len(v)))
+            per_class_weights[k] = len(v)
+
+    else:
+        per_class_accuracies = None
+        per_class_weights = None
+
+    return {
+        "model_accuracy": model_accuracy,
+        "majority_accuracy": majority_accuracy,
+        "per_class_accuracies": per_class_accuracies,
+        "per_class_weights": per_class_weights
+    }, original_sequence, predicted_sequence
+    
+
+
+def validate_cnn(model: models.Model, features: list[str], yle, data: list[dict]) -> list:#
     flattened_data, _ = preprocess_data(data, features)
     x_before = []
 
@@ -276,6 +349,51 @@ def validate_cnn(model: models.Model, features: list[str], yle, data: list[dict]
     for k, v in predicted.items():
         y_final_pred.append(max(set(v), key=v.count))
 
+    #### START OF WIP CODE
+    ####
+    ####
+
+    from label_proposer import decode_label
+
+    if 'label' in validation_data[0]:
+        val_acc = {}
+        for i in range(len(y_pred)):
+            predicted = y_pred[i]
+            original = validation_data[i]['label']
+            if predicted != original:
+                print("Predicted: ", predicted, "Original: ", original)
+            if original not in val_acc:
+                val_acc[original] = []
+            val_acc[original].append(predicted)
+
+        weights = []
+        for k, v in val_acc.items():
+            acc = len([x for x in v if x == k]) / len(v)
+            weights.append(len(v) * acc)
+
+        print("Total weighted accuracy:", sum(weights) / len(validation_data))
+
+    else:
+        for i in range(len(y_pred)):
+            minilog = validation_data[i]
+            try:
+                decoded = decode_label(y_pred[i])
+            except:
+                decoded = "Unknown label"
+            _d = f"{decoded['apiGroup']}/{decoded['version']}/{decoded['uri']} {decoded['verb']}"
+            _o = f'{minilog["requestURI"]} {minilog["verb"]}'
+
+            print(f"{y_pred[i]} decoded into {_d} from {_o}")
+
+        # minilog = validation_data[i]
+        # decoded = decode_label(label)
+        # _d = f"{decoded['apiGroup']}/{decoded['version']}/{decoded['uri']} {decoded['verb']}"
+        # _o = f'{minilog["requestURI"]} {minilog["verb"]}'
+        # print(f"{label} -> {_d} {_o}")
+
+    ####
+    ####
+    #### END OF WIP CODE
     return y_final_pred
 
 
@@ -355,16 +473,12 @@ def main(args):
         # Always save the loss and accuracy data
         with open(pm.OUT_FOLDER + '/loss.json', 'w') as f:
             json.dump([loss.history for loss in losses], f)
-        accuracies_serializable = [{int(k): v for k, v in attempt_acc.items()} for attempt_acc in accuracies]
         with open(pm.OUT_FOLDER + '/accuracy.json', 'w') as f:
-            json.dump(accuracies_serializable, f)
+            json.dump(accuracies, f)
 
         from cnn_visualize import plot_loss, plot_accuracy
         plot_loss(losses)
         plot_accuracy(accuracies)
-
-        log.info(f"Average loss over all attempts: {np.mean([loss.history['loss'][-1] for loss in losses])}")
-        log.info(f"Average accuracy over all attempts: {np.mean([sum(acc.values()) / len(acc) for acc in accuracies])}")
 
     else:
         model = models.load_model(args.model)
@@ -379,52 +493,6 @@ def main(args):
 
         validation_data = open_file(args.validation_file)
         y_pred = validate_cnn(model, features, yle, validation_data)
-
-        #### START OF WIP CODE
-        ####
-        ####
-
-        from label_proposer import decode_label
-
-        if 'label' in validation_data[0]:
-            val_acc = {}
-            for i in range(len(y_pred)):
-                predicted = y_pred[i]
-                original = validation_data[i]['label']
-                if predicted != original:
-                    print("Predicted: ", predicted, "Original: ", original)
-                if original not in val_acc:
-                    val_acc[original] = []
-                val_acc[original].append(predicted)
-
-            weights = []
-            for k, v in val_acc.items():
-                acc = len([x for x in v if x == k]) / len(v)
-                weights.append(len(v) * acc)
-
-            print("Total weighted accuracy:", sum(weights) / len(validation_data))
-
-        else:
-            for i in range(len(y_pred)):
-                minilog = validation_data[i]
-                try:
-                    decoded = decode_label(y_pred[i])
-                except:
-                    decoded = "Unknown label"
-                _d = f"{decoded['apiGroup']}/{decoded['version']}/{decoded['uri']} {decoded['verb']}"
-                _o = f'{minilog["requestURI"]} {minilog["verb"]}'
-
-                print(f"{y_pred[i]} decoded into {_d} from {_o}")
-
-            # minilog = validation_data[i]
-            # decoded = decode_label(label)
-            # _d = f"{decoded['apiGroup']}/{decoded['version']}/{decoded['uri']} {decoded['verb']}"
-            # _o = f'{minilog["requestURI"]} {minilog["verb"]}'
-            # print(f"{label} -> {_d} {_o}")
-
-        ####
-        ####
-        #### END OF WIP CODE
 
 
 if __name__ == '__main__':
