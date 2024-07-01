@@ -11,8 +11,8 @@ from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
-from cnn_options import *
 from cnn_visualize import plot_loss, plot_accuracy
+from parameters import *
 
 # Features
 FEATURES = [
