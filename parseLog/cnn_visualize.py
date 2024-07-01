@@ -44,37 +44,40 @@ def plot_loss(losses: list) -> None:
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.legend()
-    plt.savefig(OUT_FOLDER + '/avg_loss.png')
-
-    plt.legend()
-    plt.title('Model loss')
     plt.savefig(OUT_FOLDER + '/loss.png')
 
 
 def plot_accuracy(accuracies: list[dict]) -> None:
-    # Plot all accuracies as a histogram
     plt.clf()
 
-    num_attempts = len(accuracies)
-    bar_width = 0.8 / num_attempts
+    # Step 1: Collect data for each class across all attempts
+    class_accuracies = {}
+    for attempt_acc in accuracies:
+        for class_label, acc in attempt_acc.items():
+            class_label = int(class_label)
+            if class_label not in class_accuracies:
+                class_accuracies[class_label] = []
+            class_accuracies[class_label].append(acc)
 
-    plt.figure(figsize=(25, 6))
-    plt.yscale('log')
-    plt.xticks(rotation=90)
-    plt.ylim(0.00001, 1)
+    class_descriptions = {}
+    from label_proposer import decode_label
+    for class_label in class_accuracies.keys():
+        class_descriptions[class_label] = decode_label(class_label, as_string=True)
+            
+    # Prepare data for boxplot
+    sorted_labels = sorted(class_accuracies.keys(), key=lambda x: -int(x))
+    data = [class_accuracies[label] for label in sorted_labels]
 
-    plt.subplots_adjust(bottom=0.3)
+    # Substitute class labels with descriptions
+    sorted_labels = [class_descriptions[label] for label in sorted_labels]
 
-    for attempt_idx, attempt_acc in enumerate(accuracies):
-        items = sorted(attempt_acc.items(), key=lambda x: x[0])
-        labels, values = zip(*items)
+    # Step 2: Create a boxplot
+    plt.figure(figsize=(20, 25))
+    plt.subplots_adjust(left=0.4)
+    box = plt.boxplot(data, vert=False, patch_artist=True, labels=sorted_labels)
 
-        positions = [x + (attempt_idx * bar_width) for x in range(len(attempt_acc))]
-        plt.bar(positions, values, width=bar_width, label=f'Attempt {attempt_idx + 1}', align='center')
+    plt.title('Class Accuracies')
+    plt.xlabel('Accuracy')
 
-        if attempt_idx == 0:
-            plt.xticks([x + bar_width * (num_attempts / 2 - 0.5) for x in range(len(attempt_acc))], labels)
-
-    plt.title('Class accuracies')
     plt.legend()
     plt.savefig(OUT_FOLDER + '/accuracy.png')
