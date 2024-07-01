@@ -1,7 +1,3 @@
-# {"kind":"Event","apiVersion":"audit.k8s.io/v1","level":"RequestResponse","auditID":"067debb3-be1d-4e0f-b65f-ce1871e60ed9","stage":"ResponseComplete","requestURI":"/apis/node.k8s.io/v1/runtimeclasses?allowWatchBookmarks=true&resourceVersion=3274044&timeout=9m46s&timeoutSeconds=586&watch=true","verb":"watch","user":{"username":"system:kube-controller-manager","groups":["system:authenticated"]},"sourceIPs":["192.168.38.9"],"userAgent":"kube-controller-manager/v1.28.7 (linux/amd64) kubernetes/c8dcb00/shared-informers","objectRef":{"resource":"runtimeclasses","apiGroup":"node.k8s.io","apiVersion":"v1"},"responseStatus":{"metadata":{},"code":200},"requestReceivedTimestamp":"2024-06-05T12:37:08.419005Z","stageTimestamp":"2024-06-05T12:46:54.421057Z","annotations":{"authorization.k8s.io/decision":"allow","authorization.k8s.io/reason":"RBAC: allowed by ClusterRoleBinding \"system:kube-controller-manager\" of ClusterRole \"system:kube-controller-manager\" to User \"system:kube-controller-manager\""},"label":-1}
-
-# Data preprocessing and feature selection
-
 import argparse
 import json
 
@@ -9,8 +5,8 @@ import keras.api.callbacks as callbacks
 import keras.api.layers as layers
 import keras.api.models as models
 import numpy as np
-from keras.api.utils import to_categorical
 from keras.api.optimizers import Adam
+from keras.api.utils import to_categorical
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
@@ -177,12 +173,13 @@ def generate_cnn(data: list[dict]) -> dict:
         optimizer=Adam(learning_rate=INITIAL_LEARNING_RATE),
         loss='categorical_crossentropy',
         metrics=['categorical_accuracy'],
-        
+
     )
 
     indices = np.arange(len(X))
 
-    x_train, x_test, y_train, y_test, i_train, i_test = train_test_split(X, y, indices, test_size=TEST_TRAIN_SPLIT, shuffle=True)
+    x_train, x_test, y_train, y_test, i_train, i_test = train_test_split(X, y, indices, test_size=TEST_TRAIN_SPLIT,
+                                                                         shuffle=True)
 
     print(model.summary())
 
@@ -192,7 +189,7 @@ def generate_cnn(data: list[dict]) -> dict:
     # y_pred is a tensor of shape (len(x_test), WINDOW_LENGTH, len_classes)
     # let's derive the class labels from this tensor:
     # for example, vector 0 will be in position 0 for the first batch, 1 for the second batch, etc.
-    
+
     y_pred_labels = np.argmax(y_pred, axis=-1)
     y_test_labels = np.argmax(y_test, axis=-1)
     y_pred_decoded = []
@@ -226,8 +223,9 @@ def generate_cnn(data: list[dict]) -> dict:
         accuracies[k] = accuracy_score(v, [k] * len(v))
         weights[k] = len(v)
 
-    print("Weighted class accuracy:", sum([a * w for a, w in zip(accuracies.values(), weights.values())]) / sum(weights.values()))
-    
+    print("Weighted class accuracy:",
+          sum([a * w for a, w in zip(accuracies.values(), weights.values())]) / sum(weights.values()))
+
     return {
         "model": model,
         "y_encoders": yle,
@@ -281,12 +279,10 @@ def validate_cnn(model: models.Model, features: list[str], yle, data: list[dict]
     # for i in range(len(y_final_pred)):
     #     print("Label:", y_final_pred[i])
     #     print("Actual:", data[i]['label'])
-        
+
     # print(predicted)
 
     return y_final_pred
-
-
 
 
 def open_file(file: str) -> list:
@@ -313,13 +309,12 @@ def open_file(file: str) -> list:
 
 
 def main(args):
-
     if not args.model:
         if not args.file:
             print('Please provide a valid file.')
             exit(1)
 
-        if type(args.file) == list:
+        if isinstance(args.file, list):
             data = []
             for file in args.file:
                 data += open_file(file)
@@ -334,7 +329,7 @@ def main(args):
                 result = generate_cnn(data)
                 history = result['history']
                 acc = result['accuracies']
-                
+
                 # Plot ALL the losses over the epochs
                 losses.append(history)
                 accuracies.append(acc)
@@ -345,7 +340,7 @@ def main(args):
             result = generate_cnn(data)
 
             print('Model generated.')
-            
+
             model = result['model']
             features = result['features']
             yle = result['y_encoders']
@@ -437,14 +432,14 @@ if __name__ == '__main__':
     parser.add_argument('-s', '--stats-mode', action='store_true',
                         help='Repeat process multiple times for statistics')
 
-    args = parser.parse_args()
+    __args = parser.parse_args()
 
-    if args.model and args.stats_mode:
+    if __args.model and __args.stats_mode:
         print('Cannot use stats mode with a model file.')
         exit(1)
 
-    if args.model and args.file:
+    if __args.model and __args.file:
         print('Cannot train a model and use a model file at the same time.')
         exit(1)
 
-    main(args)
+    main(__args)
