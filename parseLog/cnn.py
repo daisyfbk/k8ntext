@@ -12,7 +12,9 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
 from cnn_visualize import plot_loss, plot_accuracy
-from parameters import *
+import parameters as pm
+from support.log import initialize_log
+import logging as log
 
 # Features
 FEATURES = [
@@ -126,8 +128,8 @@ def generate_cnn(data: list[dict]) -> dict:
     assert len(x_before[0]) == len_features, "Number of features do not match."
     len_classes = len(set(y_before))
 
-    print("Features:", len_features)
-    print("Classes:", len_classes)
+    log.info(f"Features: {len_features}")
+    log.info(f"Classes: {len_classes}")
 
     x_before = np.array(x_before)
 
@@ -143,18 +145,18 @@ def generate_cnn(data: list[dict]) -> dict:
     y_before_onehot = to_categorical(y_before_encoded, num_classes=len_classes)
 
     # Create batches
-    X = np.zeros((len(x_before) - WINDOW_LENGTH, WINDOW_LENGTH, len_features))
-    y = np.zeros((len(x_before) - WINDOW_LENGTH, WINDOW_LENGTH, len_classes))
+    X = np.zeros((len(x_before) - pm.WINDOW_LENGTH, pm.WINDOW_LENGTH, len_features))
+    y = np.zeros((len(x_before) - pm.WINDOW_LENGTH, pm.WINDOW_LENGTH, len_classes))
 
-    for i in range(WINDOW_LENGTH, len(x_before)):
-        X[i - WINDOW_LENGTH] = x_before[i - WINDOW_LENGTH:i]
-        y[i - WINDOW_LENGTH] = y_before_onehot[i - WINDOW_LENGTH:i]
+    for i in range(pm.WINDOW_LENGTH, len(x_before)):
+        X[i - pm.WINDOW_LENGTH] = x_before[i - pm.WINDOW_LENGTH:i]
+        y[i - pm.WINDOW_LENGTH] = y_before_onehot[i - pm.WINDOW_LENGTH:i]
 
-    print(X.shape, y.shape)
+    log.info(f"Resulting shapes: {X.shape}, {y.shape}")
 
     # classification model
     model = models.Sequential([
-        layers.Input(shape=(WINDOW_LENGTH, len_features)),
+        layers.Input(shape=(pm.WINDOW_LENGTH, len_features)),
         layers.LSTM(len_features * 8, return_sequences=True),
         layers.LSTM(len_features * 4, return_sequences=True),
         layers.LSTM(len_features * 2, return_sequences=True),
@@ -164,13 +166,13 @@ def generate_cnn(data: list[dict]) -> dict:
     ])
 
     cb = [
-        callbacks.EarlyStopping(monitor='val_loss', patience=EARLY_STOPPING_PATIENCE, restore_best_weights=True),
-        callbacks.ModelCheckpoint(filepath=OUT_FOLDER + '/model-checkpoint.keras', save_best_only=True),
-        callbacks.ReduceLROnPlateau(monitor='val_loss', factor=REDUCE_LR_FACTOR, patience=REDUCE_LR_PATIENCE)
+        callbacks.EarlyStopping(monitor='val_loss', patience=pm.EARLY_STOPPING_PATIENCE, restore_best_weights=True),
+        callbacks.ModelCheckpoint(filepath=pm.OUT_FOLDER + '/model-checkpoint.keras', save_best_only=True),
+        callbacks.ReduceLROnPlateau(monitor='val_loss', factor=pm.REDUCE_LR_FACTOR, patience=pm.REDUCE_LR_PATIENCE)
     ]
 
     model.compile(
-        optimizer=Adam(learning_rate=INITIAL_LEARNING_RATE),
+        optimizer=Adam(learning_rate=pm.INITIAL_LEARNING_RATE),
         loss='categorical_crossentropy',
         metrics=['categorical_accuracy'],
 
@@ -178,12 +180,12 @@ def generate_cnn(data: list[dict]) -> dict:
 
     indices = np.arange(len(X))
 
-    x_train, x_test, y_train, y_test, i_train, i_test = train_test_split(X, y, indices, test_size=TEST_TRAIN_SPLIT,
+    x_train, x_test, y_train, y_test, i_train, i_test = train_test_split(X, y, indices, test_size=pm.TEST_TRAIN_SPLIT,
                                                                          shuffle=True)
 
     print(model.summary())
 
-    history = model.fit(x_train, y_train, epochs=MAX_EPOCHS, callbacks=cb, validation_split=TRAIN_VALID_SPLIT)
+    history = model.fit(x_train, y_train, epochs=pm.MAX_EPOCHS, callbacks=cb, validation_split=pm.TRAIN_VALID_SPLIT)
     y_pred = model.predict(x_test)
 
     # y_pred is a tensor of shape (len(x_test), WINDOW_LENGTH, len_classes)
@@ -207,7 +209,7 @@ def generate_cnn(data: list[dict]) -> dict:
 
     # print("Predicted and actual classes for all batches:")
     label_categorizations = {}
-    for i in range(WINDOW_LENGTH):
+    for i in range(pm.WINDOW_LENGTH):
         for j in range(len(y_pred_decoded)):
             pred = y_pred_decoded[j][i]
             actual = y_test_decoded[j][i]
@@ -223,7 +225,7 @@ def generate_cnn(data: list[dict]) -> dict:
         accuracies[k] = accuracy_score(v, [k] * len(v))
         weights[k] = len(v)
 
-    print("Weighted class accuracy:",
+    log.info("Weighted class accuracy:",
           sum([a * w for a, w in zip(accuracies.values(), weights.values())]) / sum(weights.values()))
 
     return {
@@ -251,10 +253,10 @@ def validate_cnn(model: models.Model, features: list[str], yle, data: list[dict]
         xenc.append(le)
 
     # Create batches
-    X = np.zeros((len(x_before) - WINDOW_LENGTH, WINDOW_LENGTH, len(features)))
+    X = np.zeros((len(x_before) - pm.WINDOW_LENGTH, pm.WINDOW_LENGTH, len(features)))
 
-    for i in range(WINDOW_LENGTH, len(x_before)):
-        X[i - WINDOW_LENGTH] = x_before[i - WINDOW_LENGTH:i]
+    for i in range(pm.WINDOW_LENGTH, len(x_before)):
+        X[i - pm.WINDOW_LENGTH] = x_before[i - pm.WINDOW_LENGTH:i]
 
     y_pred = model.predict(X)
     y_pred_labels = np.argmax(y_pred, axis=-1)
@@ -276,12 +278,6 @@ def validate_cnn(model: models.Model, features: list[str], yle, data: list[dict]
     for k, v in predicted.items():
         y_final_pred.append(max(set(v), key=v.count))
 
-    # for i in range(len(y_final_pred)):
-    #     print("Label:", y_final_pred[i])
-    #     print("Actual:", data[i]['label'])
-
-    # print(predicted)
-
     return y_final_pred
 
 
@@ -290,7 +286,7 @@ def open_file(file: str) -> list:
         with open(file, 'r') as f:
             lines = f.readlines()
     except FileNotFoundError:
-        print('File not found.')
+        log.error('File not found.')
         exit(1)
 
     assert "lines" in locals(), "No data found in the file."
@@ -302,7 +298,7 @@ def open_file(file: str) -> list:
             j = json.loads(line)
             data.append(j)
         except json.JSONDecodeError:
-            print('Error decoding JSON data.')
+            log.error('Error decoding JSON data.')
             exit(1)
 
     return data
@@ -311,7 +307,7 @@ def open_file(file: str) -> list:
 def main(args):
     if not args.model:
         if not args.file:
-            print('Please provide a valid file.')
+            log.error('Please provide a valid file.')
             exit(1)
 
         if isinstance(args.file, list):
@@ -325,7 +321,7 @@ def main(args):
         accuracies = []
 
         if args.stats_mode:
-            for i in range(STATISTICS_ATTEMPTS):
+            for i in range(pm.STATISTICS_ATTEMPTS):
                 result = generate_cnn(data)
                 history = result['history']
                 acc = result['accuracies']
@@ -333,13 +329,13 @@ def main(args):
                 # Plot ALL the losses over the epochs
                 losses.append(history)
                 accuracies.append(acc)
-                print("Attempt", i + 1, "done.")
-                print("Final loss:", history.history['loss'][-1])
+                log.info("Attempt", i + 1, "done.")
+                log.info("Final loss:", history.history['loss'][-1])
 
         else:
             result = generate_cnn(data)
 
-            print('Model generated.')
+            log.info('Model generated.')
 
             model = result['model']
             features = result['features']
@@ -348,28 +344,28 @@ def main(args):
             accuracies.append(result['accuracies'])
 
             # Save the model and the features
-            model.save(OUT_FOLDER + '/model.keras')
-            with open(OUT_FOLDER + '/model.keras' + '.features', 'w') as f:
+            model.save(pm.OUT_FOLDER + '/model.keras')
+            with open(pm.OUT_FOLDER + '/model.keras' + '.features', 'w') as f:
                 json.dump(features, f)
 
-            with open(OUT_FOLDER + '/model.keras' + '.x_encoders', 'w') as f:
+            with open(pm.OUT_FOLDER + '/model.keras' + '.x_encoders', 'w') as f:
                 json.dump([x.classes_.tolist() for x in result['x_encoders']], f)
 
-            with open(OUT_FOLDER + '/model.keras' + '.y_encoders', 'w') as f:
+            with open(pm.OUT_FOLDER + '/model.keras' + '.y_encoders', 'w') as f:
                 json.dump(yle.classes_.tolist(), f)
 
         # Always save the loss and accuracy data
-        with open(OUT_FOLDER + '/loss.json', 'w') as f:
+        with open(pm.OUT_FOLDER + '/loss.json', 'w') as f:
             json.dump([loss.history for loss in losses], f)
         accuracies_serializable = [{int(k): v for k, v in attempt_acc.items()} for attempt_acc in accuracies]
-        with open(OUT_FOLDER + '/accuracy.json', 'w') as f:
+        with open(pm.OUT_FOLDER + '/accuracy.json', 'w') as f:
             json.dump(accuracies_serializable, f)
 
         plot_loss(losses)
         plot_accuracy(accuracies)
 
-        print("Average loss over all attempts:", np.mean([loss.history['loss'][-1] for loss in losses]))
-        print("Average accuracy over all attempts:", np.mean([sum(acc.values()) / len(acc) for acc in accuracies]))
+        log.info("Average loss over all attempts:", np.mean([loss.history['loss'][-1] for loss in losses]))
+        log.info("Average accuracy over all attempts:", np.mean([sum(acc.values()) / len(acc) for acc in accuracies]))
 
     else:
         model = models.load_model(args.model)
@@ -384,6 +380,10 @@ def main(args):
 
         validation_data = open_file(args.validation_file)
         y_pred = validate_cnn(model, features, yle, validation_data)
+
+        #### START OF WIP CODE
+        ####
+        ####
 
         from label_proposer import decode_label
 
@@ -423,6 +423,10 @@ def main(args):
             # _o = f'{minilog["requestURI"]} {minilog["verb"]}'
             # print(f"{label} -> {_d} {_o}")
 
+        ####
+        ####
+        #### END OF WIP CODE
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='model')
@@ -434,12 +438,18 @@ if __name__ == '__main__':
 
     __args = parser.parse_args()
 
+    initialize_log()
+
+    # also exclude modules imported
+    __param_str = ', '.join([f"{k}: {v}" for k, v in vars(pm).items() if not k.startswith('__') and not callable(v)])
+    log.info("Starting model generation with the following parameters: " + __param_str)
+
     if __args.model and __args.stats_mode:
-        print('Cannot use stats mode with a model file.')
+        log.error('Cannot use stats mode with a model file.')
         exit(1)
 
     if __args.model and __args.file:
-        print('Cannot train a model and use a model file at the same time.')
+        log.error('Cannot train a model and use a model file at the same time.')
         exit(1)
 
     main(__args)
