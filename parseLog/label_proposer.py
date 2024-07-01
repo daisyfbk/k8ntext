@@ -106,7 +106,7 @@ def encode_label(
 
 
 @functools.lru_cache(maxsize=None)
-def decode_label(label: int) -> dict:
+def decode_label(label: int, as_string: bool=False) -> dict | str:
     if label == LABEL_IGNORE:
         return {"error": "Label is ignored"}
     if label == LABEL_UNKNOWN:
@@ -124,18 +124,22 @@ def decode_label(label: int) -> dict:
 
     verb = [k for k, v in verbs.items() if v == verb_id][0]
 
-    return {
-        "apiGroup": apigroup,
-        "version": version,
-        "uri": uri,
-        "label_id": label_id,
-        "label_sub_id": label_sub_id,
-        "is_namespaced": is_namespaced == 1,
-        "is_single_object": is_single_object,
-        "verb": verb,
-        "verb_id": verb_id,
-        "alternate": alternate,
-    }
+    if as_string:
+        return f"{verb} {apigroup}/{version}/{uri} {'(ns)' if is_namespaced else ''} {'(list)' if is_single_object else ''}"
+    else:
+        return {
+            "apiGroup": apigroup,
+            "version": version,
+            "uri": uri,
+            "label_id": label_id,
+            "label_sub_id": label_sub_id,
+            "is_namespaced": is_namespaced == 1,
+            "is_single_object": is_single_object,
+            "verb": verb,
+            "verb_id": verb_id,
+            "alternate": alternate,
+        }
+    
 
 
 def validate_operation(
