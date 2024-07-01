@@ -10,6 +10,7 @@ from keras.api.utils import to_categorical
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import confusion_matrix
 
 import parameters as pm
 from support.log import initialize_log
@@ -23,6 +24,7 @@ FEATURES = [
     "sourceIPs",
     "userAgent",
     "objectRef",
+    # "cplabel"
     # "requestReceivedTimestamp",
 ]
 
@@ -115,7 +117,7 @@ def preprocess_data(__data: list[dict],
     return res, total_features
 
 
-def generate_cnn(data: list[dict]) -> dict:
+def generate_model(data: list[dict]) -> dict:
     flattened_data, total_features = preprocess_data(data)
     x_before, y_before = [], []
 
@@ -213,7 +215,8 @@ def generate_cnn(data: list[dict]) -> dict:
 
     accuracies, ori_seq, pred_seq = calculate_accuracy(y_test_decoded, y_pred_decoded,
                                                        include_majority_accuracy=False,
-                                                       include_class_accuracies=True)
+                                                       include_class_accuracies=True,
+                                                       include_confusion_matrix=True)
 
     log.info(f"Model accuracy (accuracy_score): {accuracies['model_accuracy']}")
     log.info(f"Majority class accuracy: {accuracies['majority_accuracy']}")
@@ -232,7 +235,8 @@ def generate_cnn(data: list[dict]) -> dict:
 
 def calculate_accuracy(y_true, y_pred,
                        include_majority_accuracy = False,
-                       include_class_accuracies = False) -> tuple[dict, list | None, list | None]:
+                       include_class_accuracies = False,
+                       include_confusion_matrix = False) -> tuple[dict, list | None, list | None]:
     if y_true.shape != y_pred.shape:
         raise ValueError("Shapes of y_true and y_pred do not match.")
     
@@ -300,100 +304,119 @@ def calculate_accuracy(y_true, y_pred,
         per_class_accuracies = None
         per_class_weights = None
 
+    if include_confusion_matrix:
+        # Ensure labels are only from y_true
+        labels = sorted(list(set(y_true.flatten())))
+        sklearn_cm = confusion_matrix(y_true.flatten(), y_pred.flatten(), labels=labels, normalize='true')
+
+        cm = {}
+        for i in range(len(sklearn_cm)):
+            for j in range(len(sklearn_cm[i])):
+                i_label = int(labels[i])
+                j_label = int(labels[j])
+                if i_label not in cm:
+                    cm[i_label] = {}
+                # Skip zero values to save space
+                if sklearn_cm[i][j] != 0:
+                    cm[i_label][j_label] = float(sklearn_cm[i][j])
+    else:
+        cm = None
+
     return {
         "model_accuracy": model_accuracy,
         "majority_accuracy": majority_accuracy,
         "per_class_accuracies": per_class_accuracies,
-        "per_class_weights": per_class_weights
+        "per_class_weights": per_class_weights,
+        "confusion_matrix": cm
     }, original_sequence, predicted_sequence
     
 
+def validate_model(model: models.Model, features: list[str], yle, data: list[dict]) -> list:#
+    # flattened_data, _ = preprocess_data(data, features)
+    # x_before = []
 
-def validate_cnn(model: models.Model, features: list[str], yle, data: list[dict]) -> list:#
-    flattened_data, _ = preprocess_data(data, features)
-    x_before = []
+    # for d in flattened_data:
+    #     x_before.append(list(d.values()))
 
-    for d in flattened_data:
-        x_before.append(list(d.values()))
+    # x_before = np.array(x_before)
+    # xenc = []
+    # for i in range(x_before.shape[1]):
+    #     le = LabelEncoder()
+    #     x_before[:, i] = le.fit_transform(x_before[:, i])
+    #     xenc.append(le)
 
-    x_before = np.array(x_before)
-    xenc = []
-    for i in range(x_before.shape[1]):
-        le = LabelEncoder()
-        x_before[:, i] = le.fit_transform(x_before[:, i])
-        xenc.append(le)
+    # # Create batches
+    # X = np.zeros((len(x_before) - pm.WINDOW_LENGTH, pm.WINDOW_LENGTH, len(features)))
 
-    # Create batches
-    X = np.zeros((len(x_before) - pm.WINDOW_LENGTH, pm.WINDOW_LENGTH, len(features)))
+    # for i in range(pm.WINDOW_LENGTH, len(x_before)):
+    #     X[i - pm.WINDOW_LENGTH] = x_before[i - pm.WINDOW_LENGTH:i]
 
-    for i in range(pm.WINDOW_LENGTH, len(x_before)):
-        X[i - pm.WINDOW_LENGTH] = x_before[i - pm.WINDOW_LENGTH:i]
+    # y_pred = model.predict(X)
+    # y_pred_labels = np.argmax(y_pred, axis=-1)
+    # y_pred_decoded = []
+    # for sequence_pred in y_pred_labels:
+    #     y_pred_decoded.append(yle.inverse_transform(sequence_pred))
 
-    y_pred = model.predict(X)
-    y_pred_labels = np.argmax(y_pred, axis=-1)
-    y_pred_decoded = []
-    for sequence_pred in y_pred_labels:
-        y_pred_decoded.append(yle.inverse_transform(sequence_pred))
+    # y_pred_decoded = np.array(y_pred_decoded)
 
-    y_pred_decoded = np.array(y_pred_decoded)
+    # predicted = {}
 
-    predicted = {}
+    # for i in range(len(y_pred_decoded)):
+    #     for j in range(len(y_pred_decoded[i])):
+    #         if i + j not in predicted:
+    #             predicted[i + j] = []
+    #         predicted[i + j].append(y_pred_decoded[i][j])
 
-    for i in range(len(y_pred_decoded)):
-        for j in range(len(y_pred_decoded[i])):
-            if i + j not in predicted:
-                predicted[i + j] = []
-            predicted[i + j].append(y_pred_decoded[i][j])
+    # y_final_pred = []
+    # for k, v in predicted.items():
+    #     y_final_pred.append(max(set(v), key=v.count))
 
-    y_final_pred = []
-    for k, v in predicted.items():
-        y_final_pred.append(max(set(v), key=v.count))
+    # #### START OF WIP CODE
+    # ####
+    # ####
 
-    #### START OF WIP CODE
-    ####
-    ####
+    # from label_proposer import decode_label
 
-    from label_proposer import decode_label
+    # if 'label' in validation_data[0]:
+    #     val_acc = {}
+    #     for i in range(len(y_pred)):
+    #         predicted = y_pred[i]
+    #         original = validation_data[i]['label']
+    #         if predicted != original:
+    #             print("Predicted: ", predicted, "Original: ", original)
+    #         if original not in val_acc:
+    #             val_acc[original] = []
+    #         val_acc[original].append(predicted)
 
-    if 'label' in validation_data[0]:
-        val_acc = {}
-        for i in range(len(y_pred)):
-            predicted = y_pred[i]
-            original = validation_data[i]['label']
-            if predicted != original:
-                print("Predicted: ", predicted, "Original: ", original)
-            if original not in val_acc:
-                val_acc[original] = []
-            val_acc[original].append(predicted)
+    #     weights = []
+    #     for k, v in val_acc.items():
+    #         acc = len([x for x in v if x == k]) / len(v)
+    #         weights.append(len(v) * acc)
 
-        weights = []
-        for k, v in val_acc.items():
-            acc = len([x for x in v if x == k]) / len(v)
-            weights.append(len(v) * acc)
+    #     print("Total weighted accuracy:", sum(weights) / len(validation_data))
 
-        print("Total weighted accuracy:", sum(weights) / len(validation_data))
+    # else:
+    #     for i in range(len(y_pred)):
+    #         minilog = validation_data[i]
+    #         try:
+    #             decoded = decode_label(y_pred[i])
+    #         except:
+    #             decoded = "Unknown label"
+    #         _d = f"{decoded['apiGroup']}/{decoded['version']}/{decoded['uri']} {decoded['verb']}"
+    #         _o = f'{minilog["requestURI"]} {minilog["verb"]}'
 
-    else:
-        for i in range(len(y_pred)):
-            minilog = validation_data[i]
-            try:
-                decoded = decode_label(y_pred[i])
-            except:
-                decoded = "Unknown label"
-            _d = f"{decoded['apiGroup']}/{decoded['version']}/{decoded['uri']} {decoded['verb']}"
-            _o = f'{minilog["requestURI"]} {minilog["verb"]}'
+    #         print(f"{y_pred[i]} decoded into {_d} from {_o}")
 
-            print(f"{y_pred[i]} decoded into {_d} from {_o}")
+    #     # minilog = validation_data[i]
+    #     # decoded = decode_label(label)
+    #     # _d = f"{decoded['apiGroup']}/{decoded['version']}/{decoded['uri']} {decoded['verb']}"
+    #     # _o = f'{minilog["requestURI"]} {minilog["verb"]}'
+    #     # print(f"{label} -> {_d} {_o}")
 
-        # minilog = validation_data[i]
-        # decoded = decode_label(label)
-        # _d = f"{decoded['apiGroup']}/{decoded['version']}/{decoded['uri']} {decoded['verb']}"
-        # _o = f'{minilog["requestURI"]} {minilog["verb"]}'
-        # print(f"{label} -> {_d} {_o}")
-
-    ####
-    ####
-    #### END OF WIP CODE
+    # ####
+    # ####
+    # #### END OF WIP CODE
+    y_final_pred = None
     return y_final_pred
 
 
@@ -438,7 +461,7 @@ def main(args):
 
         if args.stats_mode:
             for i in range(pm.STATISTICS_ATTEMPTS):
-                result = generate_cnn(data)
+                result = generate_model(data)
                 history = result['history']
                 acc = result['accuracies']
 
@@ -449,26 +472,30 @@ def main(args):
                 log.info(f"Final loss: {history.history['loss'][-1]}")
 
         else:
-            result = generate_cnn(data)
+            result = generate_model(data)
 
             log.info('Model generated.')
 
             model = result['model']
-            features = result['features']
-            yle = result['y_encoders']
             losses.append(result['history'])
             accuracies.append(result['accuracies'])
-
+    
             # Save the model and the features
             model.save(pm.OUT_FOLDER + '/model.keras')
-            with open(pm.OUT_FOLDER + '/model.keras' + '.features', 'w') as f:
-                json.dump(features, f)
-
             with open(pm.OUT_FOLDER + '/model.keras' + '.x_encoders', 'w') as f:
                 json.dump([x.classes_.tolist() for x in result['x_encoders']], f)
-
             with open(pm.OUT_FOLDER + '/model.keras' + '.y_encoders', 'w') as f:
-                json.dump(yle.classes_.tolist(), f)
+                json.dump(result['y_encoders'].classes_.tolist(), f)
+            with open(pm.OUT_FOLDER + '/model.keras' + '.features', 'w') as f:
+                json.dump(result['features'], f)
+            with open(pm.OUT_FOLDER + '/model.keras' + '.original_sequence', 'w') as f:
+                json.dump(result['original_sequence'], f)
+            with open(pm.OUT_FOLDER + '/model.keras' + '.predicted_sequence', 'w') as f:
+                json.dump(result['predicted_sequence'], f)
+
+
+            from model_visualize import plot_confusion_matrix
+            plot_confusion_matrix(accuracies[0])
 
         # Always save the loss and accuracy data
         with open(pm.OUT_FOLDER + '/loss.json', 'w') as f:
@@ -476,7 +503,7 @@ def main(args):
         with open(pm.OUT_FOLDER + '/accuracy.json', 'w') as f:
             json.dump(accuracies, f)
 
-        from cnn_visualize import plot_loss, plot_accuracy
+        from model_visualize import plot_loss, plot_accuracy
         plot_loss(losses)
         plot_accuracy(accuracies)
 
@@ -492,7 +519,7 @@ def main(args):
             yle = LabelEncoder().fit(y_encoders)
 
         validation_data = open_file(args.validation_file)
-        y_pred = validate_cnn(model, features, yle, validation_data)
+        y_pred = validate_model(model, features, yle, validation_data)
 
 
 if __name__ == '__main__':
