@@ -52,7 +52,8 @@ def plot_accuracy(accuracies: list[dict]) -> None:
 
     # Step 1: Collect data for each class across all attempts
     class_accuracies = {}
-    for attempt_acc in accuracies['per_class_accuracies']
+    for attempt_acc in accuracies:
+        attempt_acc = attempt_acc['per_class_accuracies']
         for class_label, acc in attempt_acc.items():
             class_label = int(class_label)
             if class_label not in class_accuracies:
@@ -82,18 +83,34 @@ def plot_accuracy(accuracies: list[dict]) -> None:
     plt.legend()
     plt.savefig(OUT_FOLDER + '/accuracy.png')
 
+
+def plot_confusion_matrix(accuracies: dict) -> None:
     # Step 3: print a confusion matrix for the top 10% of classes by amount of data
-    class_accuracies.sort(key=lambda x: -accuracies['per_class_weights'][x])
-    top_classes = class_accuracies[:len(class_accuracies) // 10]
+    class_accuracies = accuracies['per_class_accuracies']
+
+    class_accuracy_keys = list(class_accuracies.keys())
+    class_accuracy_keys.sort(key=lambda x: -accuracies['per_class_weights'][x])
+    top_classes = class_accuracy_keys[:len(class_accuracies) // 5]
 
     confusion_matrix = np.zeros((len(top_classes), len(top_classes)))
 
     for i, class_i in enumerate(top_classes):
         for j, class_j in enumerate(top_classes):
-            confusion_matrix[i, j] = accuracies['confusion_matrix'][class_i, class_j]
+            confusion_matrix[i, j] = accuracies['confusion_matrix'].get(class_i, {int(class_j): 0}).get(int(class_j), 0)
 
     plt.figure(figsize=(20, 20))
-    plt.imshow(confusion_matrix, cmap='hot', interpolation='nearest')
+    plt.imshow(confusion_matrix, interpolation='nearest', cmap='Blues')
+    plt.title('Confusion Matrix')
+    plt.xlabel('Predicted')
+    plt.ylabel('True')
+    plt.xticks(range(len(top_classes)), [class_label for class_label in top_classes], rotation=90)
+    plt.yticks(range(len(top_classes)), [class_label for class_label in top_classes])
+    # Put text on each cell
+    for i in range(len(top_classes)):
+        for j in range(len(top_classes)):
+            color = 'white' if confusion_matrix[i, j] > confusion_matrix.max() / 2 else 'black'
+            plt.text(j, i, float(confusion_matrix[i, j]), ha='center', va='center', color=color)
+
     plt.colorbar()
     plt.savefig(OUT_FOLDER + '/confusion_matrix.png')
 
