@@ -11,7 +11,6 @@ from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
-from cnn_visualize import plot_loss, plot_accuracy
 import parameters as pm
 from support.log import initialize_log
 import logging as log
@@ -225,8 +224,7 @@ def generate_cnn(data: list[dict]) -> dict:
         accuracies[k] = accuracy_score(v, [k] * len(v))
         weights[k] = len(v)
 
-    log.info("Weighted class accuracy:",
-          sum([a * w for a, w in zip(accuracies.values(), weights.values())]) / sum(weights.values()))
+    log.info(f"Weighted class accuracy: {sum([a * w for a, w in zip(accuracies.values(), weights.values())]) / sum(weights.values())}")
 
     return {
         "model": model,
@@ -329,8 +327,8 @@ def main(args):
                 # Plot ALL the losses over the epochs
                 losses.append(history)
                 accuracies.append(acc)
-                log.info("Attempt", i + 1, "done.")
-                log.info("Final loss:", history.history['loss'][-1])
+                log.info(f"Attempt {i + 1} done.")
+                log.info(f"Final loss: {history.history['loss'][-1]}")
 
         else:
             result = generate_cnn(data)
@@ -361,11 +359,12 @@ def main(args):
         with open(pm.OUT_FOLDER + '/accuracy.json', 'w') as f:
             json.dump(accuracies_serializable, f)
 
+        from cnn_visualize import plot_loss, plot_accuracy
         plot_loss(losses)
         plot_accuracy(accuracies)
 
-        log.info("Average loss over all attempts:", np.mean([loss.history['loss'][-1] for loss in losses]))
-        log.info("Average accuracy over all attempts:", np.mean([sum(acc.values()) / len(acc) for acc in accuracies]))
+        log.info(f"Average loss over all attempts: {np.mean([loss.history['loss'][-1] for loss in losses])}")
+        log.info(f"Average accuracy over all attempts: {np.mean([sum(acc.values()) / len(acc) for acc in accuracies])}")
 
     else:
         model = models.load_model(args.model)
@@ -438,7 +437,7 @@ if __name__ == '__main__':
 
     __args = parser.parse_args()
 
-    initialize_log()
+    initialize_log(log_level="INFO")
 
     # also exclude modules imported
     __param_str = ', '.join([f"{k}: {v}" for k, v in vars(pm).items() if not k.startswith('__') and not callable(v)])
