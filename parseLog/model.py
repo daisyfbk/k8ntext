@@ -36,10 +36,56 @@ EXCLUDE_FEATURES = [
     "user.extra.authentication.kubernetes.io/pod-uid[0]",
 ]
 
-# APPLY_FILTER_TO_FEATURES = {}
+FEATURE_PREPROCESSING = {
+    "requestReceivedTimestamp": lambda x: int(datetime.datetime.fromisoformat(x[:-1]).timestamp()),
+    "stageTimestamp": lambda x: int(datetime.datetime.fromisoformat(x[:-1]).timestamp()),
+    "userAgent": lambda x: parse_user_agent(x),
+}
 
 LABEL_FEATURE = "label"
 
+
+def parse_user_agent(user_agent: str) -> str:
+    splits = user_agent.split(' ')
+    if len(splits) == 1:
+        tool = splits[0]
+        platform = None
+        meta = None
+    elif len(splits) == 2:
+        tool, platform = splits
+        meta = None
+    else:
+        tool, platform, meta = splits
+
+    tool, version = tool.split('/', 1)
+
+    if platform:    
+        platform = platform.replace('(', '').replace(')', '')
+        platform, arch = platform.split('/', 1)
+    else:
+        platform = None
+        arch = None
+
+    if meta:
+        meta = meta.split('/')
+        if len(meta) == 2:
+            _, h = meta
+            extra = None
+        else:
+            _, h, extra = meta
+    else:
+        h = None
+        extra = None
+
+    return {
+        "tool": tool,
+        "version": version,
+        "platform": platform,
+        "arch": arch,
+        "h": h,
+        "extra": extra
+    }
+    
 
 def flatten_object(_object: dict) -> dict:
     keys = _object.keys()
@@ -69,6 +115,9 @@ def preprocess_data(__data: list[dict],
     # Sort by requestReceivedTimestamp
     __data.sort(key=lambda x: x['requestReceivedTimestamp'])
 
+    # from random import shuffle
+    # shuffle(__data)
+
     # Extract features
     extracted_data = []
     for d in __data:
@@ -82,6 +131,12 @@ def preprocess_data(__data: list[dict],
         if LABEL_FEATURE in d:
             o["label"] = d[LABEL_FEATURE]
         extracted_data.append(o)
+
+    # Perform feature preprocessing if necessary
+    for d in extracted_data:
+        for f, p in FEATURE_PREPROCESSING.items():
+            if f in d:
+                d[f] = p(d[f])
 
     # Flatten the features
     flattened_data = []
