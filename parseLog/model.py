@@ -520,18 +520,18 @@ def open_file(file: str) -> list:
 
 
 def main(args):
+    if not args.file:
+        log.error('Please provide a valid file.')
+        exit(1)
+
+    if isinstance(args.file, list):
+        data = []
+        for file in args.file:
+            data += open_file(file)
+    else:
+        data = open_file(args.file)
+
     if not args.model:
-        if not args.file:
-            log.error('Please provide a valid file.')
-            exit(1)
-
-        if isinstance(args.file, list):
-            data = []
-            for file in args.file:
-                data += open_file(file)
-        else:
-            data = open_file(args.file)
-
         losses = []
         metrics = []
 
@@ -574,19 +574,24 @@ def main(args):
         plot_metrics(metrics)
 
     else:
-        pass
-        # model = models.load_model(args.model)
-        # with open(args.model + '.features', 'r') as f:
-        #     features = json.load(f)
-        # with open(args.model + '.x_encoders', 'r') as f:
-        #     x_encoders = json.load(f)
-        #     xenc = [LabelEncoder().fit(x) for x in x_encoders]
-        # with open(args.model + '.y_encoders', 'r') as f:
-        #     y_encoders = json.load(f)
-        #     yle = LabelEncoder().fit(y_encoders)
+        log.info('Inference mode.')
+        model = models.load_model(args.model)
+        with open(args.model + '.features', 'r') as f:
+            features = json.load(f)
+        with open(args.model + '.x_encoders', 'r') as f:
+            x_encoders = json.load(f)
+            xenc = [sklearn.preprocessing.LabelEncoder().fit(x) for x in x_encoders]
+        with open(args.model + '.y_encoders', 'r') as f:
+            y_encoders = json.load(f)
+            yle = sklearn.preprocessing.LabelEncoder().fit(y_encoders)
+        
+        y_pred = model_inference(model, features, xenc, yle, data)
 
-        # validation_data = open_file(args.validation_file)
-        # y_pred = validate_model(model, features, yle, validation_data)
+        for log_line, label in zip(data, y_pred):
+            log_line["predicted_label"] = label
+
+        with open(pm.OUT_FOLDER + '/results.json', 'w') as f:
+            json.dump(data, f)
 
 
 if __name__ == '__main__':
@@ -607,10 +612,6 @@ if __name__ == '__main__':
 
     if __args.model and __args.stats_mode:
         log.error('Cannot use stats mode with a model file.')
-        exit(1)
-
-    if __args.model and __args.file:
-        log.error('Cannot train a model and use a model file at the same time.')
         exit(1)
 
     main(__args)
