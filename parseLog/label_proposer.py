@@ -1,7 +1,8 @@
-import csv
-import json
-import functools
 import argparse
+import csv
+import functools
+import json
+
 from common import IGNORED_NAMESPACES, LABEL_UNKNOWN, LABEL_IGNORE
 
 LABELS_FILE = 'labels.csv'
@@ -9,19 +10,34 @@ VERBS_FILE = 'verbs.csv'
 
 
 def load_labels():
-    labels = {}
+    __labels = {}
+    __available_verbs = {}
+    __namespaced_labels = {}
     with open(LABELS_FILE, 'r') as f:
         reader = csv.reader(f)
         for row in reader:
             if row[0].startswith('#'):
                 continue
-            apigroup, version, uri, __id, sub_id = row
+            apigroup, version, uri, __id, sub_id, *rest = row
+
+            namespaced, *rest = rest
+            if namespaced == 'true':
+                namespaced_labels[(apigroup, version, uri)] = True
+            else:
+                namespaced_labels[(apigroup, version, uri)] = False
+
+            local_available_verbs = set(rest)
+
+            if '' in local_available_verbs:
+                local_available_verbs.remove('')
+            available_verbs[(apigroup, version, uri)] = local_available_verbs
             labels[(apigroup, version, uri)] = (int(__id), int(sub_id))
-    return labels
+
+    return __labels, __available_verbs, __namespaced_labels
 
 
 def load_verbs():
-    verbs = {}
+    __verbs = {}
     with open(VERBS_FILE, 'r') as f:
         reader = csv.reader(f)
         for row in reader:
@@ -29,9 +45,10 @@ def load_verbs():
                 continue
             verb, __id = row
             verbs[verb] = int(__id)
-    return verbs
+    return __verbs
 
-labels = load_labels()
+
+labels, available_verbs, namespaced_labels = load_labels()
 verbs = load_verbs()
 
 
@@ -66,29 +83,34 @@ def generate_label(verb: str, objectRef: dict) -> int:
     else:
         is_single_object = 0
 
-    # print(bin(label[0]), ", ", bin(label[1]), ", ", bin(is_namespaced), ", ", bin(is_single_object), ", ", bin(verb_label))
+    # print(bin(label[0]), ", ", bin(label[1]), ", ",
+    # bin(is_namespaced), ", ", bin(is_single_object), ", ", bin(verb_label))
+
+    is_allowed, _ = validate_operation(apiGroup, apiVersion, resource, verb, is_namespaced == 1)
+    if not is_allowed:
+        raise KeyError(f"Operation {verb} on {apiGroup}/{apiVersion}/{resource} is not allowed")
 
     return encode_label(label[0], label[1], is_namespaced, is_single_object, verb_label)
 
 
 @functools.lru_cache(maxsize=None)
 def encode_label(
-    label_id: int,
-    label_sub_id: int,
-    is_namespaced: int,
-    is_single_object: int,
-    verb_id: int,
-    alternate: int = 0
+        label_id: int,
+        label_sub_id: int,
+        is_namespaced: int,
+        is_single_object: int,
+        verb_id: int,
+        alternate: int = 0
 ) -> int:
     label = (label_id << 8) | (label_sub_id << 5) | (is_namespaced << 4) | (is_single_object << 3) | verb_id
-    label = label << 4
-    label = label | alternate
+    label <<= 4
+    label |= alternate
 
     return label
 
 
 @functools.lru_cache(maxsize=None)
-def decode_label(label: int) -> dict:
+def decode_label(label: int, as_string: bool = False) -> dict | str:
     if label == LABEL_IGNORE:
         return {"error": "Label is ignored"}
     if label == LABEL_UNKNOWN:
@@ -106,18 +128,60 @@ def decode_label(label: int) -> dict:
 
     verb = [k for k, v in verbs.items() if v == verb_id][0]
 
-    return {
-        "apiGroup": apigroup,
-        "version": version,
-        "uri": uri,
-        "label_id": label_id,
-        "label_sub_id": label_sub_id,
-        "is_namespaced": is_namespaced,
-        "is_single_object": is_single_object,
-        "verb": verb,
-        "verb_id": verb_id,
-        "alternate": alternate,
-    }
+    if as_string:
+        return f"{verb} {apigroup}/{version}/{uri} {'(ns)' if is_namespaced else ''} {'(list)' if is_single_object else ''}"
+    else:
+        return {
+            "apiGroup": apigroup,
+            "version": version,
+            "uri": uri,
+            "label_id": label_id,
+            "label_sub_id": label_sub_id,
+            "is_namespaced": is_namespaced == 1,
+            "is_single_object": is_single_object,
+            "verb": verb,
+            "verb_id": verb_id,
+            "alternate": alternate,
+        }
+
+
+def validate_operation(
+        apiGroup: str,
+        version: str,
+        uri: str,
+        verb: str,
+        is_namespaced: bool,
+) -> tuple[bool, str]:
+    allowed_operation = False
+    match verb:
+        case "get" | "list":
+            allowed_operation = (
+                    "list" in available_verbs[(apiGroup, version, uri)]
+                    or "get" in available_verbs[(apiGroup, version, uri)]
+            )
+            verb = "get/list"
+        case "create":
+            allowed_operation = "create" in available_verbs[(apiGroup, version, uri)]
+        case "update" | "patch":
+            allowed_operation = (
+                    "update" in available_verbs[(apiGroup, version, uri)]
+                    or "patch" in available_verbs[(apiGroup, version, uri)]
+            )
+            verb = "update/patch"
+        case "delete" | "deletecollection":
+            allowed_operation = (
+                    "delete" in available_verbs[(apiGroup, version, uri)]
+                    or "deletecollection" in available_verbs[(apiGroup, version, uri)]
+            )
+            verb = "delete/deletecollection"
+        case "watch":
+            allowed_operation = "watch" in available_verbs[(apiGroup, version, uri)]
+        case _:
+            raise ValueError(f"Unknown verb: {verb}")
+
+    allowed_operation = allowed_operation and is_namespaced == namespaced_labels[(apiGroup, version, uri)]
+
+    return allowed_operation, verb
 
 
 def brute_force_label_space():
@@ -129,8 +193,21 @@ def brute_force_label_space():
                         try:
                             label = encode_label(label_id, label_sub_id, is_namespaced, is_single_object, verb_id)
                             decoded = decode_label(label)
-                            if "error" not in decoded:
-                                print(f"Label: {label}, {bin(label)}; Meaning: verb {decoded['verb']} on {decoded['apiGroup']}/{decoded['version']}/{decoded['uri']}; resource is {'namespaced' if decoded['is_namespaced'] else 'not namespaced'}; {'single object' if decoded['is_single_object'] else 'list of objects'}")
+
+                            verb = decoded['verb']
+                            apiGroup = decoded['apiGroup']
+                            version = decoded['version']
+                            uri = decoded['uri']
+                            is_namespaced = decoded['is_namespaced']
+
+                            allowed_operation, verb = validate_operation(apiGroup, version, uri, verb, is_namespaced)
+
+                            if "error" not in decoded and allowed_operation:
+                                print(
+                                    f"Label: {label}, {bin(label)}; Meaning: "
+                                    f"verb {verb} on {apiGroup}/{version}/{uri}; "
+                                    f"resource is {'namespaced' if decoded['is_namespaced'] else 'not namespaced'};"
+                                    f" {'single object' if decoded['is_single_object'] else 'list of objects'}")
                         except:
                             continue
 
@@ -159,12 +236,12 @@ def propose_label(j: dict) -> int:
 
     if "namespace" not in objectRef:
         objectRef["namespace"] = None
-    
+
     if objectRef["namespace"] in IGNORED_NAMESPACES:
         # Ignore requests to some namespaces (they will be flagged
         # as control plane traffic for the moment)
         return LABEL_IGNORE
-    
+
     if "apiGroup" not in objectRef:
         # We tagget the "" apiGroup as core
         objectRef["apiGroup"] = "core"
@@ -199,7 +276,9 @@ def main(args):
                         continue
                     try:
                         # print(bin(label))
-                        print(f"{label} <- {get_informative_string(j)}")
+                        infstr = get_informative_dict(j)
+                        infstr['label'] = label
+                        print(json.dumps(infstr))
                     except:
                         pass
         elif args.decode:
@@ -208,13 +287,13 @@ def main(args):
                 exit(1)
             decoded = decode_label(int(args.label))
             print(f"{args.label} -> {decoded['apiGroup']}/{decoded['version']}/{decoded['uri']} {decoded['verb']}")
-            
+
         else:
             parser.print_help()
 
 
 if __name__ == '__main__':
-    from log_parser import get_informative_string
+    from log_parser import get_informative_dict
 
     parser = argparse.ArgumentParser(
         prog='propose_label',
