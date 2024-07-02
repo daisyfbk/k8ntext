@@ -116,7 +116,10 @@ def plot_confusion_matrix(metrics: dict) -> None:
 
     class_accuracy_keys = list(class_accuracies.keys())
     class_accuracy_keys.sort(key=lambda x: -metrics['per_class_metrics']['weight'][x])
-    top_classes = class_accuracy_keys[:len(class_accuracies) * CONFUSION_MATRIX_TOP_PERCENTAGE]
+    if CONFUSION_MATRIX_TOP_PERCENTAGE < 1:
+        top_classes = class_accuracy_keys[:int(len(class_accuracies) * CONFUSION_MATRIX_TOP_PERCENTAGE)]
+    else:
+        top_classes = class_accuracy_keys
 
     confusion_matrix = np.zeros((len(top_classes), len(top_classes)))
 
