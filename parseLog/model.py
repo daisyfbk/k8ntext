@@ -119,7 +119,8 @@ def preprocess_data(__data: list[dict],
     return res, total_features
 
 
-def generate_model(data: list[dict]) -> dict:
+def generate_model(data: list[dict],
+                   statistical_mode: bool = False) -> dict:
     flattened_data, total_features = preprocess_data(data)
     x_before, y_before = [], []
 
@@ -170,9 +171,13 @@ def generate_model(data: list[dict]) -> dict:
 
     cb = [
         callbacks.EarlyStopping(monitor='val_loss', patience=pm.EARLY_STOPPING_PATIENCE, restore_best_weights=True),
-        callbacks.ModelCheckpoint(filepath=pm.OUT_FOLDER + '/model-checkpoint.keras', save_best_only=True),
         callbacks.ReduceLROnPlateau(monitor='val_loss', factor=pm.REDUCE_LR_FACTOR, patience=pm.REDUCE_LR_PATIENCE)
     ]
+
+    if not statistical_mode:
+        cb.append(
+            callbacks.ModelCheckpoint(filepath=pm.OUT_FOLDER + '/model-checkpoint.keras', save_best_only=True)
+        )
 
     mt = [
         # keras_metrics.Precision(),
@@ -477,16 +482,10 @@ def main(args):
 
         if args.stats_mode:
             for i in range(pm.STATISTICS_ATTEMPTS):
-                result = generate_model(data)
-                history = result['history']
-                metr = result['metrics']
-
-                # Plot ALL the losses over the epochs
-                losses.append(history)
-                metrics.append(metr)
+                result = generate_model(data, statistical_mode=True)
+                losses.append(result['history'])
+                metrics.append(result['metrics'])
                 log.info(f"Attempt {i + 1} done.")
-                log.info(f"Final loss: {history.history['loss'][-1]}")
-
         else:
             result = generate_model(data)
 
@@ -520,18 +519,19 @@ def main(args):
         plot_metrics(metrics)
 
     else:
-        model = models.load_model(args.model)
-        with open(args.model + '.features', 'r') as f:
-            features = json.load(f)
-        with open(args.model + '.x_encoders', 'r') as f:
-            x_encoders = json.load(f)
-            xenc = [LabelEncoder().fit(x) for x in x_encoders]
-        with open(args.model + '.y_encoders', 'r') as f:
-            y_encoders = json.load(f)
-            yle = LabelEncoder().fit(y_encoders)
+        pass
+        # model = models.load_model(args.model)
+        # with open(args.model + '.features', 'r') as f:
+        #     features = json.load(f)
+        # with open(args.model + '.x_encoders', 'r') as f:
+        #     x_encoders = json.load(f)
+        #     xenc = [LabelEncoder().fit(x) for x in x_encoders]
+        # with open(args.model + '.y_encoders', 'r') as f:
+        #     y_encoders = json.load(f)
+        #     yle = LabelEncoder().fit(y_encoders)
 
-        validation_data = open_file(args.validation_file)
-        y_pred = validate_model(model, features, yle, validation_data)
+        # validation_data = open_file(args.validation_file)
+        # y_pred = validate_model(model, features, yle, validation_data)
 
 
 if __name__ == '__main__':
