@@ -10,6 +10,7 @@ REDUCE_LR_FACTOR = float(os.getenv('REDUCE_LR_FACTOR', 0.5))
 REDUCE_LR_PATIENCE = int(os.getenv('REDUCE_LR_PATIENCE', 20))
 TEST_TRAIN_SPLIT = float(os.getenv('TEST_TRAIN_SPLIT', 0.1))
 TRAIN_VALID_SPLIT = float(os.getenv('TRAIN_VALID_SPLIT', 0.2))
+CONFUSION_MATRIX_TOP_PERCENTAGE = float(os.getenv('CONFUSION_MATRIX_TOP_PERCENTAGE', 0.2))
 
 # This variable is managed by support/log.py and should not be changed here
 OUT_FOLDER = 'out'

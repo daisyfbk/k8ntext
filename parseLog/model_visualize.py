@@ -1,7 +1,7 @@
 import numpy as np
 from matplotlib import pyplot as plt
 
-from parameters import OUT_FOLDER
+from parameters import OUT_FOLDER, CONFUSION_MATRIX_TOP_PERCENTAGE
 
 
 def plot_loss(losses: list) -> None:
@@ -116,7 +116,7 @@ def plot_confusion_matrix(metrics: dict) -> None:
 
     class_accuracy_keys = list(class_accuracies.keys())
     class_accuracy_keys.sort(key=lambda x: -metrics['per_class_metrics']['weight'][x])
-    top_classes = class_accuracy_keys[:len(class_accuracies) // 5]
+    top_classes = class_accuracy_keys[:len(class_accuracies) * CONFUSION_MATRIX_TOP_PERCENTAGE]
 
     confusion_matrix = np.zeros((len(top_classes), len(top_classes)))
 
@@ -135,7 +135,7 @@ def plot_confusion_matrix(metrics: dict) -> None:
     for i in range(len(top_classes)):
         for j in range(len(top_classes)):
             color = 'white' if confusion_matrix[i, j] > confusion_matrix.max() / 2 else 'black'
-            plt.text(j, i, float(confusion_matrix[i, j]), ha='center', va='center', color=color)
+            plt.text(j, i, f"{confusion_matrix[i, j]:.2f}", ha='center', va='center', color=color)
 
     plt.colorbar()
     plt.savefig(OUT_FOLDER + '/confusion_matrix.png')
