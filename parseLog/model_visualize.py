@@ -32,17 +32,24 @@ def plot_loss(losses: list) -> None:
     std_loss = np.nanstd(all_losses, axis=0)
     mean_val_loss = np.nanmean(all_val_losses, axis=0)
     std_val_loss = np.nanstd(all_val_losses, axis=0)
-    
+
     epochs = range(1, max_length + 1)
 
     plt.figure(figsize=(10, 6))
+
     plt.plot(epochs, mean_loss, label='Average Training Loss')
     plt.fill_between(epochs, mean_loss - std_loss, mean_loss + std_loss, alpha=0.3)
     plt.plot(epochs, mean_val_loss, label='Average Validation Loss')
     plt.fill_between(epochs, mean_val_loss - std_val_loss, mean_val_loss + std_val_loss, alpha=0.3)
+
+    # Put a tick where the last epoch is for each attempt
+    for i in range(len(losses)):
+        plt.axvline(x=len(losses[i].history['loss']), color='gray', linestyle='--', alpha=0.5)
+
     plt.title('Average Model Loss with Standard Deviation')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
+    plt.yscale('log')
     plt.legend()
     plt.savefig(OUT_FOLDER + '/loss.png')
 
@@ -69,6 +76,7 @@ def plot_metrics(metrics: list[dict]) -> None:
         stds = [data[metric_name][1] for metric_name in available_metrics]
         plt.bar(x_positions, means, yerr=stds, align='center', alpha=0.7, ecolor='black', capsize=10)
         plt.xticks(x_positions, available_metrics)
+        plt.ylim(min(0.8, min(means) - 0.1), max(1, max(means) + 0.1))
 
         plt.title('Core Metrics')
         plt.xlabel('Metric')
@@ -127,7 +135,7 @@ def plot_confusion_matrix(metrics: dict) -> None:
         for j, class_j in enumerate(top_classes):
             confusion_matrix[i, j] = metrics['confusion_matrix'].get(class_i, {int(class_j): 0}).get(int(class_j), 0)
 
-    plt.figure(figsize=(20, 20))
+    plt.figure(figsize=(len(top_classes) // 2, len(top_classes) // 2))
     plt.imshow(confusion_matrix, interpolation='nearest', cmap='Blues')
     plt.title('Confusion Matrix')
     plt.xlabel('Predicted')
