@@ -1,91 +1,28 @@
 import argparse
 import json
 import logging as log
+from typing import Any
 
+import collections
+import joblib
 import keras.api.callbacks as callbacks
 import keras.api.layers as layers
 import keras.api.losses as losses
 import keras.api.metrics as keras_metrics
 import keras.api.models as models
 import numpy as np
+import sklearn.preprocessing as preprocessing
 from keras.api.optimizers import Adam
 from keras.api.utils import to_categorical
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
 
 import parameters as pm
+from model_encoder import RisingEncoder
+import model_features
 from support.log import initialize_log
 
-# Features
-FEATURES = [
-    # "requestURI",
-    "verb",
-    "user",
-    "sourceIPs",
-    "userAgent",
-    "objectRef",
-    # "cplabel"
-    # "requestReceivedTimestamp",
-]
-
-EXCLUDE_FEATURES = [
-    "user.uid",
-    "user.extra.authentication.kubernetes.io/pod-name[0]",
-    "user.extra.authentication.kubernetes.io/pod-uid[0]",
-]
-
-FEATURE_PREPROCESSING = {
-    "requestReceivedTimestamp": lambda x: int(datetime.datetime.fromisoformat(x[:-1]).timestamp()),
-    "stageTimestamp": lambda x: int(datetime.datetime.fromisoformat(x[:-1]).timestamp()),
-    "userAgent": lambda x: parse_user_agent(x),
-}
-
-LABEL_FEATURE = "label"
-
-
-def parse_user_agent(user_agent: str) -> str:
-    splits = user_agent.split(' ')
-    if len(splits) == 1:
-        tool = splits[0]
-        platform = None
-        meta = None
-    elif len(splits) == 2:
-        tool, platform = splits
-        meta = None
-    else:
-        tool, platform, meta = splits
-
-    tool, version = tool.split('/', 1)
-
-    if platform:    
-        platform = platform.replace('(', '').replace(')', '')
-        platform, arch = platform.split('/', 1)
-    else:
-        platform = None
-        arch = None
-
-    if meta:
-        meta = meta.split('/')
-        if len(meta) == 2:
-            _, h = meta
-            extra = None
-        else:
-            _, h, extra = meta
-    else:
-        h = None
-        extra = None
-
-    return {
-        "tool": tool,
-        "version": version,
-        "platform": platform,
-        "arch": arch,
-        "h": h,
-        "extra": extra
-    }
-    
 
 def flatten_object(_object: dict) -> dict:
     keys = _object.keys()
@@ -122,19 +59,19 @@ def preprocess_data(__data: list[dict],
     extracted_data = []
     for d in __data:
         o = {}
-        for f in FEATURES:
+        for f in model_features.FILTER_FEATURES:
             try:
                 o[f] = d[f]
             except KeyError:
                 o[f] = None
 
-        if LABEL_FEATURE in d:
-            o["label"] = d[LABEL_FEATURE]
+        if pm.LABEL_FEATURE in d:
+            o["label"] = d[pm.LABEL_FEATURE]
         extracted_data.append(o)
 
     # Perform feature preprocessing if necessary
     for d in extracted_data:
-        for f, p in FEATURE_PREPROCESSING.items():
+        for f, p in model_features.FEATURE_PREPROCESSING.items():
             if f in d:
                 d[f] = p(d[f])
 
@@ -150,7 +87,7 @@ def preprocess_data(__data: list[dict],
         for d in flattened_data:
             for k in d.keys():
                 features.add(k)
-        total_features = [f for f in features if f not in EXCLUDE_FEATURES]
+        total_features = [f for f in features if f not in model_features.EXCLUDE_FEATURES]
     else:
         # Use the provided feature list
         total_features = features
@@ -168,8 +105,8 @@ def preprocess_data(__data: list[dict],
                 obj[f] = None
         res.append({k: obj[k] for k in sorted(obj.keys())})
 
-    if LABEL_FEATURE in total_features:
-        total_features.remove(LABEL_FEATURE)
+    if pm.LABEL_FEATURE in total_features:
+        total_features.remove(pm.LABEL_FEATURE)
 
     return res, total_features
 
@@ -180,34 +117,38 @@ def generate_model(data: list[dict],
     x_before, y_before = [], []
 
     for d in flattened_data:
-        y_before.append(d.pop(LABEL_FEATURE))
+        y_before.append(d.pop(pm.LABEL_FEATURE))
         x_before.append(list(d.values()))
 
     len_features = len(total_features)
     assert len(x_before[0]) == len_features, "Number of features do not match."
     len_classes = len(set(y_before))
 
-    log.info(f"Features: {len_features}")
+    log.info(f"Features: {len_features}: {total_features}")
     log.info(f"Classes: {len_classes}")
 
     x_before = np.array(x_before)
 
     xenc = []
     for i in range(x_before.shape[1]):
-        le = LabelEncoder()
-        x_before[:, i] = le.fit_transform(x_before[:, i])
+        le = RisingEncoder()
+        le.fit(x_before[:, i])
+        x_before[:, i] = le.transform(x_before[:, i])
         xenc.append(le)
 
-    # One-hot encoding for y_before
-    yle = LabelEncoder()
+    # Enumerate the weights of each feature encoder
+    # for i, le in enumerate(xenc):
+    #     log.info(f"Feature {total_features[i]}: {le.classes_}")
+
+    yle = preprocessing.LabelEncoder()
     y_before_encoded = yle.fit_transform(y_before)
     y_before_onehot = to_categorical(y_before_encoded, num_classes=len_classes)
 
     # Create batches
-    X = np.zeros((len(x_before) - pm.WINDOW_LENGTH, pm.WINDOW_LENGTH, len_features))
-    y = np.zeros((len(x_before) - pm.WINDOW_LENGTH, pm.WINDOW_LENGTH, len_classes))
+    X = np.zeros((len(x_before) - pm.WINDOW_LENGTH + 1, pm.WINDOW_LENGTH, len_features))
+    y = np.zeros((len(x_before) - pm.WINDOW_LENGTH + 1, pm.WINDOW_LENGTH, len_classes))
 
-    for i in range(pm.WINDOW_LENGTH, len(x_before)):
+    for i in range(pm.WINDOW_LENGTH, len(x_before) + 1):
         X[i - pm.WINDOW_LENGTH] = x_before[i - pm.WINDOW_LENGTH:i]
         y[i - pm.WINDOW_LENGTH] = y_before_onehot[i - pm.WINDOW_LENGTH:i]
 
@@ -407,93 +348,83 @@ def calculate_metrics(y_true, y_pred,
     }
 
 
-def validate_model(model: models.Model, features: list[str], yle, data: list[dict]) -> list:
-    # flattened_data, _ = preprocess_data(data, features)
-    # x_before = []
+def model_inference(model: models.Model,
+                    features: list[str],
+                    x_encoders: list[Any],
+                    yle: preprocessing.LabelEncoder,
+                    data: list[dict]) -> list:
+    flattened_data, _ = preprocess_data(data, features)
 
-    # for d in flattened_data:
-    #     x_before.append(list(d.values()))
+    x_before = []
+    for d in flattened_data:
+        x_before.append(list(d.values()))
 
-    # x_before = np.array(x_before)
-    # xenc = []
-    # for i in range(x_before.shape[1]):
-    #     le = LabelEncoder()
-    #     x_before[:, i] = le.fit_transform(x_before[:, i])
-    #     xenc.append(le)
+    len_features = len(features)
 
-    # # Create batches
-    # X = np.zeros((len(x_before) - pm.WINDOW_LENGTH, pm.WINDOW_LENGTH, len(features)))
+    x_before = np.array(x_before)
 
-    # for i in range(pm.WINDOW_LENGTH, len(x_before)):
-    #     X[i - pm.WINDOW_LENGTH] = x_before[i - pm.WINDOW_LENGTH:i]
+    for i in range(x_before.shape[1]):
+        x_before[:, i] = x_encoders[i].transform(x_before[:, i])
+        # x_before[:, i] = x_encoders[i].transform(x_before[:, i].reshape(-1, 1)).flatten()
 
-    # y_pred = model.predict(X)
-    # y_pred_labels = np.argmax(y_pred, axis=-1)
-    # y_pred_decoded = []
-    # for sequence_pred in y_pred_labels:
-    #     y_pred_decoded.append(yle.inverse_transform(sequence_pred))
+    # Create batches
+    X = np.zeros((len(x_before) - pm.WINDOW_LENGTH + 1, pm.WINDOW_LENGTH, len_features))
 
-    # y_pred_decoded = np.array(y_pred_decoded)
+    for i in range(pm.WINDOW_LENGTH, len(x_before) + 1):
+        X[i - pm.WINDOW_LENGTH] = x_before[i - pm.WINDOW_LENGTH:i]
 
-    # predicted = {}
+    y_pred = model.predict(X)
 
-    # for i in range(len(y_pred_decoded)):
-    #     for j in range(len(y_pred_decoded[i])):
-    #         if i + j not in predicted:
-    #             predicted[i + j] = []
-    #         predicted[i + j].append(y_pred_decoded[i][j])
+    y_pred_labels = np.argmax(y_pred, axis=-1)
 
-    # y_final_pred = []
-    # for k, v in predicted.items():
-    #     y_final_pred.append(max(set(v), key=v.count))
+    y_pred_decoded = []
 
-    # #### START OF WIP CODE
-    # ####
-    # ####
+    for sequence_pred in y_pred_labels:
+        y_pred_decoded.append(yle.inverse_transform(sequence_pred))
 
-    # from label_proposer import decode_label
+    y_pred_decoded = np.array(y_pred_decoded)
 
-    # if 'label' in validation_data[0]:
-    #     val_acc = {}
-    #     for i in range(len(y_pred)):
-    #         predicted = y_pred[i]
-    #         original = validation_data[i]['label']
-    #         if predicted != original:
-    #             print("Predicted: ", predicted, "Original: ", original)
-    #         if original not in val_acc:
-    #             val_acc[original] = []
-    #         val_acc[original].append(predicted)
+    # Calculate majorities
+    original_sequence_y_pred = {}
 
-    #     weights = []
-    #     for k, v in val_acc.items():
-    #         acc = len([x for x in v if x == k]) / len(v)
-    #         weights.append(len(v) * acc)
+    for i in range(len(y_pred_decoded)):
+        for j in range(len(y_pred_decoded[i])):
+            index = i + j
+            if index not in original_sequence_y_pred:
+                original_sequence_y_pred[index] = []
 
-    #     print("Total weighted accuracy:", sum(weights) / len(validation_data))
+            original_sequence_y_pred[index].append(y_pred_decoded[i][j])
 
-    # else:
-    #     for i in range(len(y_pred)):
-    #         minilog = validation_data[i]
-    #         try:
-    #             decoded = decode_label(y_pred[i])
-    #         except:
-    #             decoded = "Unknown label"
-    #         _d = f"{decoded['apiGroup']}/{decoded['version']}/{decoded['uri']} {decoded['verb']}"
-    #         _o = f'{minilog["requestURI"]} {minilog["verb"]}'
+    predicted_sequence = []
+    for k, v in original_sequence_y_pred.items():
+        # Get most common element in the list
+        most_common = collections.Counter(v).most_common()
+        if len(most_common) == 1:
+            # If there is only one element, use it
+            predicted_sequence.append(int(most_common[0][0]))
+        elif most_common[0][1] > most_common[1][1]:
+            # If the first element is absolute majority, use it
+            predicted_sequence.append(int(most_common[0][0]))
+        else:
+            # If there is a tie, insert all the elements with equal weight
+            tmp = []
+            item, count = most_common[0]
+            while len(most_common) > 0 and most_common[0][1] == count:
+                tmp.append(int(most_common.pop(0)[0]))
+            predicted_sequence.append(tmp)
 
-    #         print(f"{y_pred[i]} decoded into {_d} from {_o}")
+    assert len(predicted_sequence) == len(data), f"Predicted sequence length does not match data length: {len(predicted_sequence)} != {len(flattened_data)}"
 
-    #     # minilog = validation_data[i]
-    #     # decoded = decode_label(label)
-    #     # _d = f"{decoded['apiGroup']}/{decoded['version']}/{decoded['uri']} {decoded['verb']}"
-    #     # _o = f'{minilog["requestURI"]} {minilog["verb"]}'
-    #     # print(f"{label} -> {_d} {_o}")
+    ok = 0
+    for i in range(len(data)):
+        if "cplabel" not in data[i]:
+            continue
+        if data[i][pm.LABEL_FEATURE] == predicted_sequence[i]:
+            ok += 1
 
-    # ####
-    # ####
-    # #### END OF WIP CODE
-    y_final_pred = None
-    return y_final_pred
+    log.info(f"Accuracy on cplabel: {ok / len(data)}")
+
+    return predicted_sequence
 
 
 def open_file(file: str) -> list:
@@ -552,10 +483,10 @@ def main(args):
 
             # Save the model and the features
             model.save(pm.OUT_FOLDER + '/model.keras')
-            with open(pm.OUT_FOLDER + '/model.keras' + '.x_encoders', 'w') as f:
-                json.dump([x.classes_.tolist() for x in result['x_encoders']], f)
-            with open(pm.OUT_FOLDER + '/model.keras' + '.y_encoders', 'w') as f:
-                json.dump(result['y_encoders'].classes_.tolist(), f)
+            with open(pm.OUT_FOLDER + '/model.keras' + '.x_encoders', 'wb') as f:
+                joblib.dump(result['x_encoders'], f)
+            with open(pm.OUT_FOLDER + '/model.keras' + '.y_encoders', 'wb') as f:
+                joblib.dump(result['y_encoders'], f)
             with open(pm.OUT_FOLDER + '/model.keras' + '.features', 'w') as f:
                 json.dump(result['features'], f)
             # with open(pm.OUT_FOLDER + '/model.keras' + '.original_sequence', 'w') as f:
@@ -576,22 +507,21 @@ def main(args):
     else:
         log.info('Inference mode.')
         model = models.load_model(args.model)
+        with open(args.model + '.x_encoders', 'rb') as f:
+            x_encoders = joblib.load(f)
+        with open(args.model + '.y_encoders', 'rb') as f:
+            y_encoders = joblib.load(f)
         with open(args.model + '.features', 'r') as f:
             features = json.load(f)
-        with open(args.model + '.x_encoders', 'r') as f:
-            x_encoders = json.load(f)
-            xenc = [sklearn.preprocessing.LabelEncoder().fit(x) for x in x_encoders]
-        with open(args.model + '.y_encoders', 'r') as f:
-            y_encoders = json.load(f)
-            yle = sklearn.preprocessing.LabelEncoder().fit(y_encoders)
-        
-        y_pred = model_inference(model, features, xenc, yle, data)
+
+        y_pred = model_inference(model, features, x_encoders, y_encoders, data)
 
         for log_line, label in zip(data, y_pred):
             log_line["predicted_label"] = label
 
         with open(pm.OUT_FOLDER + '/results.json', 'w') as f:
-            json.dump(data, f)
+            for line in data:
+                f.write(json.dumps(line) + '\n')
 
 
 if __name__ == '__main__':
