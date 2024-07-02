@@ -3,7 +3,7 @@ import os
 # Supply an .env file if you want to override these values
 STATISTICS_ATTEMPTS = int(os.getenv('STATISTICS_ATTEMPTS', 40))
 WINDOW_LENGTH = int(os.getenv('WINDOW_LENGTH', 40))
-MAX_EPOCHS = int(os.getenv('MAX_EPOCHS', 400))
+MAX_EPOCHS = int(os.getenv('MAX_EPOCHS', 300))
 INITIAL_LEARNING_RATE = float(os.getenv('INITIAL_LEARNING_RATE', 0.001))
 EARLY_STOPPING_PATIENCE = int(os.getenv('EARLY_STOPPING_PATIENCE', 40))
 REDUCE_LR_FACTOR = float(os.getenv('REDUCE_LR_FACTOR', 0.5))
