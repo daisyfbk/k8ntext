@@ -1,6 +1,7 @@
 /logs
 .vscode
 *.tex
+queries.sh
 ssh/cluster-setup
 /*.kubeconfig
 .#*
