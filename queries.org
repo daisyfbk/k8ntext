@@ -8,7 +8,7 @@
 #+PROPERTY: header-args+ :exports code 
 #+PROPERTY: header-args+ :results output type code
 #+PROPERTY: header-args+ :eval no-export
-#+PROPERTY: header-args+ :tangle run.sh
+#+PROPERTY: header-args+ :tangle queries.sh 
 #+PROPERTY: header-args+ :comments noweb
 
 #+LATEX_HEADER: \usepackage{xcolor}
