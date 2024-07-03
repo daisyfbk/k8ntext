@@ -6,8 +6,11 @@
 #+PROPERTY: header-args :prologue "exec 2>&1"
 #+PROPERTY: header-args+ :epilogue ":"
 #+PROPERTY: header-args+ :exports code 
-#+PROPERTY: header-args+ :results type code
+#+PROPERTY: header-args+ :results output type code
 #+PROPERTY: header-args+ :eval no-export
+#+PROPERTY: header-args+ :tangle run.sh
+#+PROPERTY: header-args+ :comments noweb
+
 #+LATEX_HEADER: \usepackage{xcolor}
 #+SETUPFILE: latex.setup 
 
@@ -2473,7 +2476,7 @@ deployment.apps/test-deployment created
       metadata:
         labels:
           app: test
-     spec:
+      spec:
         containers:
         - name: nginx
           image: nginx:latest
@@ -2494,9 +2497,40 @@ deployment.apps/test-deployment created
 
   #+RESULTS:
   #+begin_src shell
-  Waiting for deployment "test-deployment" rollout to finish: 1 out of 2 new replicas have been updated...
-  Waiting for deployment spec update to be observed...
-  deployment "test-deployment" successfully rolled out
+  Name:                   test-deployment
+  Namespace:              rising
+  CreationTimestamp:      Wed, 03 Jul 2024 15:57:50 +0200
+  Labels:                 app=test
+  Annotations:            deployment.kubernetes.io/revision: 1
+  Selector:               app=test
+  Replicas:               2 desired | 1 updated | 1 total | 1 available | 1 unavailable
+  StrategyType:           RollingUpdate
+  MinReadySeconds:        0
+  RollingUpdateStrategy:  25% max unavailable, 25% max surge
+  Pod Template:
+    Labels:  app=test
+    Containers:
+     nginx:
+      Image:         nginx:latest
+      Port:          80/TCP
+      Host Port:     0/TCP
+      Environment:   <none>
+      Mounts:        <none>
+    Volumes:         <none>
+    Node-Selectors:  <none>
+    Tolerations:     <none>
+  Conditions:
+    Type             Status  Reason
+    ----             ------  ------
+    Available        False   MinimumReplicasUnavailable
+    ReplicaFailure   True    FailedCreate
+    Progressing      True    ReplicaSetUpdated
+  OldReplicaSets:    <none>
+  NewReplicaSet:     test-deployment-64487946cc (1/2 replicas created)
+  Events:
+    Type    Reason             Age   From                   Message
+    ----    ------             ----  ----                   -------
+    Normal  ScalingReplicaSet  7s    deployment-controller  Scaled up replica set test-deployment-64487946cc to 2
   #+end_src
 
 - Relax the ResourceQuota:
@@ -2504,46 +2538,194 @@ deployment.apps/test-deployment created
   kubectl patch resourcequota test-quota -p '{"spec":{"hard":{"pods":"5"}}}' -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  resourcequota/test-quota patched
+  #+end_src
+
 - Check the status of the Deployment again:
   #+BEGIN_SRC shell
   kubectl rollout status deployment test-deployment -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Waiting for deployment "test-deployment" rollout to finish: 1 out of 2 new replicas have been updated...
+  Waiting for deployment "test-deployment" rollout to finish: 1 out of 2 new replicas have been updated...
+  Waiting for deployment "test-deployment" rollout to finish: 1 of 2 updated replicas are available...
+  deployment "test-deployment" successfully rolled out
+  #+end_src
 
 - Change the image of the Deployment and put a non-existent image:
   #+BEGIN_SRC shell
   kubectl set image deployment test-deployment nginx=engincs:ahahahah -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment image updated
+  #+end_src
+
 - Check the status of the Deployment:
   #+BEGIN_SRC shell
-  kubectl rollout status deployment test-deployment -n rising
+  kubectl describe deployment test-deployment -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:                   test-deployment
+  Namespace:              rising
+  CreationTimestamp:      Wed, 03 Jul 2024 15:57:50 +0200
+  Labels:                 app=test
+  Annotations:            deployment.kubernetes.io/revision: 2
+  Selector:               app=test
+  Replicas:               2 desired | 1 updated | 3 total | 2 available | 1 unavailable
+  StrategyType:           RollingUpdate
+  MinReadySeconds:        0
+  RollingUpdateStrategy:  25% max unavailable, 25% max surge
+  Pod Template:
+    Labels:  app=test
+    Containers:
+     nginx:
+      Image:         engincs:ahahahah
+      Port:          80/TCP
+      Host Port:     0/TCP
+      Environment:   <none>
+      Mounts:        <none>
+    Volumes:         <none>
+    Node-Selectors:  <none>
+    Tolerations:     <none>
+  Conditions:
+    Type           Status  Reason
+    ----           ------  ------
+    Available      True    MinimumReplicasAvailable
+    Progressing    True    ReplicaSetUpdated
+  OldReplicaSets:  test-deployment-64487946cc (2/2 replicas created)
+  NewReplicaSet:   test-deployment-69f5cddc77 (1/1 replicas created)
+  Events:
+    Type    Reason             Age   From                   Message
+    ----    ------             ----  ----                   -------
+    Normal  ScalingReplicaSet  70s   deployment-controller  Scaled up replica set test-deployment-64487946cc to 2
+    Normal  ScalingReplicaSet  36s   deployment-controller  Scaled up replica set test-deployment-69f5cddc77 to 1
+  #+end_src
+  
+- List the Pods:
+  #+BEGIN_SRC shell
+  kubectl get pods -l app=test -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                               READY   STATUS         RESTARTS   AGE
+  test-deployment-64487946cc-fb5d6   1/1     Running        0          72s
+  test-deployment-64487946cc-qnxlv   1/1     Running        0          98s
+  test-deployment-69f5cddc77-spksx   0/1     ErrImagePull   0          64s
+  #+end_src
 
 - Fix the image of the Deployment:
   #+BEGIN_SRC shell
   kubectl set image deployment test-deployment nginx=nginx:1.16.1 -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment image updated
+  #+end_src
+
+- Check the status again:
+  #+BEGIN_SRC shell
+  kubectl get deployment test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME              READY   UP-TO-DATE   AVAILABLE   AGE
+  test-deployment   2/2     2            2           2m31s
+  #+end_src
+
 - Now, set an impossible affinity for the Deployment:
   #+BEGIN_SRC shell
   kubectl patch deployment test-deployment -p '{"spec":{"template":{"spec":{"affinity":{"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"nonexistent","operator":"In","values":["true"]}]}]}}}}}}}' -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment patched
+  #+end_src
+  
 - Check the status of the Deployment:
   #+BEGIN_SRC shell
-  kubectl rollout status deployment test-deployment -n rising
+  kubectl describe deployment test-deployment -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:                   test-deployment
+  Namespace:              rising
+  CreationTimestamp:      Wed, 03 Jul 2024 15:57:50 +0200
+  Labels:                 app=test
+  Annotations:            deployment.kubernetes.io/revision: 4
+  Selector:               app=test
+  Replicas:               2 desired | 1 updated | 3 total | 2 available | 1 unavailable
+  StrategyType:           RollingUpdate
+  MinReadySeconds:        0
+  RollingUpdateStrategy:  25% max unavailable, 25% max surge
+  Pod Template:
+    Labels:  app=test
+    Containers:
+     nginx:
+      Image:         nginx:1.16.1
+      Port:          80/TCP
+      Host Port:     0/TCP
+      Environment:   <none>
+      Mounts:        <none>
+    Volumes:         <none>
+    Node-Selectors:  <none>
+    Tolerations:     <none>
+  Conditions:
+    Type           Status  Reason
+    ----           ------  ------
+    Available      True    MinimumReplicasAvailable
+    Progressing    True    ReplicaSetUpdated
+  OldReplicaSets:  test-deployment-64487946cc (0/0 replicas created), test-deployment-69f5cddc77 (0/0 replicas created), test-deployment-f546b5d99 (2/2 replicas created)
+  NewReplicaSet:   test-deployment-6789ff7c7f (1/1 replicas created)
+  Events:
+    Type    Reason             Age    From                   Message
+    ----    ------             ----   ----                   -------
+    Normal  ScalingReplicaSet  2m51s  deployment-controller  Scaled up replica set test-deployment-64487946cc to 2
+    Normal  ScalingReplicaSet  2m17s  deployment-controller  Scaled up replica set test-deployment-69f5cddc77 to 1
+    Normal  ScalingReplicaSet  56s    deployment-controller  Scaled down replica set test-deployment-69f5cddc77 to 0 from 1
+    Normal  ScalingReplicaSet  56s    deployment-controller  Scaled up replica set test-deployment-f546b5d99 to 1 from 0
+    Normal  ScalingReplicaSet  53s    deployment-controller  Scaled down replica set test-deployment-64487946cc to 1 from 2
+    Normal  ScalingReplicaSet  53s    deployment-controller  Scaled up replica set test-deployment-f546b5d99 to 2 from 1
+    Normal  ScalingReplicaSet  51s    deployment-controller  Scaled down replica set test-deployment-64487946cc to 0 from 1
+    Normal  ScalingReplicaSet  14s    deployment-controller  Scaled up replica set test-deployment-6789ff7c7f to 1
+  #+end_src
 
 - Inspect the Pods:
   #+BEGIN_SRC shell
   kubectl get pods -l app=test -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                               READY   STATUS    RESTARTS   AGE
+  test-deployment-6789ff7c7f-f5kp7   0/1     Pending   0          34s
+  test-deployment-f546b5d99-4d4x8    1/1     Running   0          76s
+  test-deployment-f546b5d99-87hh4    1/1     Running   0          73s
+  #+end_src
  
 - Tear everything down:
   #+BEGIN_SRC shell
   kubectl delete deployment test-deployment -n rising
   kubectl delete resourcequota test-quota -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps "test-deployment" deleted
+  resourcequota "test-quota" deleted
+  #+end_src
 
 ** ReplicaSet log =RS1= - Use bare ReplicaSets to manage Pods
 - Create a ReplicaSet:
@@ -2573,31 +2755,89 @@ deployment.apps/test-deployment created
   EOF
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  replicaset.apps/frontend created
+  #+end_src
+
 - List the ReplicaSets:
   #+BEGIN_SRC shell
   kubectl get replicasets -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  NAME       DESIRED   CURRENT   READY   AGE
+  frontend   3         3         0       4s
+  #+end_src
+
 - Inspect the ReplicaSet:
   #+BEGIN_SRC shell
   kubectl describe replicasets frontend -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:         frontend
+  Namespace:    rising
+  Selector:     tier=frontend
+  Labels:       app=guestbook
+                tier=frontend
+  Annotations:  <none>
+  Replicas:     3 current / 3 desired
+  Pods Status:  3 Running / 0 Waiting / 0 Succeeded / 0 Failed
+  Pod Template:
+    Labels:  tier=frontend
+    Containers:
+     outward:
+      Image:         httpd:latest
+      Port:          <none>
+      Host Port:     <none>
+      Environment:   <none>
+      Mounts:        <none>
+    Volumes:         <none>
+    Node-Selectors:  <none>
+    Tolerations:     <none>
+  Events:
+    Type    Reason            Age   From                   Message
+    ----    ------            ----  ----                   -------
+    Normal  SuccessfulCreate  8s    replicaset-controller  Created pod: frontend-qqzxd
+    Normal  SuccessfulCreate  8s    replicaset-controller  Created pod: frontend-wddfd
+    Normal  SuccessfulCreate  8s    replicaset-controller  Created pod: frontend-zrw6c
+  #+end_src
  
 - Scale down the ReplicaSet:
   #+BEGIN_SRC shell
   kubectl scale replicasets frontend --replicas=2 -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  replicaset.apps/frontend scaled
+  #+end_src
   
 - Inspect the Pods:
   #+BEGIN_SRC shell
   kubectl get pods -l tier=frontend -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  NAME             READY   STATUS    RESTARTS   AGE
+  frontend-wddfd   1/1     Running   0          20s
+  frontend-zrw6c   1/1     Running   0          20s
+  #+end_src
+
 - Tear everything down:
   #+BEGIN_SRC shell
   kubectl delete replicasets frontend -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  replicaset.apps "frontend" deleted
+  #+end_src
+  
 ** DaemonSet log =DS1= - Manage a DaemonSet
 - Create a DaemonSet:
   #+BEGIN_SRC shell
@@ -2655,7 +2895,7 @@ deployment.apps/test-deployment created
   #+RESULTS:
   #+begin_src shell
   NAME                    DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
-  fluentd-elasticsearch   3         3         3       3            3           <none>          3s
+  fluentd-elasticsearch   3         3         3       3            3           <none>          5s
   #+end_src
 
 - Inspect the Pods:
@@ -2666,20 +2906,33 @@ deployment.apps/test-deployment created
   #+RESULTS:
   #+begin_src shell
   NAME                          READY   STATUS    RESTARTS   AGE
-  fluentd-elasticsearch-l2clh   1/1     Running   0          9s
-  fluentd-elasticsearch-sp28n   1/1     Running   0          9s
-  fluentd-elasticsearch-t7gcs   1/1     Running   0          9s
+  fluentd-elasticsearch-9fptr   1/1     Running   0          12s
+  fluentd-elasticsearch-jngnw   1/1     Running   0          12s
+  fluentd-elasticsearch-t5582   1/1     Running   0          12s
   #+end_src
 
 - Cordon =kubeadm-worker1=:
   #+BEGIN_SRC shell
   kubectl cordon kubeadm-worker1
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  node/kubeadm-worker1 cordoned
+  #+end_src
   
 - Check the Pods again:
   #+BEGIN_SRC shell
   kubectl get pods -l name=fluentd-elasticsearch -n kube-system
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                          READY   STATUS    RESTARTS   AGE
+  fluentd-elasticsearch-9fptr   1/1     Running   0          20s
+  fluentd-elasticsearch-jngnw   1/1     Running   0          20s
+  fluentd-elasticsearch-t5582   1/1     Running   0          20s
+  #+end_src
 
 - Uncordon and add a label to =kubeadm-worker1=:
   #+BEGIN_SRC shell
@@ -2689,24 +2942,43 @@ deployment.apps/test-deployment created
 
   #+RESULTS:
   #+begin_src shell
-  node/kubeadm-worker1 already uncordoned
+  node/kubeadm-worker1 uncordoned
   node/kubeadm-worker1 tainted
   #+end_src
 
-- Edit the DaemonSet to prevent it from running on nodes with the label:
+- Edit the DaemonSet to tolerate the taint, this will drop out the master node: 
   #+BEGIN_SRC shell
-  kubectl patch daemonset fluentd-elasticsearch -p '{"spec":{"template":{"spec":{"tolerations":[{"key":"test-label","operator":"NotExists","effect":"NoExecute"}]}}}' -n kube-system
+  kubectl patch daemonset fluentd-elasticsearch -p '{"spec":{"template":{"spec":{"tolerations":[{"key":"test-label","operator":"Equal","effect":"NoExecute","value":"no-schedule"}]}}}}' -n kube-system
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  daemonset.apps/fluentd-elasticsearch patched
+  #+end_src
   
 - Check the Pods again:
   #+BEGIN_SRC shell
   kubectl get pods -l name=fluentd-elasticsearch -n kube-system
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  NAME                          READY   STATUS    RESTARTS   AGE
+  fluentd-elasticsearch-5t54s   1/1     Running   0          4s
+  fluentd-elasticsearch-8prm6   1/1     Running   0          7s
+  #+end_src
+
 - Clean everything up:
   #+BEGIN_SRC shell
   kubectl delete daemonset fluentd-elasticsearch -n kube-system
+  kubectl taint nodes kubeadm-worker1 test-label-
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  daemonset.apps "fluentd-elasticsearch" deleted
+  node/kubeadm-worker1 untainted
+  #+end_src
 
 ** Job log =J1= - Manage a Job
 - Create a Job:
@@ -2728,36 +3000,113 @@ deployment.apps/test-deployment created
     backoffLimit: 4
   EOF
 #+END_SRC
+
+#+RESULTS:
+#+begin_src shell
+job.batch/pi created
+#+end_src
   
 - List available Jobs:
   #+BEGIN_SRC shell
   kubectl get jobs -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  NAME   COMPLETIONS   DURATION   AGE
+  pi     0/1           7s         7s
+  #+end_src
+
 - Inspect the Job:
   #+BEGIN_SRC shell
   kubectl describe jobs pi -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:             pi
+  Namespace:        rising
+  Selector:         batch.kubernetes.io/controller-uid=fd12c889-7876-4f13-a039-1fb0d7fa23b6
+  Labels:           batch.kubernetes.io/controller-uid=fd12c889-7876-4f13-a039-1fb0d7fa23b6
+                    batch.kubernetes.io/job-name=pi
+                    controller-uid=fd12c889-7876-4f13-a039-1fb0d7fa23b6
+                    job-name=pi
+  Annotations:      <none>
+  Parallelism:      1
+  Completions:      1
+  Completion Mode:  NonIndexed
+  Suspend:          false
+  Backoff Limit:    4
+  Start Time:       Wed, 03 Jul 2024 16:27:33 +0200
+  Pods Statuses:    1 Active (1 Ready) / 0 Succeeded / 0 Failed
+  Pod Template:
+    Labels:  batch.kubernetes.io/controller-uid=fd12c889-7876-4f13-a039-1fb0d7fa23b6
+             batch.kubernetes.io/job-name=pi
+             controller-uid=fd12c889-7876-4f13-a039-1fb0d7fa23b6
+             job-name=pi
+    Containers:
+     pi:
+      Image:      perl:5.34.0
+      Port:       <none>
+      Host Port:  <none>
+      Command:
+        perl
+        -Mbignum=bpi
+        -wle
+        print bpi(2000)
+      Environment:   <none>
+      Mounts:        <none>
+    Volumes:         <none>
+    Node-Selectors:  <none>
+    Tolerations:     <none>
+  Events:
+    Type    Reason            Age   From            Message
+    ----    ------            ----  ----            -------
+    Normal  SuccessfulCreate  11s   job-controller  Created pod: pi-wkp47
+  #+end_src
 
 - Check the Pods:
   #+BEGIN_SRC shell
   kubectl get pods -l job-name=pi -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  NAME       READY   STATUS      RESTARTS   AGE
+  pi-wkp47   0/1     Completed   0          16s
+  #+end_src
+
 - Assess the logs generated by the Job:
   #+BEGIN_SRC shell
-  kubectl logs jobs pi -n rising
+  kubectl wait --for=condition=complete job/pi -n rising
+  kubectl logs jobs/pi -n rising | head -c 20
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  job.batch/pi condition met
+  3.141592653589793238
+  #+end_src
 
 - Update the spec of the Job to trigger auto deletion:
   #+BEGIN_SRC shell
   kubectl patch job pi -p '{"spec":{"ttlSecondsAfterFinished":60}}' -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  job.batch/pi patched
+  #+end_src
+
 - Wait for the Job to be deleted:
   #+BEGIN_SRC shell
-  kubectl wait --for=delete job/pi -n rising
+  kubectl wait --for=delete job/pi -n rising --timeout=80s
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  job.batch/pi condition met
+  #+end_src
 
 ** CronJob log =CJ1= - Manage a CronJob
 - Create a CronJob:
@@ -2773,6 +3122,9 @@ deployment.apps/test-deployment created
   spec:
     schedule: "* * * * *"
     jobTemplate:
+      metadata:
+        labels:
+          cj: hello
       spec:
         template:
           spec:
@@ -2801,7 +3153,7 @@ deployment.apps/test-deployment created
   #+RESULTS:
   #+begin_src shell
   NAME    SCHEDULE    SUSPEND   ACTIVE   LAST SCHEDULE   AGE
-  hello   * * * * *   False     0        <none>          3s
+  hello   * * * * *   False     0        <none>          7s
   #+end_src
 
 - Inspect the CronJob:
@@ -2813,7 +3165,7 @@ deployment.apps/test-deployment created
   #+begin_src shell
   Name:                          hello
   Namespace:                     rising
-  Labels:                        <none>
+  Labels:                        cj=hello
   Annotations:                   <none>
   Schedule:                      * * * * *
   Concurrency Policy:            Allow
@@ -2853,14 +3205,20 @@ deployment.apps/test-deployment created
 
   #+RESULTS:
   #+begin_src shell
-  No resources found in rising namespace.
+  NAME             COMPLETIONS   DURATION   AGE
+  hello-28666967   1/1           3s         75s
+  hello-28666968   1/1           3s         15s
   #+end_src
   
 - Clean everything up:
   #+BEGIN_SRC shell
   kubectl delete cronjob hello -n rising 
-  kubectl delete jobs -l cj=hello -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  cronjob.batch "hello" deleted
+  #+end_src
 
 * Log setups level 3
 ** Stateful Set log =SS1= - Manage a StatefulSet
