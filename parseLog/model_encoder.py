@@ -1,5 +1,6 @@
 import numpy as np
 
+
 class RisingEncoder:
     def __init__(self):
         self.mapping = {}
@@ -25,7 +26,7 @@ class RisingEncoder:
                 transformed_strings.append(self.next_id)
                 self.next_id += 1  # Update the next available ID
         return np.array(transformed_strings)
-    
+
     def fit_transform(self, strings):
         self.fit(strings)
         return self.transform(strings)
