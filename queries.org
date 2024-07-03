@@ -2081,20 +2081,43 @@ kubectl describe node kubeadm-worker1
   EOF
 #+END_SRC
 
+#+RESULTS:
+#+begin_src shell
+deployment.apps/test-deployment created
+#+end_src
+
 - Inspect the Deployment:
   #+BEGIN_SRC shell
   kubectl get deployments test-deployment -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME              READY   UP-TO-DATE   AVAILABLE   AGE
+  test-deployment   0/2     2            0           5s
+  #+end_src
 
 - Inspect the rollout status:
   #+BEGIN_SRC shell
   kubectl rollout status deployment test-deployment -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  Waiting for deployment "test-deployment" rollout to finish: 1 of 2 updated replicas are available...
+  deployment "test-deployment" successfully rolled out
+  #+end_src
+
 - Inspect the ReplicaSet created by the Deployment:
   #+BEGIN_SRC shell
   kubectl get replicasets -l app=test -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                         DESIRED   CURRENT   READY   AGE
+  test-deployment-64487946cc   2         2         2       19s
+  #+end_src
 
 - Describe the ReplicaSet directly:
   #+BEGIN_SRC shell
@@ -2106,16 +2129,33 @@ kubectl describe node kubeadm-worker1
   kubectl expose deployment test-deployment --type=NodePort --port=80 --target-port=80 --name=test-deployment -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  service/test-deployment exposed
+  #+end_src
+
 - Inspect the Service:
   #+BEGIN_SRC shell
   kubectl get services test-deployment -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME              TYPE       CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
+  test-deployment   NodePort   10.111.74.27   <none>        80:30293/TCP   4s
+  #+end_src
 
 - Tear everything down:
   #+BEGIN_SRC shell
   kubectl delete service test-deployment -n rising
   kubectl delete deployment test-deployment -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  service "test-deployment" deleted
+  deployment.apps "test-deployment" deleted
+  #+end_src
 
 ** Deployment log =D2= - Scale a Deployment and update its image
 - Create a Deployment again:
@@ -2146,40 +2186,95 @@ kubectl describe node kubeadm-worker1
   EOF
 #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment created
+  #+end_src
+
 - Scale the Deployment to 3 replicas:
   #+BEGIN_SRC shell
   kubectl scale deployment test-deployment --replicas=3 -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment scaled
+  #+end_src
 
 - Inspect the Deployment:
   #+BEGIN_SRC shell
   kubectl get deployments test-deployment -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  NAME              READY   UP-TO-DATE   AVAILABLE   AGE
+  test-deployment   3/3     3            3           21s
+  #+end_src
+
 - Update the image of the Deployment:
   #+BEGIN_SRC shell
   kubectl set image deployment test-deployment nginx=nginx:1.16.1 -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment image updated
+  #+end_src
+  
+- Inspect the rollout status:
+  #+BEGIN_SRC shell
+  kubectl rollout status deployment test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment "test-deployment" successfully rolled out
+  #+end_src
 
 - Scale down the Deployment to 2 replicas:
   #+BEGIN_SRC shell
   kubectl scale deployment test-deployment --replicas=2 -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment scaled
+  #+end_src
+
 - Inspect ReplicaSets:
   #+BEGIN_SRC shell
   kubectl get replicasets -l app=test -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                         DESIRED   CURRENT   READY   AGE
+  test-deployment-64487946cc   0         0         0       68s
+  test-deployment-f546b5d99    2         2         2       42s
+  #+end_src
 
 - Inspect the Pods:
   #+BEGIN_SRC shell
   kubectl get pods -l app=test -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  NAME                              READY   STATUS    RESTARTS   AGE
+  test-deployment-f546b5d99-25t9s   1/1     Running   0          47s
+  test-deployment-f546b5d99-n7kj5   1/1     Running   0          38s
+  #+end_src
+
 - Tear everything down:
   #+BEGIN_SRC shell
   kubectl delete deployment test-deployment -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps "test-deployment" deleted
+  #+end_src
 
 ** Deployment log =D3= - Roll back, pause and resume a Deployment
 - Create a Deployment again:
@@ -2210,55 +2305,134 @@ kubectl describe node kubeadm-worker1
   EOF
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment created
+  #+end_src
+
 - Wait for the Deployment to be ready:
   #+BEGIN_SRC shell
   kubectl wait --for=condition=Available deployment/test-deployment -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment condition met
+  #+end_src
         
 - Pause the Deployment:
   #+BEGIN_SRC shell
   kubectl rollout pause deployment test-deployment -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment paused
+  #+end_src
+
 - Update the image of the Deployment:
   #+BEGIN_SRC shell
   kubectl set image deployment test-deployment nginx=nginx:1.16.1 -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment image updated
+  #+end_src
 
 - Inspect the rollout history:
   #+BEGIN_SRC shell
   kubectl rollout history deployment test-deployment -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment 
+  REVISION  CHANGE-CAUSE
+  1         <none>
+
+  #+end_src
+
 - Inspect the ReplicaSets:
   #+BEGIN_SRC shell
   kubectl get replicasets -l app=test -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                         DESIRED   CURRENT   READY   AGE
+  test-deployment-64487946cc   2         2         2       28s
+  #+end_src
 
 - Resume the Deployment:
   #+BEGIN_SRC shell
   kubectl rollout resume deployment test-deployment -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment resumed
+  #+end_src
+
 - Inspect the rollout history again:
   #+BEGIN_SRC shell
   kubectl rollout history deployment test-deployment -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment 
+  REVISION  CHANGE-CAUSE
+  1         <none>
+  2         <none>
+
+  #+end_src
 
 - Roll back the Deployment to the previous revision:
   #+BEGIN_SRC shell
   kubectl rollout undo deployment test-deployment -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment rolled back
+  #+end_src
+
 - Inspect the rollout history one more time:
   #+BEGIN_SRC shell
   kubectl rollout history deployment test-deployment -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment 
+  REVISION  CHANGE-CAUSE
+  2         <none>
+  3         <none>
+
+  #+end_src
+  
+- List Pods:
+  #+BEGIN_SRC shell
+  kubectl get pods -l app=test
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                               READY   STATUS    RESTARTS   AGE
+  test-deployment-64487946cc-24xdb   1/1     Running   0          56s
+  test-deployment-64487946cc-w44nd   1/1     Running   0          59s
+  #+end_src
+
 - Tear everything down:
   #+BEGIN_SRC shell
   kubectl delete deployment test-deployment -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps "test-deployment" deleted
+  #+end_src
   
 ** Deployment log =D4= - Watch a Deployment fail and recover
 - Install a restrictive ResourceQuota:
@@ -2274,6 +2448,11 @@ kubectl describe node kubeadm-worker1
       pods: "1"
   EOF
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  resourcequota/test-quota created
+  #+end_src
 
 - Create a Deployment again:
   #+BEGIN_SRC shell
@@ -2303,10 +2482,22 @@ kubectl describe node kubeadm-worker1
   EOF
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment created
+  #+end_src
+
 - Check the status of the Deployment:
   #+BEGIN_SRC shell
-  kubectl rollout status deployment test-deployment -n rising
+  kubectl describe deployment test-deployment -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Waiting for deployment "test-deployment" rollout to finish: 1 out of 2 new replicas have been updated...
+  Waiting for deployment spec update to be observed...
+  deployment "test-deployment" successfully rolled out
+  #+end_src
 
 - Relax the ResourceQuota:
   #+BEGIN_SRC shell
@@ -2335,7 +2526,7 @@ kubectl describe node kubeadm-worker1
 
 - Now, set an impossible affinity for the Deployment:
   #+BEGIN_SRC shell
-  kubectl patch deployment test-deployment -p '{"spec":{"template":{"spec":{"affinity":{"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"nonexistent","operator":"In","values":["true"]}]}]}}}}}}' -n rising
+  kubectl patch deployment test-deployment -p '{"spec":{"template":{"spec":{"affinity":{"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"nonexistent","operator":"In","values":["true"]}]}]}}}}}}}' -n rising
   #+END_SRC
 
 - Check the status of the Deployment:
@@ -2517,7 +2708,7 @@ kubectl describe node kubeadm-worker1
   kubectl delete daemonset fluentd-elasticsearch -n kube-system
   #+END_SRC
 
-** COMMENT Job log =J1= - Manage a Job
+** Job log =J1= - Manage a Job
 - Create a Job:
 #+BEGIN_SRC shell
   cat <<EOF | kubectl apply -f -
