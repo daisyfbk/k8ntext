@@ -15,6 +15,14 @@
 # #+PROPERTY: header-args:shell :var TERM=dumb
 # #+PROPERTY: header-args:shell+ :var EMACS=1
 # -*- org-confirm-babel-evaluate: nil -*-
+# :PROPERTIES:
+# :header-args:shell: :var TERM=dumb
+# :header-args:shell: :var EMACS=1
+# :header-args: :prologue "exec 2>&1"
+# :header-args: :epilogue ":"
+# :header-args: :exports code
+# :header-args: :results type code
+# :END:
 
 * Ignored logs
 ** Ignored namespaces and users
@@ -152,16 +160,7 @@ every five minutes.
 # - Verb: =create=
 # - Users: =system:node:.*=, groups =["system:nodes","system:authenticated"]=
 # - Objects: =/api/v1/namespaces/{namespace}/serviceaccounts/default/token=
-* Log setups 
-# :PROPERTIES:
-# :header-args:shell: :var TERM=dumb
-# :header-args:shell: :var EMACS=1
-# :header-args: :prologue "exec 2>&1"
-# :header-args: :epilogue ":"
-# :header-args: :exports code
-# :header-args: :results type code
-# :END:
-
+* Log setups level 1
 ** Namespace log =N1= - Simple namespace creation and deletion
 
 - Create a namespace:
@@ -2052,4 +2051,749 @@ kubectl describe node kubeadm-worker1
   serviceaccount "bob" deleted
   serviceaccount "charlie" deleted
   #+end_src
+* Log setups level 2
+** Deployment log =D1= - Create a Deployment for a ReplicaSet and expose it as a Service
+- Create a Deployment:
+#+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: test-deployment
+    namespace: rising
+    labels:
+      app: test
+  spec:
+    replicas: 2
+    selector:
+      matchLabels:
+        app: test
+    template:
+      metadata:
+        labels:
+          app: test
+     spec:
+        containers:
+        - name: nginx
+          image: nginx:latest
+          ports:
+          - containerPort: 80
+  EOF
+#+END_SRC
 
+- Inspect the Deployment:
+  #+BEGIN_SRC shell
+  kubectl get deployments test-deployment -n rising
+  #+END_SRC
+
+- Inspect the rollout status:
+  #+BEGIN_SRC shell
+  kubectl rollout status deployment test-deployment -n rising
+  #+END_SRC
+
+- Inspect the ReplicaSet created by the Deployment:
+  #+BEGIN_SRC shell
+  kubectl get replicasets -l app=test -n rising
+  #+END_SRC
+
+- Describe the ReplicaSet directly:
+  #+BEGIN_SRC shell
+  kubectl describe replicasets -l app=test -n rising
+  #+END_SRC
+
+- Expose the Deployment as a Service:
+  #+BEGIN_SRC shell
+  kubectl expose deployment test-deployment --type=NodePort --port=80 --target-port=80 --name=test-deployment -n rising
+  #+END_SRC
+
+- Inspect the Service:
+  #+BEGIN_SRC shell
+  kubectl get services test-deployment -n rising
+  #+END_SRC
+
+- Tear everything down:
+  #+BEGIN_SRC shell
+  kubectl delete service test-deployment -n rising
+  kubectl delete deployment test-deployment -n rising
+  #+END_SRC
+
+** Deployment log =D2= - Scale a Deployment and update its image
+- Create a Deployment again:
+#+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: test-deployment
+    namespace: rising
+    labels:
+      app: test
+  spec:
+    replicas: 2
+    selector:
+      matchLabels:
+        app: test
+    template:
+      metadata:
+        labels:
+          app: test
+     spec:
+        containers:
+        - name: nginx
+          image: nginx:latest
+          ports:
+          - containerPort: 80
+  EOF
+#+END_SRC
+
+- Scale the Deployment to 3 replicas:
+  #+BEGIN_SRC shell
+  kubectl scale deployment test-deployment --replicas=3 -n rising
+  #+END_SRC
+
+- Inspect the Deployment:
+  #+BEGIN_SRC shell
+  kubectl get deployments test-deployment -n rising
+  #+END_SRC
+
+- Update the image of the Deployment:
+  #+BEGIN_SRC shell
+  kubectl set image deployment test-deployment nginx=nginx:1.16.1 -n rising
+  #+END_SRC
+
+- Scale down the Deployment to 2 replicas:
+  #+BEGIN_SRC shell
+  kubectl scale deployment test-deployment --replicas=2 -n rising
+  #+END_SRC
+
+- Inspect ReplicaSets:
+  #+BEGIN_SRC shell
+  kubectl get replicasets -l app=test -n rising
+  #+END_SRC
+
+- Inspect the Pods:
+  #+BEGIN_SRC shell
+  kubectl get pods -l app=test -n rising
+  #+END_SRC
+
+- Tear everything down:
+  #+BEGIN_SRC shell
+  kubectl delete deployment test-deployment -n rising
+  #+END_SRC
+
+** Deployment log =D3= - Roll back, pause and resume a Deployment
+- Create a Deployment again:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: test-deployment
+    namespace: rising
+    labels:
+      app: test
+  spec:
+    replicas: 2
+    selector:
+      matchLabels:
+        app: test
+    template:
+      metadata:
+        labels:
+          app: test
+     spec:
+        containers:
+        - name: nginx
+          image: nginx:latest
+          ports:
+          - containerPort: 80
+  EOF
+  #+END_SRC
+
+- Wait for the Deployment to be ready:
+  #+BEGIN_SRC shell
+  kubectl wait --for=condition=Available deployment/test-deployment -n rising
+  #+END_SRC
+        
+- Pause the Deployment:
+  #+BEGIN_SRC shell
+  kubectl rollout pause deployment test-deployment -n rising
+  #+END_SRC
+
+- Update the image of the Deployment:
+  #+BEGIN_SRC shell
+  kubectl set image deployment test-deployment nginx=nginx:1.16.1 -n rising
+  #+END_SRC
+
+- Inspect the rollout history:
+  #+BEGIN_SRC shell
+  kubectl rollout history deployment test-deployment -n rising
+  #+END_SRC
+
+- Inspect the ReplicaSets:
+  #+BEGIN_SRC shell
+  kubectl get replicasets -l app=test -n rising
+  #+END_SRC
+
+- Resume the Deployment:
+  #+BEGIN_SRC shell
+  kubectl rollout resume deployment test-deployment -n rising
+  #+END_SRC
+
+- Inspect the rollout history again:
+  #+BEGIN_SRC shell
+  kubectl rollout history deployment test-deployment -n rising
+  #+END_SRC
+
+- Roll back the Deployment to the previous revision:
+  #+BEGIN_SRC shell
+  kubectl rollout undo deployment test-deployment -n rising
+  #+END_SRC
+
+- Inspect the rollout history one more time:
+  #+BEGIN_SRC shell
+  kubectl rollout history deployment test-deployment -n rising
+  #+END_SRC
+
+- Tear everything down:
+  #+BEGIN_SRC shell
+  kubectl delete deployment test-deployment -n rising
+  #+END_SRC
+  
+** Deployment log =D4= - Watch a Deployment fail and recover
+- Install a restrictive ResourceQuota:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: ResourceQuota
+  metadata:
+    name: test-quota
+    namespace: rising
+  spec:
+    hard:
+      pods: "1"
+  EOF
+  #+END_SRC
+
+- Create a Deployment again:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: test-deployment
+    namespace: rising
+    labels:
+      app: test
+  spec:
+    replicas: 2
+    selector:
+      matchLabels:
+        app: test
+    template:
+      metadata:
+        labels:
+          app: test
+     spec:
+        containers:
+        - name: nginx
+          image: nginx:latest
+          ports:
+          - containerPort: 80
+  EOF
+  #+END_SRC
+
+- Check the status of the Deployment:
+  #+BEGIN_SRC shell
+  kubectl rollout status deployment test-deployment -n rising
+  #+END_SRC
+
+- Relax the ResourceQuota:
+  #+BEGIN_SRC shell
+  kubectl patch resourcequota test-quota -p '{"spec":{"hard":{"pods":"5"}}}' -n rising
+  #+END_SRC
+
+- Check the status of the Deployment again:
+  #+BEGIN_SRC shell
+  kubectl rollout status deployment test-deployment -n rising
+  #+END_SRC
+
+- Change the image of the Deployment and put a non-existent image:
+  #+BEGIN_SRC shell
+  kubectl set image deployment test-deployment nginx=engincs:ahahahah -n rising
+  #+END_SRC
+
+- Check the status of the Deployment:
+  #+BEGIN_SRC shell
+  kubectl rollout status deployment test-deployment -n rising
+  #+END_SRC
+
+- Fix the image of the Deployment:
+  #+BEGIN_SRC shell
+  kubectl set image deployment test-deployment nginx=nginx:1.16.1 -n rising
+  #+END_SRC
+
+- Now, set an impossible affinity for the Deployment:
+  #+BEGIN_SRC shell
+  kubectl patch deployment test-deployment -p '{"spec":{"template":{"spec":{"affinity":{"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"nonexistent","operator":"In","values":["true"]}]}]}}}}}}' -n rising
+  #+END_SRC
+
+- Check the status of the Deployment:
+  #+BEGIN_SRC shell
+  kubectl rollout status deployment test-deployment -n rising
+  #+END_SRC
+
+- Inspect the Pods:
+  #+BEGIN_SRC shell
+  kubectl get pods -l app=test -n rising
+  #+END_SRC
+ 
+- Tear everything down:
+  #+BEGIN_SRC shell
+  kubectl delete deployment test-deployment -n rising
+  kubectl delete resourcequota test-quota -n rising
+  #+END_SRC
+
+** ReplicaSet log =RS1= - Use bare ReplicaSets to manage Pods
+- Create a ReplicaSet:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: apps/v1
+  kind: ReplicaSet
+  metadata:
+    name: frontend
+    namespace: rising
+    labels:
+      app: guestbook
+      tier: frontend
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        tier: frontend
+    template:
+      metadata:
+        labels:
+          tier: frontend
+      spec:
+        containers:
+        - name: outward
+          image: httpd:latest
+  EOF
+  #+END_SRC
+
+- List the ReplicaSets:
+  #+BEGIN_SRC shell
+  kubectl get replicasets -n rising
+  #+END_SRC
+
+- Inspect the ReplicaSet:
+  #+BEGIN_SRC shell
+  kubectl describe replicasets frontend -n rising
+  #+END_SRC
+ 
+- Scale down the ReplicaSet:
+  #+BEGIN_SRC shell
+  kubectl scale replicasets frontend --replicas=2 -n rising
+  #+END_SRC
+  
+- Inspect the Pods:
+  #+BEGIN_SRC shell
+  kubectl get pods -l tier=frontend -n rising
+  #+END_SRC
+
+- Tear everything down:
+  #+BEGIN_SRC shell
+  kubectl delete replicasets frontend -n rising
+  #+END_SRC
+
+** DaemonSet log =DS1= - Manage a DaemonSet
+- Create a DaemonSet:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: apps/v1
+  kind: DaemonSet
+  metadata:
+    name: fluentd-elasticsearch
+    namespace: kube-system
+    labels:
+      k8s-app: fluentd-logging
+  spec:
+    selector:
+      matchLabels:
+        name: fluentd-elasticsearch
+    template:
+      metadata:
+        labels:
+          name: fluentd-elasticsearch
+      spec:
+        tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        containers:
+        - name: fluentd-elasticsearch
+          image: quay.io/fluentd_elasticsearch/fluentd:v2.5.2
+          resources:
+            limits:
+              memory: 200Mi
+            requests:
+              cpu: 100m
+              memory: 200Mi
+          volumeMounts:
+          - name: varlog
+            mountPath: /var/log
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: varlog
+          hostPath:
+            path: /var/log
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  daemonset.apps/fluentd-elasticsearch created
+  #+end_src
+
+- Inspect the DaemonSet:
+  #+BEGIN_SRC shell
+  kubectl get daemonsets fluentd-elasticsearch -n kube-system
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                    DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
+  fluentd-elasticsearch   3         3         3       3            3           <none>          3s
+  #+end_src
+
+- Inspect the Pods:
+  #+BEGIN_SRC shell
+  kubectl get pods -l name=fluentd-elasticsearch -n kube-system
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                          READY   STATUS    RESTARTS   AGE
+  fluentd-elasticsearch-l2clh   1/1     Running   0          9s
+  fluentd-elasticsearch-sp28n   1/1     Running   0          9s
+  fluentd-elasticsearch-t7gcs   1/1     Running   0          9s
+  #+end_src
+
+- Cordon =kubeadm-worker1=:
+  #+BEGIN_SRC shell
+  kubectl cordon kubeadm-worker1
+  #+END_SRC
+  
+- Check the Pods again:
+  #+BEGIN_SRC shell
+  kubectl get pods -l name=fluentd-elasticsearch -n kube-system
+  #+END_SRC
+
+- Uncordon and add a label to =kubeadm-worker1=:
+  #+BEGIN_SRC shell
+  kubectl uncordon kubeadm-worker1
+  kubectl taint nodes kubeadm-worker1 test-label=no-schedule:NoExecute
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  node/kubeadm-worker1 already uncordoned
+  node/kubeadm-worker1 tainted
+  #+end_src
+
+- Edit the DaemonSet to prevent it from running on nodes with the label:
+  #+BEGIN_SRC shell
+  kubectl patch daemonset fluentd-elasticsearch -p '{"spec":{"template":{"spec":{"tolerations":[{"key":"test-label","operator":"NotExists","effect":"NoExecute"}]}}}' -n kube-system
+  #+END_SRC
+  
+- Check the Pods again:
+  #+BEGIN_SRC shell
+  kubectl get pods -l name=fluentd-elasticsearch -n kube-system
+  #+END_SRC
+
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl delete daemonset fluentd-elasticsearch -n kube-system
+  #+END_SRC
+
+** COMMENT Job log =J1= - Manage a Job
+- Create a Job:
+#+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: batch/v1
+  kind: Job
+  metadata:
+    name: pi
+    namespace: rising
+  spec:
+    template:
+      spec:
+        containers:
+        - name: pi
+          image: perl:5.34.0
+          command: ["perl",  "-Mbignum=bpi", "-wle", "print bpi(2000)"]
+        restartPolicy: Never
+    backoffLimit: 4
+  EOF
+#+END_SRC
+  
+- List available Jobs:
+  #+BEGIN_SRC shell
+  kubectl get jobs -n rising
+  #+END_SRC
+
+- Inspect the Job:
+  #+BEGIN_SRC shell
+  kubectl describe jobs pi -n rising
+  #+END_SRC
+
+- Check the Pods:
+  #+BEGIN_SRC shell
+  kubectl get pods -l job-name=pi -n rising
+  #+END_SRC
+
+- Assess the logs generated by the Job:
+  #+BEGIN_SRC shell
+  kubectl logs jobs pi -n rising
+  #+END_SRC
+
+- Update the spec of the Job to trigger auto deletion:
+  #+BEGIN_SRC shell
+  kubectl patch job pi -p '{"spec":{"ttlSecondsAfterFinished":60}}' -n rising
+  #+END_SRC
+
+- Wait for the Job to be deleted:
+  #+BEGIN_SRC shell
+  kubectl wait --for=delete job/pi -n rising
+  #+END_SRC
+
+** CronJob log =CJ1= - Manage a CronJob
+- Create a CronJob:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: batch/v1
+  kind: CronJob
+  metadata:
+    name: hello
+    labels:
+      cj: hello
+    namespace: rising
+  spec:
+    schedule: "* * * * *"
+    jobTemplate:
+      spec:
+        template:
+          spec:
+            containers:
+            - name: hello
+              image: busybox:1.28
+              imagePullPolicy: IfNotPresent
+              command:
+              - /bin/sh
+              - -c
+              - date; echo Hello from the Kubernetes cluster
+            restartPolicy: OnFailure
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  cronjob.batch/hello created
+  #+end_src
+  
+- List available CronJobs:
+  #+BEGIN_SRC shell
+  kubectl get cronjobs -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME    SCHEDULE    SUSPEND   ACTIVE   LAST SCHEDULE   AGE
+  hello   * * * * *   False     0        <none>          3s
+  #+end_src
+
+- Inspect the CronJob:
+  #+BEGIN_SRC shell
+  kubectl describe cronjobs hello -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:                          hello
+  Namespace:                     rising
+  Labels:                        <none>
+  Annotations:                   <none>
+  Schedule:                      * * * * *
+  Concurrency Policy:            Allow
+  Suspend:                       False
+  Successful Job History Limit:  3
+  Failed Job History Limit:      1
+  Starting Deadline Seconds:     <unset>
+  Selector:                      <unset>
+  Parallelism:                   <unset>
+  Completions:                   <unset>
+  Pod Template:
+    Labels:  <none>
+    Containers:
+     hello:
+      Image:      busybox:1.28
+      Port:       <none>
+      Host Port:  <none>
+      Command:
+        /bin/sh
+        -c
+        date; echo Hello from the Kubernetes cluster
+      Environment:     <none>
+      Mounts:          <none>
+    Volumes:           <none>
+    Node-Selectors:    <none>
+    Tolerations:       <none>
+  Last Schedule Time:  <unset>
+  Active Jobs:         <none>
+  Events:              <none>
+  #+end_src
+
+- Wait two-three minutes and check the Jobs created by the CronJob:
+  #+BEGIN_SRC shell
+  sleep 120
+  kubectl get jobs -l cj=hello -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  No resources found in rising namespace.
+  #+end_src
+  
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl delete cronjob hello -n rising 
+  kubectl delete jobs -l cj=hello -n rising
+  #+END_SRC
+
+* Log setups level 3
+** Stateful Set log =SS1= - Manage a StatefulSet
+- Create a dumb StorageClass for the StatefulSet:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: storage.k8s.io/v1
+  kind: StorageClass
+  metadata:
+    name: local-storage
+    annotations:
+      storageclass.kubernetes.io/is-default-class: "true"
+  provisioner: kubernetes.io/no-provisioner
+  volumeBindingMode: WaitForFirstConsumer
+  EOF
+  #+END_SRC
+  
+- Create some PersistentVolumes:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: PersistentVolume
+  metadata:
+    name: pv-0
+  spec:
+    capacity:
+      storage: 1Gi
+    volumeMode: Filesystem
+    accessModes:
+      - ReadWriteOnce
+    persistentVolumeReclaimPolicy: Retain
+    storageClassName: local-storage
+    local:
+EOF
+#+END_SRC
+
+#+RESULTS:
+#+begin_src shell
+The PersistentVolume "pv-0" is invalid: spec: Required value: must specify a volume type
+#+end_src
+
+- Create a StatefulSet with an associated Service:
+  #+begin_src sh
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: nginx
+    namespace: rising
+    labels:
+      app: nginx
+  spec:
+    ports:
+    - port: 80
+      name: web
+    clusterIP: None
+    selector:
+      app: nginx
+  ---
+  apiVersion: apps/v1
+  kind: StatefulSet
+  metadata:
+    namespace: rising
+    name: web
+  spec:
+    selector:
+      matchLabels:
+        app: nginx 
+    serviceName: "nginx"
+    replicas: 3 
+    minReadySeconds: 10 # by default is 0
+    template:
+      metadata:
+        labels:
+          app: nginx 
+      spec:
+        terminationGracePeriodSeconds: 10
+        containers:
+        - name: nginx
+          image: registry.k8s.io/nginx-slim:0.24
+          ports:
+          - containerPort: 80
+            name: web
+          volumeMounts:
+          - name: www
+            mountPath: /usr/share/nginx/html
+    volumeClaimTemplates:
+    - metadata:
+        name: www
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 200Mi
+  EOF
+  #+end_src
+
+  #+RESULTS:
+  #+begin_src sh
+  service/nginx created
+  statefulset.apps/web created
+  #+end_src
+
+- Inspect the StatefulSet:
+  #+BEGIN_SRC shell
+  kubectl get statefulsets web -n rising
+  #+END_SRC
+
+- Inspect the Pods:
+  #+BEGIN_SRC shell
+  kubectl get pods -l app=nginx -n rising
+  #+END_SRC
+
+- Scale up the StatefulSet:
+  #+BEGIN_SRC shell
+  kubectl scale statefulsets web --replicas=4 -n rising
+  #+END_SRC
+
+- Inspect the Pods again:
+  #+BEGIN_SRC shell
+  kubectl get pods -l app=nginx -n rising
+  #+END_SRC
+
+- Scale down to 2:
+  #+BEGIN_SRC shell
+  kubectl scale statefulsets web --replicas=2 -n rising
+  #+END_SRC
