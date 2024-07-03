@@ -1,9 +1,9 @@
 import argparse
+import collections
 import json
 import logging as log
 from typing import Any
 
-import collections
 import joblib
 import keras.api.callbacks as callbacks
 import keras.api.layers as layers
@@ -18,9 +18,9 @@ from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_sc
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 
+import model_features
 import parameters as pm
 from model_encoder import RisingEncoder
-import model_features
 from support.log import initialize_log
 
 
@@ -413,7 +413,8 @@ def model_inference(model: models.Model,
                 tmp.append(int(most_common.pop(0)[0]))
             predicted_sequence.append(tmp)
 
-    assert len(predicted_sequence) == len(data), f"Predicted sequence length does not match data length: {len(predicted_sequence)} != {len(flattened_data)}"
+    assert len(predicted_sequence) == len(
+        data), f"Predicted sequence length does not match data length: {len(predicted_sequence)} != {len(flattened_data)}"
 
     ok = 0
     for i in range(len(data)):

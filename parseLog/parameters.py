@@ -16,4 +16,3 @@ LABEL_FEATURE = str(os.getenv('LABEL_FEATURE', 'label'))  # Name of the feature 
 
 # This variable is managed by support/log.py and should not be changed here
 OUT_FOLDER = 'out'
-

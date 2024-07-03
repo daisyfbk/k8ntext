@@ -7,26 +7,26 @@ from parameters import OUT_FOLDER, CONFUSION_MATRIX_TOP_PERCENTAGE
 def plot_loss(losses: list) -> None:
     # Find the maximum length of loss histories
     max_length = max(max(len(loss.history['loss']), len(loss.history['val_loss'])) for loss in losses)
-    
+
     # Initialize lists to store adjusted loss histories
     all_losses = []
     all_val_losses = []
-    
+
     # Adjust all loss histories to have the same maximum length
     for loss in losses:
         adjusted_loss = np.full(max_length, np.nan)
         adjusted_val_loss = np.full(max_length, np.nan)
-        
+
         adjusted_loss[:len(loss.history['loss'])] = loss.history['loss']
         adjusted_val_loss[:len(loss.history['val_loss'])] = loss.history['val_loss']
-        
+
         all_losses.append(adjusted_loss)
         all_val_losses.append(adjusted_val_loss)
-    
+
     # Convert lists to NumPy arrays
     all_losses = np.array(all_losses)
     all_val_losses = np.array(all_val_losses)
-    
+
     # Calculate mean and standard deviation safely
     mean_loss = np.nanmean(all_losses, axis=0)
     std_loss = np.nanstd(all_losses, axis=0)
@@ -59,7 +59,7 @@ def plot_metrics(metrics: list[dict]) -> None:
 
     if len(metrics) == 1:
         plot_confusion_matrix(metrics[0])
-    else:    
+    else:
         # Plot core metrics: accuracy, precision, recall, f1
         available_metrics = ['accuracy', 'precision', 'recall', 'f1']
         data = {}
@@ -82,6 +82,7 @@ def plot_metrics(metrics: list[dict]) -> None:
         plt.xlabel('Metric')
         plt.ylabel('Value')
         plt.savefig(OUT_FOLDER + '/core_metrics.png')
+
 
 # def plot_boxplot(metrics: list[dict], metric_name: str) -> None:
 #     # Step 1: Collect data for each class across all attempts
@@ -150,5 +151,3 @@ def plot_confusion_matrix(metrics: dict) -> None:
 
     plt.colorbar()
     plt.savefig(OUT_FOLDER + '/confusion_matrix.png')
-
-    
