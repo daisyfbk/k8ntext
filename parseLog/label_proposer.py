@@ -22,16 +22,16 @@ def load_labels():
 
             namespaced, *rest = rest
             if namespaced == 'true':
-                namespaced_labels[(apigroup, version, uri)] = True
+                __namespaced_labels[(apigroup, version, uri)] = True
             else:
-                namespaced_labels[(apigroup, version, uri)] = False
+                __namespaced_labels[(apigroup, version, uri)] = False
 
             local_available_verbs = set(rest)
 
             if '' in local_available_verbs:
                 local_available_verbs.remove('')
-            available_verbs[(apigroup, version, uri)] = local_available_verbs
-            labels[(apigroup, version, uri)] = (int(__id), int(sub_id))
+            __available_verbs[(apigroup, version, uri)] = local_available_verbs
+            __labels[(apigroup, version, uri)] = (int(__id), int(sub_id))
 
     return __labels, __available_verbs, __namespaced_labels
 
@@ -44,7 +44,7 @@ def load_verbs():
             if row[0].startswith('#'):
                 continue
             verb, __id = row
-            verbs[verb] = int(__id)
+            __verbs[verb] = int(__id)
     return __verbs
 
 
