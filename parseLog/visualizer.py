@@ -1,14 +1,20 @@
+import json
 import argparse
 import csv
-import json
+import uuid
+from termcolor import colored
 
 from label_proposer import decode_label
 from log_parser import get_informative_dict
 
+ACTION_KEY_SEPARATOR = "%"
+UUID = "UUID"
 
-def main():
-    input_filename = parsed_args.f;
 
+# This functions returns two dictionary:
+# 1) actions_dict: the dictionary that contains the single actions performed with their corresponding informative_dict
+# 2) dict_divided_by_label: a dictionary that contains all the informative_dict grouped by label
+def get_actions_and_labels_dicts():
     verbs_dict = {}
     with open('verbs.csv', 'r') as file:
         csv_reader = csv.DictReader(file)
@@ -16,10 +22,13 @@ def main():
             verbs_dict[row.get('#verb')] = row.get('id')
 
     actions_dict = {}
+    dict_divided_by_label = {}
 
     with (open(input_filename, 'r') as input_file):
+        line_index = 0
 
         for line in input_file:
+            line_index += 1
             # each line is a json, load it
             json_data = json.loads(line)
 
@@ -27,11 +36,19 @@ def main():
 
             if not json_data.get('cplabel') and label != -1:
                 informative_dict = get_informative_dict(json_data)
-                informative_dict.pop("requestURI", None)
+                informative_dict.pop('requestURI', None)
+                informative_dict.pop('requestReceivedTimestamp', None)
 
+                informative_dict['line_index'] = line_index  # add line index to add uuid later
+
+                # add line dict_divided_by_label
+                if label not in dict_divided_by_label:
+                    dict_divided_by_label[label] = []
+                dict_divided_by_label.get(label).append(informative_dict)
+
+                # the following code is used to extract the individual actions performed
                 decoded = decode_label(label)
-                decoded_resource, decoded_subresource, *_ = decoded.get('uri').split("/") + [
-                    None]  # trick to get None if the subresource is not present
+                decoded_resource, decoded_subresource, *_ = decoded.get('uri').split("/") + [None]  # trick to get None if the subresource is not present
                 decoded_verb = decoded.get('verb')
 
                 # useful to debug
@@ -43,27 +60,150 @@ def main():
                         verbs_dict.get(informative_dict.get('verb')) == verbs_dict.get(
                             decoded_verb)):  # compare verbs number instead of verbs directly
 
-                    action_key = str(label) + "_"
-                    if informative_dict['namespace'] is None and informative_dict[
-                        'name'] is None:  # since namespace and name are both empty, use the username to create the key
+                    action_key = str(label) + ACTION_KEY_SEPARATOR
+                    if informative_dict['namespace'] is None and informative_dict['name'] is None:
+                        # since namespace and name are both empty, use the username to create the key
                         action_key += informative_dict['username']
                     else:
-                        action_key += str(informative_dict['namespace']) + "_" + str(informative_dict['name'])
+                        action_key += str(informative_dict['namespace']) + ACTION_KEY_SEPARATOR
+                        if informative_dict.get('ownerReferences') is not None:
+                            action_key += informative_dict.get('ownerReferences')[0].get('uid')
+                        else:
+                            action_key += str(informative_dict['name'])
 
                     if action_key not in actions_dict:
                         actions_dict[action_key] = {}
 
                     if not actions_dict.get(action_key):  # if action is empty
-                        actions_dict[action_key] = informative_dict
+                        action_detail = get_informative_dict(json_data)  # get new dict, not the same as before
+                        action_detail.pop('requestURI', None)
+                        action_detail[UUID] = uuid.uuid4()
+                        actions_dict[action_key] = action_detail
 
-    with open("test_output.csv", "w") as output_file:
-        w = csv.DictWriter(output_file, informative_dict.keys())
-        for key, val in sorted(actions_dict.items()):
+    return actions_dict, dict_divided_by_label
+
+
+def print_actions_dict_to_csv(actions_dict):
+    output_file_name = input_filename.split('/')[-1] + "_actions.csv"
+    with open(output_file_name, "w") as output_file:
+        w = csv.DictWriter(output_file, next(iter(actions_dict.values())))
+        for key, val in actions_dict.items():
             row = {}
             row.update(val)
             w.writerow(row)
+    pass
 
-    # print(json.dumps(actions_dict, indent=4))
+
+def get_value_by_owner_reference(log_line, action_value):
+    action_owner_ref = action_value.get('ownerReferences')
+    log_owner_ref = log_line.get('ownerReferences')
+
+    if action_owner_ref is not None:
+        if log_line.get('name') is not None:
+            if log_line.get('name').startswith(action_owner_ref[0].get('name')):
+                return action_value.get(UUID)
+
+        if log_owner_ref is not None:
+            if log_owner_ref[0].get('name').startswith(action_owner_ref[0].get('name')):
+                return action_value.get(UUID)
+            if log_owner_ref[0].get('uid') == action_owner_ref[0].get('uid'):
+                return action_value.get(UUID)
+
+    if log_owner_ref is not None:
+        if action_value.get('name') is not None and log_owner_ref[0].get('name').startswith(action_value.get('name')):
+            return action_value.get(UUID)
+        if log_owner_ref[0].get('uid') == action_value.get('metadata/uid'):
+            return action_value.get(UUID)
+
+    return None
+
+
+# This function returns the uuid of the action to which it corresponds
+def get_associate_action_uuid(candidate_actions, log_line):
+    # Todo Remove comment -----------------------
+    # if len(candidate_actions) == 1:
+    #     return next(iter(candidate_actions.values())).get(UUID)
+    # else:
+    # Todo up to here -----------------------
+    for key, action_val in candidate_actions.items():
+        if log_line.get('name') == action_val.get('name'):
+            return action_val.get(UUID)
+
+        value_by_owner_reference = get_value_by_owner_reference(log_line, action_val)
+        if value_by_owner_reference is not None:
+            return value_by_owner_reference
+
+    # ---
+    # hard-coded behaviours
+    # ---
+    if log_line.get('verb') == 'get' and log_line.get('resource') == "namespaces":
+        # actions are ordered by time. Consequently, here, we assume that when we encounter a log line that doesn't
+        # match any action we assign to it the first uuid we encounter. Then, the second and so on.
+        for key, action_values in candidate_actions.items():
+            if log_line.get('username') == action_values.get('username') and \
+                    log_line.get('namespace') == action_values.get('namespace') and \
+                    action_values.get('notMatchingNamespaceAlreadyAssigned') is None:
+                action_values['notMatchingNamespaceAlreadyAssigned'] = True  # add it in order to skip at next iteration
+                return action_values.get(UUID)
+
+    if log_line.get('resource') == "events":
+        for key, action_values in candidate_actions.items():
+            if log_line.get('involvedObject') is not None:
+                if log_line.get('involvedObject').get('name') == action_values.get('name'):
+                    return action_values.get(UUID)
+                if action_values.get('ownerReferences') is not None and \
+                        log_line.get('involvedObject').get('name') == action_values.get('ownerReferences')[0].get('name'):
+                    return action_values.get(UUID)
+
+    for key, action_val in candidate_actions.items():
+        if log_line.get('name') is not None and action_val.get('name') is not None and\
+                log_line.get('name').startswith(action_val.get('name')):
+            return action_val.get(UUID)
+
+        # delete namespaces rule
+        if (action_val.get('verb') == 'delete' or action_val.get('verb') == 'create') and \
+                action_val.get('resource') == 'namespaces':
+            if log_line.get('namespace') == action_val.get('name'):
+                return action_val.get(UUID)
+
+        # cronjobs rule
+        if log_line.get('resource') == 'cronjobs':
+            if action_val.get('name').startswith(log_line.get('name')):
+                return action_val.get(UUID)
+
+
+    return "1010"
+
+
+# This functions, given a set of lines grouped by label, search foreach line the action to which it corresponds
+def assign_uuid_to_lines(actions_dict, dict_divided_by_label):
+    for label, log_lines in dict_divided_by_label.items():
+        possible_actions = {}
+
+        # search for actions that match the current label
+        for action_key in actions_dict.keys():
+            if action_key.split(ACTION_KEY_SEPARATOR)[0] == str(label):
+                possible_actions[action_key] = actions_dict.get(action_key)
+
+        # add the correct action uuid to each line
+        for log_line in log_lines:
+            uuid_value = get_associate_action_uuid(possible_actions, log_line)
+            log_line[UUID] = uuid_value
+
+
+def main():
+    actions_dict, dict_divided_by_label = get_actions_and_labels_dicts()
+
+    # print_actions_dict_to_csv(actions_dict)
+
+    assign_uuid_to_lines(actions_dict, dict_divided_by_label)
+
+    for key, values in dict_divided_by_label.items():
+        for value2 in values:
+            uuid_value = value2.get(UUID)
+            value2.pop('UUID', None)
+            if uuid_value == '1010':
+                print(colored(str(key) + str(value2), 'light_yellow', 'on_magenta'))
 
 
 if __name__ == "__main__":
@@ -73,5 +213,8 @@ if __name__ == "__main__":
 
     parser.add_argument('-f', required=True, help='The log input file')
     parsed_args = parser.parse_args()
+
+    input_filename = parsed_args.f;
+    print(input_filename)
 
     main()
