@@ -202,6 +202,11 @@ def get_informative_dict(json_data):
         reason = json_data.get('responseObject').get('reason')
         res['reason'] = reason
 
+    if exists_subkey(json_data, 'responseObject', 'metadata'):
+        metadata = json_data.get('responseObject').get('metadata')
+        if metadata.get('uid') is not None:
+            res['metadata/uid'] = metadata.get('uid')
+
     return res
 
 
