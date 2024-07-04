@@ -179,7 +179,8 @@ def validate_operation(
         case _:
             raise ValueError(f"Unknown verb: {verb}")
 
-    allowed_operation = allowed_operation and is_namespaced == namespaced_labels[(apiGroup, version, uri)]
+    if verb != "watch":
+        allowed_operation = allowed_operation and is_namespaced == namespaced_labels[(apiGroup, version, uri)]
 
     return allowed_operation, verb
 
