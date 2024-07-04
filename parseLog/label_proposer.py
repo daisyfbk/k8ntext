@@ -179,7 +179,7 @@ def validate_operation(
         case _:
             raise ValueError(f"Unknown verb: {verb}")
 
-    if verb != "watch":
+    if verb not in ("watch", "get/list"):
         allowed_operation = allowed_operation and is_namespaced == namespaced_labels[(apiGroup, version, uri)]
 
     return allowed_operation, verb
@@ -233,6 +233,7 @@ def propose_label(j: dict) -> int:
 
     if len(uri) <= 2:
         # Probably a request to list all APIs
+        # print("Ignoring request to list all APIs")
         return LABEL_IGNORE
 
     if "namespace" not in objectRef:
@@ -241,6 +242,7 @@ def propose_label(j: dict) -> int:
     if objectRef["namespace"] in IGNORED_NAMESPACES:
         # Ignore requests to some namespaces (they will be flagged
         # as control plane traffic for the moment)
+        # print("Ignoring namespace: ", objectRef["namespace"])
         return LABEL_IGNORE
 
     if "apiGroup" not in objectRef:

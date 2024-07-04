@@ -6,6 +6,7 @@ from enum import Enum
 import label_proposer
 from termcolor import colored
 from common import IGNORED_NAMESPACES, LABEL_UNKNOWN, tqdm
+import datetime
 
 parser = argparse.ArgumentParser(
     prog='parseLog',
@@ -171,6 +172,8 @@ def get_informative_dict(json_data):
     objectref_namespace = json_data.get('objectRef').get('namespace')
     requestReceivedTimestamp = json_data.get('requestReceivedTimestamp')
 
+    
+
     return {
         'username': user_username,
         'verb': verb,
@@ -222,11 +225,52 @@ def label_whitelisted_log_line(whitelisted_lines):
         if create_proposal is None:
             create_proposal = LABEL_UNKNOWN
 
+        # Try finding the next non-get/watch log line
+        # within a reasonable 20 lines
+        next_proposal = None
+        if line["verb"] in ['get', 'watch', 'list']:
+            for i in range(1, min(20, len(whitelisted_lines) - x)):
+                next_line = get_informative_dict(whitelisted_lines[x + i])
+                if 'cplabel' in next_line and next_line['cplabel']:
+                    continue
+                if next_line['verb'] not in ['get', 'watch', 'list']:
+                    next_proposal = label_proposer.propose_label(whitelisted_lines[x + i])
+                    next_proposal_info = ""
+                    next_proposal_info += f" after {i} lines, "
+                    next_proposal_info += f"{{'verb': '{next_line['verb']}', 'resource': '{next_line['resource']}'}}"
+                    break
+
+        # Delta of the previous and next 5 lines
+        # for the user to have a better context
+        deltas = []
+        def parseTs(ts1, ts2):
+            return datetime.datetime.strptime(ts1, '%Y-%m-%dT%H:%M:%S.%fZ') - datetime.datetime.strptime(ts2, '%Y-%m-%dT%H:%M:%S.%fZ')
+
+        if x > 0:
+            deltas.append(parseTs(current_line['requestReceivedTimestamp'], whitelisted_lines[x-1]['requestReceivedTimestamp']))
+        else:
+            deltas.append("-")
+        for i in range(1, min(5, len(whitelisted_lines) - x)):
+            ai = whitelisted_lines[x + i]['requestReceivedTimestamp']
+            deltas.append(parseTs(ai, current_line['requestReceivedTimestamp']))
+        for i in range(min(5, len(whitelisted_lines) - x), 5):
+            deltas.append("-")
+
+        print(f"\t({x-1}) {deltas[0]}")
+        print(f"De   -> ({x}) 0")
+        for i in range(1, 5):
+            print(f"\t({x+i}) {deltas[i]}")
+        print()
+
         print("Progress: ", x + 1, "/", len(whitelisted_lines))
         print("Labels: ")
         print("[a/ENTER] previous (default):\t", previous_label)
         print("[b]       proposed:\t\t", proposal)
         print("[c]       create equivalent:\t", create_proposal)
+        if line["verb"] in ['get', 'watch', 'list']:
+            print("[d]       next non-get/watch:\t", next_proposal, next_proposal_info)
+        else:
+            print("[d]       not applicable")
         print("[s]       suspend")
         print("[number]  type it directly")
 
