@@ -5,8 +5,9 @@ import configparser
 from enum import Enum
 import label_proposer
 from termcolor import colored
-from common import IGNORED_NAMESPACES, LABEL_UNKNOWN, tqdm
+from common import IGNORED_NAMESPACES, LABEL_UNKNOWN, tqdm, exists_subkey
 import datetime
+import subprocess
 
 parser = argparse.ArgumentParser(
     prog='parseLog',
@@ -170,11 +171,9 @@ def get_informative_dict(json_data):
     objectref_subresource = json_data.get('objectRef').get('subresource')
     objectref_name = json_data.get('objectRef').get('name')
     objectref_namespace = json_data.get('objectRef').get('namespace')
-    requestReceivedTimestamp = json_data.get('requestReceivedTimestamp')
+    request_received_timestamp = json_data.get('requestReceivedTimestamp')
 
-    
-
-    return {
+    res = {
         'username': user_username,
         'verb': verb,
         'resource': objectref_resource,
@@ -182,8 +181,25 @@ def get_informative_dict(json_data):
         'namespace': objectref_namespace,
         'name': objectref_name,
         'requestURI': request_uri,
-        'requestReceivedTimestamp': requestReceivedTimestamp
+        'requestReceivedTimestamp': request_received_timestamp,
     }
+
+    # ownerReference
+    if exists_subkey(json_data, 'responseObject', 'metadata', 'ownerReferences'):
+        owner_references = json_data.get('responseObject').get('metadata').get('ownerReferences')
+        res['ownerReferences'] = owner_references
+
+    if exists_subkey(json_data, 'responseObject', 'involvedObject'):
+        involved_object = json_data.get('responseObject').get('involvedObject')
+        if 'uid' in involved_object:
+            del involved_object['uid']
+        res['involvedObject'] = involved_object
+
+    if exists_subkey(json_data, 'responseObject', 'reason'):
+        reason = json_data.get('responseObject').get('reason')
+        res['reason'] = reason
+
+    return res
 
 
 def label_whitelisted_log_line(whitelisted_lines):
@@ -191,6 +207,8 @@ def label_whitelisted_log_line(whitelisted_lines):
     current_line = ""
     next_line = ""
     previous_label = ""
+
+    temporary_backup_filename = subprocess.check_output("mktemp", shell=True).decode().strip()
 
     for x in range(len(whitelisted_lines)):
         line = whitelisted_lines[x]
@@ -228,6 +246,7 @@ def label_whitelisted_log_line(whitelisted_lines):
         # Try finding the next non-get/watch log line
         # within a reasonable 20 lines
         next_proposal = None
+        next_proposal_info = ""
         if line["verb"] in ['get', 'watch', 'list']:
             for i in range(1, min(20, len(whitelisted_lines) - x)):
                 next_line = get_informative_dict(whitelisted_lines[x + i])
@@ -235,43 +254,104 @@ def label_whitelisted_log_line(whitelisted_lines):
                     continue
                 if next_line['verb'] not in ['get', 'watch', 'list']:
                     next_proposal = label_proposer.propose_label(whitelisted_lines[x + i])
-                    next_proposal_info = ""
                     next_proposal_info += f" after {i} lines, "
                     next_proposal_info += f"{{'verb': '{next_line['verb']}', 'resource': '{next_line['resource']}'}}"
                     break
 
+        next_watch = None
+        next_watch_info = ""
+        for i in range(1, min(20, len(whitelisted_lines) - x)):
+            next_line = get_informative_dict(whitelisted_lines[x + i])
+            if next_line['verb'] == 'watch':
+                next_watch = label_proposer.propose_label(whitelisted_lines[x + i])
+                next_watch_info += f" after {i} lines, "
+                next_watch_info += f"{{'verb': '{next_line['verb']}', 'resource': '{next_line['resource']}'}}"
+                break
+
+        next_create = None
+        next_create_info = ""
+        for i in range(1, min(20, len(whitelisted_lines) - x)):
+            next_line = get_informative_dict(whitelisted_lines[x + i])
+            if next_line['verb'] == 'create':
+                next_create = label_proposer.propose_label(whitelisted_lines[x + i])
+                next_create_info += f" after {i} lines, "
+                next_create_info += f"{{'verb': '{next_line['verb']}', 'resource': '{next_line['resource']}'}}"
+                break
+
+        next_patch = None
+        next_patch_info = ""
+        for i in range(1, min(20, len(whitelisted_lines) - x)):
+            next_line = get_informative_dict(whitelisted_lines[x + i])
+            if next_line['verb'] == 'patch':
+                next_patch = label_proposer.propose_label(whitelisted_lines[x + i])
+                next_patch_info += f" after {i} lines, "
+                next_patch_info += f"{{'verb': '{next_line['verb']}', 'resource': '{next_line['resource']}'}}"
+                break
+
+        next_delete = None
+        next_delete_info = ""
+        for i in range(1, min(20, len(whitelisted_lines) - x)):
+            next_line = get_informative_dict(whitelisted_lines[x + i])
+            if next_line['verb'] == 'delete':
+                next_delete = label_proposer.propose_label(whitelisted_lines[x + i])
+                next_delete_info += f" after {i} lines, "
+                next_delete_info += f"{{'verb': '{next_line['verb']}', 'resource': '{next_line['resource']}'}}"
+                break
+
+        next_noncp_action = None
+        next_noncp_action_info = ""
+        for i in range(1, min(40, len(whitelisted_lines) - x)):
+            if 'cplabel' in whitelisted_lines[x + i] and whitelisted_lines[x + i]['cplabel']:
+                continue
+            next_line = get_informative_dict(whitelisted_lines[x + i])
+            username = next_line['username']
+            if username.startswith("system:"):
+                continue
+            next_noncp_action = label_proposer.propose_label(whitelisted_lines[x + i])
+            next_noncp_action_info += f" after {i} lines, "
+            next_noncp_action_info += f"{{'verb': '{next_line['verb']}', 'resource': '{next_line['resource']}'}}"
+            break
+
+
         # Delta of the previous and next 5 lines
         # for the user to have a better context
         deltas = []
-        def parseTs(ts1, ts2):
-            return datetime.datetime.strptime(ts1, '%Y-%m-%dT%H:%M:%S.%fZ') - datetime.datetime.strptime(ts2, '%Y-%m-%dT%H:%M:%S.%fZ')
 
-        if x > 0:
-            deltas.append(parseTs(current_line['requestReceivedTimestamp'], whitelisted_lines[x-1]['requestReceivedTimestamp']))
+        def parse_ts(ts1, ts2):
+            return f"{datetime.datetime.strptime(ts1, '%Y-%m-%dT%H:%M:%S.%fZ') - datetime.datetime.strptime(ts2, '%Y-%m-%dT%H:%M:%S.%fZ')} {ts1}"
+
+        if x >= 0:
+            deltas.append(parse_ts(whitelisted_lines[x - 1]['requestReceivedTimestamp'],
+                                   current_line['requestReceivedTimestamp']))
         else:
             deltas.append("-")
+
         for i in range(1, min(5, len(whitelisted_lines) - x)):
             ai = whitelisted_lines[x + i]['requestReceivedTimestamp']
-            deltas.append(parseTs(ai, current_line['requestReceivedTimestamp']))
+            deltas.append(parse_ts(ai, current_line['requestReceivedTimestamp']))
         for i in range(min(5, len(whitelisted_lines) - x), 5):
             deltas.append("-")
 
         print(f"\t({x-1}) {deltas[0]}")
-        print(f"De   -> ({x}) 0")
+        print(colored(f"De   -> ({x}) 0:00:00.000000 {current_line['requestReceivedTimestamp']}\n", 'light_yellow', 'on_magenta', ['bold']), end='  ')
         for i in range(1, 5):
             print(f"\t({x+i}) {deltas[i]}")
         print()
 
         print("Progress: ", x + 1, "/", len(whitelisted_lines))
+        print()
+
         print("Labels: ")
         print("[a/ENTER] previous (default):\t", previous_label)
         print("[b]       proposed:\t\t", proposal)
         print("[c]       create equivalent:\t", create_proposal)
-        if line["verb"] in ['get', 'watch', 'list']:
-            print("[d]       next non-get/watch:\t", next_proposal, next_proposal_info)
-        else:
-            print("[d]       not applicable")
-        print("[s]       suspend")
+        print("[d]       next watch:\t\t", next_watch, next_watch_info)
+        print("[e]       next create:\t\t", next_create, next_create_info)
+        print("[f]       next patch:\t\t", next_patch, next_patch_info)
+        print("[g]       next delete:\t\t", next_delete, next_delete_info)
+        print("[h]       next non-cp action:\t", next_noncp_action, next_noncp_action_info)
+        print("[s]       skip")
+        print("[q]       quit")
         print("[number]  type it directly")
 
         while True:
@@ -287,7 +367,20 @@ def label_whitelisted_log_line(whitelisted_lines):
                     input_label = proposal
                 case "c":
                     input_label = create_proposal
+                case "d":
+                    input_label = next_watch
+                case "e":
+                    input_label = next_create
+                case "f":
+                    input_label = next_patch
+                case "g":
+                    input_label = next_delete
+                case "h":
+                    input_label = next_noncp_action
                 case "s":
+                    input_label = LABEL_UNKNOWN
+                case "q":
+                    print("Quitting...")
                     input_label = ""
                     return
                 case _:
@@ -309,7 +402,13 @@ def label_whitelisted_log_line(whitelisted_lines):
 
         print()
 
+        if input_label is None or input_label == "":
+            print("Invalid input, putting default label")
+            input_label = previous_label
+
         line['label'] = input_label # add label to json
+        with open(temporary_backup_filename, 'a') as temp_file:
+            temp_file.write(json.dumps(line, separators=(',', ':')) + "\n")
 
         previous_line = current_line
         previous_label = input_label
@@ -340,7 +439,7 @@ def parse(mode: ParsingMode, input_filename: str = None):
             if mode == ParsingMode.labelling:
                 if output_decision == Decision.white_listed:
                     whitelisted_lines.append(json_data)
-                else: # in labelling we do not trash any logs
+                else:  # in labelling we do not trash any logs
                     blacklisted_lines.append(json_data)
             elif mode == ParsingMode.reduction or mode == ParsingMode.light_reduction:
                 if output_decision == Decision.white_listed:
@@ -350,13 +449,20 @@ def parse(mode: ParsingMode, input_filename: str = None):
 
     if mode == ParsingMode.labelling:
         whitelisted_lines.sort(key=lambda x: x['requestReceivedTimestamp'])
-        label_whitelisted_log_line(whitelisted_lines)
+        # Filter out lines already labelled
+        whitelisted_already_labelled = [x for x in whitelisted_lines if 'label' in x and x['label'] != LABEL_UNKNOWN]
+        whitelisted_to_label = [x for x in whitelisted_lines if 'label' not in x or x['label'] == LABEL_UNKNOWN]
+
+        label_whitelisted_log_line(whitelisted_to_label)
+        whitelisted_lines = whitelisted_already_labelled + whitelisted_to_label
 
         output_lines = blacklisted_lines + whitelisted_lines
     elif mode == ParsingMode.reduction:
         output_lines = whitelisted_lines
     elif mode == ParsingMode.light_reduction:
         output_lines = whitelisted_lines + blacklisted_lines
+    else:
+        raise ValueError("Invalid mode.")
 
     # sort the output_lines array by the requestReceivedTimestamp
     output_lines.sort(key=lambda x: x['requestReceivedTimestamp'])
