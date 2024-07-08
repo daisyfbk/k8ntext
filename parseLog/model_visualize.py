@@ -132,7 +132,6 @@ def plot_loss(losses: list) -> None:
     plt.xlabel('Epoch')
     plt.ylabel('Value')
     plt.legend()
-    plt.ylim(0, 1)
     plt.yscale('log')
     plt.savefig(OUT_FOLDER + '/metrics.png')
 
