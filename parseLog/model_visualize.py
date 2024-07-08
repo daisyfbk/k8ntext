@@ -76,11 +76,6 @@ def plot_loss(losses: list) -> None:
     if len(available_metrics) != 2 * len([metric for metric in available_metrics if metric.startswith('val_')]):
         log.error('WARNING: Not all metrics have validation counterparts, skipping plotting metrics')
         return
-        
-    # Find the maximum length of loss histories
-    max_length = max(
-        [max(len(loss.history[i]) for i in available_metrics) for loss in losses]
-    )
 
     metrics = {metric: [] for metric in available_metrics}    
 
