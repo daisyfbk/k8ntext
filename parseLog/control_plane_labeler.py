@@ -4,22 +4,9 @@ import os
 import subprocess
 import sys
 
-from common import LABEL_UNKNOWN, tqdm
+from common import LABEL_UNKNOWN, tqdm, exists_subkey
 from label_proposer import propose_label
 from log_parser import get_informative_dict
-
-
-
-def exists_subkey(__object, *keys):
-    exists = True
-    for key in keys:
-        if key not in __object:
-            exists = False
-            break
-        __object = __object[key]
-
-    return exists
-
 
 parser = argparse.ArgumentParser(description='Label control plane logs')
 parser.add_argument('-f', '--file', type=str, help='Input file', required=True)
@@ -183,7 +170,6 @@ with open(temp_file, 'w') as f:
             # mapped to token creation for service accounts
             proposal = 17808
 
-
         if 'label' in o and proposal != o['label']:
             if proposal == LABEL_UNKNOWN:
                 f.write(json.dumps(o, separators=(',', ':')) + '\n')
@@ -214,8 +200,6 @@ if count == 0:
     print("All lines labelled automatically.")
 else:
     print("Fancy labelling manually the remaining lines? (y/n) ", end='')
-    user_response = input().lower()
-
     # try:
     #     with open('/dev/tty') as tty:
     #         user_response = tty.readline().strip().lower()
