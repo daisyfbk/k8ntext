@@ -82,23 +82,40 @@ def preprocess_data(__data: list[dict],
 
     # Add missing features and remove excluded features
     if features is None:
-        # Generate the feature list
-        features = set()
-        for d in flattened_data:
-            for k in d.keys():
-                features.add(k)
-        total_features = [f for f in features if f in model_features.FEATURES or f == pm.LABEL_FEATURE]
+        total_features = model_features.FEATURES
     else:
         # Use the provided feature list
         total_features = features
 
     total_features.sort()
 
+    # Generate the feature list
+    #            if k not in mapped_data:
+    #                mapped_data[k] = []
+    #            mapped_data[k].append(d[k])
+    #    with open(pm.OUT_FOLDER + '/features.json', 'w') as f:
+    #        json.dump(mapped_data, f)
+    #    # Group by feature in mapped_data
+    #    stats = {}
+    #    for k in mapped_data.keys():
+    #        try:
+    #            stats[k] = {
+    #                "top20": collections.Counter(mapped_data[k]).most_common(10)
+    #            }
+    #        except TypeError:
+    #            stats[k] = {
+    #                "top20": None
+    #            }
+    #    with open(pm.OUT_FOLDER + '/features_stats.json', 'w') as f:
+    #        json.dump(stats, f, indent=2)
+    #    exit(1)
+
+
     # Remove excluded features
     res = []
     for d in flattened_data:
         obj = {}
-        for f in total_features:
+        for f in total_features + [pm.LABEL_FEATURE]:
             try:
                 obj[f] = d[f]
             except KeyError:
@@ -176,8 +193,8 @@ def generate_model(data: list[dict],
         )
 
     mt = [
-        # keras_metrics.Precision(),
-        # keras_metrics.Recall(),
+        keras_metrics.Precision(),
+        keras_metrics.Recall(),
         keras_metrics.CategoricalAccuracy()
     ]
 
