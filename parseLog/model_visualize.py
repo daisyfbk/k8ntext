@@ -1,7 +1,18 @@
 import numpy as np
 from matplotlib import pyplot as plt
+import logging as log
 
 from parameters import OUT_FOLDER, CONFUSION_MATRIX_TOP_PERCENTAGE
+import matplotlib.colors as mcolors
+
+
+def darken_color(color, factor=0.7):
+    """Darken a given color by a specified factor."""
+    # Convert color to RGB
+    rgb = mcolors.to_rgb(color)
+    # Darken the RGB values
+    darkened_rgb = [max(x * factor, 0) for x in rgb]
+    return mcolors.to_hex(darkened_rgb)
 
 
 def plot_loss(losses: list) -> None:
@@ -52,6 +63,78 @@ def plot_loss(losses: list) -> None:
     plt.yscale('log')
     plt.legend()
     plt.savefig(OUT_FOLDER + '/loss.png')
+
+    # New plot for metrics
+    available_metrics = set()
+    for loss in losses:
+        available_metrics.update(loss.history.keys())
+    available_metrics = list(available_metrics - {'loss', 'val_loss'})
+    if 'learning_rate' in available_metrics:
+        available_metrics.remove('learning_rate')
+    if available_metrics == []:
+        return
+    if len(available_metrics) != 2 * len([metric for metric in available_metrics if metric.startswith('val_')]):
+        log.error('WARNING: Not all metrics have validation counterparts, skipping plotting metrics')
+        return
+        
+    # Find the maximum length of loss histories
+    max_length = max(
+        [max(len(loss.history[i]) for i in available_metrics) for loss in losses]
+    )
+
+    metrics = {metric: [] for metric in available_metrics}    
+
+    # Adjust all loss histories to have the same maximum length
+    for loss in losses:
+        for metric in available_metrics:
+            adjusted_metric = np.full(max_length, np.nan)
+
+            adjusted_metric[:len(loss.history[metric])] = loss.history[metric]
+
+            metrics[metric].append(adjusted_metric)
+
+    # Convert lists to NumPy arrays
+    metrics = {metric: np.array(values) for metric, values in metrics.items()}
+
+    # Calculate mean and standard deviation safely
+    mean_metrics = {metric: np.nanmean(values, axis=0) for metric, values in metrics.items()}
+    std_metrics = {metric: np.nanstd(values, axis=0) for metric, values in metrics.items()}
+
+    epochs = range(1, max_length + 1)
+
+    plt.figure(figsize=(10, 6))
+    
+    colormap = plt.get_cmap('tab10')
+    metric_colors = {metric: colormap(i) for i, metric in enumerate(available_metrics) if not metric.startswith('val_')}
+
+    for metric in available_metrics:
+        if metric.startswith('val_'):
+            continue
+        training_color = metric_colors[metric]
+        validation_color = darken_color(training_color, 0.7)
+
+        # Plot training metric
+        plt.plot(epochs, mean_metrics[metric], label=f'Average Training {metric}', color=training_color)
+        plt.fill_between(epochs, mean_metrics[metric] - std_metrics[metric], mean_metrics[metric] + std_metrics[metric],
+                        color=training_color, alpha=0.3)
+
+        # Plot validation metric with slightly different style or alpha
+        plt.plot(epochs, mean_metrics[f'val_{metric}'], label=f'Average Validation {metric}', color=validation_color, linestyle='--')
+        plt.fill_between(epochs, mean_metrics[f'val_{metric}'] - std_metrics[f'val_{metric}'],
+                        mean_metrics[f'val_{metric}'] + std_metrics[f'val_{metric}'], color=validation_color, alpha=0.2)
+
+        
+    # Put a tick where the last epoch is for each attempt
+    for i in range(len(losses)):
+        plt.axvline(x=len(losses[i].history['loss']), color='gray', linestyle='--', alpha=0.5)
+
+    plt.title('Average Model Metrics with Standard Deviation')
+    plt.xlabel('Epoch')
+    plt.ylabel('Value')
+    plt.legend()
+    plt.ylim(0, 1)
+    plt.yscale('log')
+    plt.savefig(OUT_FOLDER + '/metrics.png')
 
 
 def plot_metrics(metrics: list[dict]) -> None:
