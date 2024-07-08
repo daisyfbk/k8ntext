@@ -1,11 +1,5 @@
 import datetime
 
-FEATURE_PREPROCESSING = {
-    "requestReceivedTimestamp": lambda x: int(datetime.datetime.fromisoformat(x[:-1]).timestamp()),
-    "stageTimestamp": lambda x: int(datetime.datetime.fromisoformat(x[:-1]).timestamp()),
-    "userAgent": lambda x: parse_user_agent(x),
-}
-
 
 def parse_user_agent(user_agent: str) -> dict:
     splits = user_agent.split(' ')
@@ -49,27 +43,67 @@ def parse_user_agent(user_agent: str) -> dict:
     }
 
 
-FILTER_FEATURES = [
-    # "requestURI",
-    "verb",
-    "user",
-    "sourceIPs",
-    "userAgent",
-    "objectRef",
-    # "cplabel"
-    # "requestReceivedTimestamp",
-    # "stageTimestamp",
+FEATURES = [
+    'objectRef',
+    'objectRef.apiGroup',
+    # 'objectRef.name',
+    'objectRef.namespace',
+    'objectRef.resource',
+    'objectRef.subresource',
+    'user.groups[0]',
+    'user.groups[1]',
+    'user.groups[2]',
+    'user.username',
+    'userAgent.extra',
+    'userAgent.tool',
+    'verb',
+    'requestObject.kind',
+    'requestObject.apiVersion',
+    'requestObject.metadata.namespace',
+    # 'requestObject.metadata.generateName
+    'requestObject.metadata.ownerReferences.apiVersion',
+    'requestObject.metadata.ownerReferences.kind',
+    # 'requestObject.metadata.ownerReferences.name',
+    # 'requestObject.metadata.ownerReferences.uid',
+    'requestObject.metadata.ownerReferences.controller',
+    'requestObject.metadata.ownerReferences.blockOwnerDeletion',
+    'responseObject.metadata.namespace',
+    # 'responseObject.metadata.name',
+    # 'responseObject.metadata.resourceVersion',
+    'responseObject.metadata.ownerReferences.apiVersion',
+    'responseObject.metadata.ownerReferences.kind',
+    # 'responseObject.metadata.ownerReferences.name',
+    # 'responseObject.metadata.ownerReferences.uid',
+    'responseObject.metadata.ownerReferences.controller',
+    'responseObject.metadata.ownerReferences.blockOwnerDeletion',
+    'responseObject.involvedObject.apiVersion',
+    'responseObject.involvedObject.kind',
+    # 'responseObject.involvedObject.name',
+    # 'responseObject.involvedObject.namespace',
+    'responseObject.involvedObject.resource',
+    'responseObject.involvedObject.subresource',
+    # 'responseObject.involvedObject.fieldPath',
+    'responseObject.reason',
+    'responseObject.count',
+    'responseObject.type',
+    'responseObject.reportingComponent',
+    'annotations.authorization.k8s.io/decision',
+    # 'annotations.authorization.k8s.io/reason',
+    # "objectRef.uid",
+    # "userAgent.h",
+    # "userAgent.platform",
+    # "userAgent.version",
+    # "sourceIPs[0]",
+    # "objectRef.resourceVersion",
+    # "objectRef.apiVersion",
+    # "userAgent.arch",
+    # "user.uid",
+    # "user.extra.authentication.kubernetes.io/pod-name[0]",
+    # "user.extra.authentication.kubernetes.io/pod-uid[0]",
 ]
-EXCLUDE_FEATURES = [
-    "objectRef.uid",
-    "userAgent.h",
-    "userAgent.platform",
-    "userAgent.version",
-    "sourceIPs[0]",
-    "objectRef.resourceVersion",
-    "objectRef.apiVersion",
-    "userAgent.arch",
-    "user.uid",
-    "user.extra.authentication.kubernetes.io/pod-name[0]",
-    "user.extra.authentication.kubernetes.io/pod-uid[0]",
-]
+
+FEATURE_PREPROCESSING = {
+    "requestReceivedTimestamp": lambda x: int(datetime.datetime.fromisoformat(x[:-1]).timestamp()),
+    "stageTimestamp": lambda x: int(datetime.datetime.fromisoformat(x[:-1]).timestamp()),
+    "userAgent": lambda x: parse_user_agent(x),
+}

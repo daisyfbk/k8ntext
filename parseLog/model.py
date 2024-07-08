@@ -55,11 +55,22 @@ def preprocess_data(__data: list[dict],
     # from random import shuffle
     # shuffle(__data)
 
+    # Flatten the features
+    flattened_data = []
+    for d in __data:
+        flattened_data.append(flatten_object(d))
+
+    # Perform feature preprocessing if necessary
+    for d in flattened_data:
+        for f, p in model_features.FEATURE_PREPROCESSING.items():
+            if f in d:
+                d[f] = p(d[f])
+
     # Extract features
     extracted_data = []
-    for d in __data:
+    for d in flattened_data:
         o = {}
-        for f in model_features.FILTER_FEATURES:
+        for f in model_features.FEATURES:
             try:
                 o[f] = d[f]
             except KeyError:
@@ -69,17 +80,6 @@ def preprocess_data(__data: list[dict],
             o["label"] = d[pm.LABEL_FEATURE]
         extracted_data.append(o)
 
-    # Perform feature preprocessing if necessary
-    for d in extracted_data:
-        for f, p in model_features.FEATURE_PREPROCESSING.items():
-            if f in d:
-                d[f] = p(d[f])
-
-    # Flatten the features
-    flattened_data = []
-    for d in extracted_data:
-        flattened_data.append(flatten_object(d))
-
     # Add missing features and remove excluded features
     if features is None:
         # Generate the feature list
@@ -87,7 +87,7 @@ def preprocess_data(__data: list[dict],
         for d in flattened_data:
             for k in d.keys():
                 features.add(k)
-        total_features = [f for f in features if f not in model_features.EXCLUDE_FEATURES]
+        total_features = [f for f in features if f in model_features.FEATURES or f == pm.LABEL_FEATURE]
     else:
         # Use the provided feature list
         total_features = features
