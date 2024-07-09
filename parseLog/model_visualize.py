@@ -1,9 +1,13 @@
+import json
+import logging as log
+import os
+
+import matplotlib.colors as mcolors
+import matplotlib.lines as mlines
 import numpy as np
 from matplotlib import pyplot as plt
-import logging as log
 
-from parameters import OUT_FOLDER, CONFUSION_MATRIX_TOP_PERCENTAGE
-import matplotlib.colors as mcolors
+from parameters import OUT_FOLDER, CONFUSION_MATRIX_TOP_PERCENTAGE, COLLECTED_METRICS, METRICS_YRANGES
 
 
 def darken_color(color, factor=0.7):
@@ -77,7 +81,7 @@ def plot_loss(losses: list) -> None:
         log.error('WARNING: Not all metrics have validation counterparts, skipping plotting metrics')
         return
 
-    metrics = {metric: [] for metric in available_metrics}    
+    metrics = {metric: [] for metric in available_metrics}
 
     # Adjust all loss histories to have the same maximum length
     for loss in losses:
@@ -98,7 +102,7 @@ def plot_loss(losses: list) -> None:
     epochs = range(1, max_length + 1)
 
     plt.figure(figsize=(10, 6))
-    
+
     colormap = plt.get_cmap('tab10')
     metric_colors = {metric: colormap(i) for i, metric in enumerate(available_metrics) if not metric.startswith('val_')}
 
@@ -111,14 +115,15 @@ def plot_loss(losses: list) -> None:
         # Plot training metric
         plt.plot(epochs, mean_metrics[metric], label=f'Average Training {metric}', color=training_color)
         plt.fill_between(epochs, mean_metrics[metric] - std_metrics[metric], mean_metrics[metric] + std_metrics[metric],
-                        color=training_color, alpha=0.3)
+                         color=training_color, alpha=0.3)
 
         # Plot validation metric with slightly different style or alpha
-        plt.plot(epochs, mean_metrics[f'val_{metric}'], label=f'Average Validation {metric}', color=validation_color, linestyle='--')
+        plt.plot(epochs, mean_metrics[f'val_{metric}'], label=f'Average Validation {metric}', color=validation_color,
+                 linestyle='--')
         plt.fill_between(epochs, mean_metrics[f'val_{metric}'] - std_metrics[f'val_{metric}'],
-                        mean_metrics[f'val_{metric}'] + std_metrics[f'val_{metric}'], color=validation_color, alpha=0.2)
+                         mean_metrics[f'val_{metric}'] + std_metrics[f'val_{metric}'], color=validation_color,
+                         alpha=0.2)
 
-        
     # Put a tick where the last epoch is for each attempt
     for i in range(len(losses)):
         plt.axvline(x=len(losses[i].history['loss']), color='gray', linestyle='--', alpha=0.5)
@@ -127,7 +132,6 @@ def plot_loss(losses: list) -> None:
     plt.xlabel('Epoch')
     plt.ylabel('Value')
     plt.legend()
-    plt.yscale('log')
     plt.savefig(OUT_FOLDER + '/metrics.png')
 
 
@@ -159,41 +163,6 @@ def plot_metrics(metrics: list[dict]) -> None:
         plt.xlabel('Metric')
         plt.ylabel('Value')
         plt.savefig(OUT_FOLDER + '/core_metrics.png')
-
-
-# def plot_boxplot(metrics: list[dict], metric_name: str) -> None:
-#     # Step 1: Collect data for each class across all attempts
-#     class_accuracies = {}
-#     for attempt_acc in metrics:
-#         attempt_acc = attempt_acc['per_class_metrics']
-#         for class_label, acc in attempt_acc.items():
-#             class_label = int(class_label)
-#             if class_label not in class_accuracies:
-#                 class_accuracies[class_label] = []
-#             class_accuracies[class_label].append(acc)
-# 
-#     class_descriptions = {}
-#     from label_proposer import decode_label
-#     for class_label in class_accuracies.keys():
-#         class_descriptions[class_label] = decode_label(class_label, as_string=True) + f' ({class_label})'
-#             
-#     # Prepare data for boxplot
-#     sorted_labels = sorted(class_accuracies.keys(), key=lambda x: -int(x))
-#     data = [class_accuracies[label] for label in sorted_labels]
-# 
-#     # Substitute class labels with descriptions
-#     sorted_labels = [class_descriptions[label] for label in sorted_labels]
-# 
-#     # Step 2: Create a boxplot
-#     plt.figure(figsize=(20, 25))
-#     plt.subplots_adjust(left=0.4)
-#     box = plt.boxplot(data, vert=False, patch_artist=True, labels=sorted_labels)
-# 
-#     plt.title('Class Accuracies')
-#     plt.xlabel('Accuracy')
-# 
-#     plt.legend()
-#     plt.savefig(OUT_FOLDER + '/' + metric_name + '_boxplot.png')
 
 
 def plot_confusion_matrix(metrics: dict) -> None:
@@ -228,3 +197,91 @@ def plot_confusion_matrix(metrics: dict) -> None:
 
     plt.colorbar()
     plt.savefig(OUT_FOLDER + '/confusion_matrix.png')
+
+
+def statistical_loss_to_means(folder: str) -> list:
+    subfolders = [i for i in os.listdir(folder) if os.path.isdir(os.path.join(folder, i))]
+    ret = []
+
+    data = {}
+    lengths = []
+    for _, subfolder in enumerate(subfolders):
+        with open(os.path.join(folder, subfolder, 'main.log')) as f:
+            for line in f:
+                if 'WINDOW_LENGTH' in line:
+                    window_length = int(line.split('WINDOW_LENGTH: ')[1].split(',')[0])
+                    lengths.append(window_length)
+                    break
+        print(f'Processing {subfolder} with window length {window_length}')
+        with open(os.path.join(folder, subfolder, 'loss.json')) as f:
+            history = json.load(f)
+            for b, run in enumerate(history):
+                o = {}
+                for k, v in run.items():
+                    if k[-2] == "_":
+                        # some metrics are saved as recall_1, recall_2, etc.
+                        k = k[:-2]
+                    o[k] = v
+                history[b] = o
+            data[window_length] = history
+
+    reordered_data = {}
+    argsorted = np.argsort(lengths)
+    for i in range(len(lengths)):
+        reordered_data[i] = data[lengths[argsorted[i]]]
+
+    assert len(lengths) == len(subfolders)
+
+    for i, history in reordered_data.items():
+        local_object = {}
+        for _, metric in enumerate(COLLECTED_METRICS):
+            if metric[-2] == "_":
+                metric = metric[:-2]
+            values = [history[k][metric] for k in range(len(history))]
+            lengths = [len(values[i]) for i in range(len(values))]
+            local_means = []
+            for m in range(max(lengths)):
+                m = np.mean([values[i][m] for i in range(len(values)) if m < lengths[i]])
+                local_means.append(m)
+
+            local_object[metric] = local_means
+
+        ret.append(local_object)
+
+    return ret
+
+
+def plot_multiple_runs(history):
+    for metric_type in COLLECTED_METRICS:
+        y = [history[i][metric_type] for i in range(len(history))]
+
+        plt.figure(figsize=(15, 15), dpi=300)
+
+        colormap = plt.get_cmap('viridis')
+        num_sequences = len(y)
+
+        legend_handles = []
+        for i, sequence in enumerate(y):
+            # smooth the sequence
+            sequence = np.convolve(sequence, np.ones(5) / 5, mode='valid')
+
+            color_intensity = (i + 1) / num_sequences
+            color = colormap(1 - color_intensity)
+            plt.plot(sequence, color=color)  # Darker for later attempts
+
+            ypos = float(sequence[-1])
+            xpos = float(len(sequence) - 1)
+            plt.scatter(xpos, ypos, color=color)
+            plt.text(xpos, ypos, f'{5 * (i + 1)}', color=color)
+
+            legend_handle = mlines.Line2D([], [], color=color, label=f'WL={5 * (i + 1)}')
+            legend_handles.append(legend_handle)
+
+        plt.legend(handles=legend_handles, loc='center left', bbox_to_anchor=(1, 0.5))
+        # plt.yscale('log')
+        plt.xlabel('Epoch')
+        plt.ylabel(metric_type)
+        plt.ylim(*METRICS_YRANGES[metric_type](y))
+        # plt.tight_layout()
+        plt.savefig('out/' + metric_type + '.png')
+

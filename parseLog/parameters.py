@@ -2,7 +2,7 @@ import os
 
 # Supply an .env file if you want to override these values
 STATISTICS_ATTEMPTS = int(os.getenv('STATISTICS_ATTEMPTS', 40))  # Number of attempts in stats mode
-WINDOW_LENGTH = int(os.getenv('WINDOW_LENGTH', 40))  # Sliding window length
+WINDOW_LENGTH = int(os.getenv('WINDOW_LENGTH', 60))  # Sliding window length
 MAX_EPOCHS = int(os.getenv('MAX_EPOCHS', 300))  # Maximum number of epochs
 INITIAL_LEARNING_RATE = float(os.getenv('INITIAL_LEARNING_RATE', 0.001))  # Initial learning rate
 EARLY_STOPPING_PATIENCE = int(os.getenv('EARLY_STOPPING_PATIENCE', 40))  # Epochs before early stopping kicks in
@@ -16,3 +16,29 @@ LABEL_FEATURE = str(os.getenv('LABEL_FEATURE', 'label'))  # Name of the feature 
 
 # This variable is managed by support/log.py and should not be changed here
 OUT_FOLDER = 'out'
+
+# The following variables are used by model_visualize, change them as you change the model
+
+COLLECTED_METRICS = [
+    "learning_rate",
+    "loss", "val_loss",
+    "recall", "val_recall",
+    "precision", "val_precision",
+    "categorical_accuracy", "val_categorical_accuracy"
+]
+METRICS_YRANGE_TEMPLATES = {
+    "losslike": (-0.0001, 0.1),
+    "acclike": (0.96, 1.0001),
+    "lr": (-0.0001, 0.0015)
+}
+METRICS_YRANGES = {
+    "learning_rate": lambda _: METRICS_YRANGE_TEMPLATES["lr"],
+    "loss": lambda _: METRICS_YRANGE_TEMPLATES["losslike"],
+    "val_loss": lambda _: METRICS_YRANGE_TEMPLATES["losslike"],
+    "recall": lambda _: METRICS_YRANGE_TEMPLATES["acclike"],
+    "val_recall": lambda _: METRICS_YRANGE_TEMPLATES["acclike"],
+    "precision": lambda _: METRICS_YRANGE_TEMPLATES["acclike"],
+    "val_precision": lambda _: METRICS_YRANGE_TEMPLATES["acclike"],
+    "categorical_accuracy": lambda _: METRICS_YRANGE_TEMPLATES["acclike"],
+    "val_categorical_accuracy": lambda _: METRICS_YRANGE_TEMPLATES["acclike"]
+}
