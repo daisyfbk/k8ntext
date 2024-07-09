@@ -21,7 +21,13 @@ def darken_color(color, factor=0.7):
 
 def plot_loss(losses: list) -> None:
     # Find the maximum length of loss histories
-    max_length = max(max(len(loss.history['loss']), len(loss.history['val_loss'])) for loss in losses)
+    for loss in losses:
+        keys = list(loss.keys())
+        for key in keys:
+            if key[-2] == "_":
+                loss[key[:-2]] = loss.pop(key)
+
+    max_length = max(max(len(loss['loss']), len(loss['val_loss'])) for loss in losses)
 
     # Initialize lists to store adjusted loss histories
     all_losses = []
@@ -32,8 +38,8 @@ def plot_loss(losses: list) -> None:
         adjusted_loss = np.full(max_length, np.nan)
         adjusted_val_loss = np.full(max_length, np.nan)
 
-        adjusted_loss[:len(loss.history['loss'])] = loss.history['loss']
-        adjusted_val_loss[:len(loss.history['val_loss'])] = loss.history['val_loss']
+        adjusted_loss[:len(loss['loss'])] = loss['loss']
+        adjusted_val_loss[:len(loss['val_loss'])] = loss['val_loss']
 
         all_losses.append(adjusted_loss)
         all_val_losses.append(adjusted_val_loss)
@@ -59,7 +65,7 @@ def plot_loss(losses: list) -> None:
 
     # Put a tick where the last epoch is for each attempt
     for i in range(len(losses)):
-        plt.axvline(x=len(losses[i].history['loss']), color='gray', linestyle='--', alpha=0.5)
+        plt.axvline(x=len(losses[i]['loss']), color='gray', linestyle='--', alpha=0.5)
 
     plt.title('Average Model Loss with Standard Deviation')
     plt.xlabel('Epoch')
@@ -67,11 +73,12 @@ def plot_loss(losses: list) -> None:
     plt.yscale('log')
     plt.legend()
     plt.savefig(OUT_FOLDER + '/loss.png')
+    plt.close()
 
     # New plot for metrics
     available_metrics = set()
     for loss in losses:
-        available_metrics.update(loss.history.keys())
+        available_metrics.update(loss.keys())
     available_metrics = list(available_metrics - {'loss', 'val_loss'})
     if 'learning_rate' in available_metrics:
         available_metrics.remove('learning_rate')
@@ -86,9 +93,11 @@ def plot_loss(losses: list) -> None:
     # Adjust all loss histories to have the same maximum length
     for loss in losses:
         for metric in available_metrics:
+            if metric[-2] == "_":
+                metric = metric[:-2]
             adjusted_metric = np.full(max_length, np.nan)
 
-            adjusted_metric[:len(loss.history[metric])] = loss.history[metric]
+            adjusted_metric[:len(loss[metric])] = loss[metric]
 
             metrics[metric].append(adjusted_metric)
 
@@ -101,6 +110,7 @@ def plot_loss(losses: list) -> None:
 
     epochs = range(1, max_length + 1)
 
+    plt.clf()
     plt.figure(figsize=(10, 6))
 
     colormap = plt.get_cmap('tab10')
@@ -126,13 +136,15 @@ def plot_loss(losses: list) -> None:
 
     # Put a tick where the last epoch is for each attempt
     for i in range(len(losses)):
-        plt.axvline(x=len(losses[i].history['loss']), color='gray', linestyle='--', alpha=0.5)
+        plt.axvline(x=len(losses[i]['loss']), color='gray', linestyle='--', alpha=0.5)
 
     plt.title('Average Model Metrics with Standard Deviation')
     plt.xlabel('Epoch')
     plt.ylabel('Value')
+    plt.yscale('log')
     plt.legend()
     plt.savefig(OUT_FOLDER + '/metrics.png')
+    plt.close()
 
 
 def plot_metrics(metrics: list[dict]) -> None:
@@ -163,6 +175,7 @@ def plot_metrics(metrics: list[dict]) -> None:
         plt.xlabel('Metric')
         plt.ylabel('Value')
         plt.savefig(OUT_FOLDER + '/core_metrics.png')
+        plt.close()
 
 
 def plot_confusion_matrix(metrics: dict) -> None:
@@ -197,6 +210,7 @@ def plot_confusion_matrix(metrics: dict) -> None:
 
     plt.colorbar()
     plt.savefig(OUT_FOLDER + '/confusion_matrix.png')
+    plt.close()
 
 
 def statistical_loss_to_means(folder: str) -> list:
@@ -255,6 +269,7 @@ def plot_multiple_runs(history):
     for metric_type in COLLECTED_METRICS:
         y = [history[i][metric_type] for i in range(len(history))]
 
+        plt.clf()
         plt.figure(figsize=(15, 15), dpi=300)
 
         colormap = plt.get_cmap('viridis')
@@ -284,4 +299,6 @@ def plot_multiple_runs(history):
         plt.ylim(*METRICS_YRANGES[metric_type](y))
         # plt.tight_layout()
         plt.savefig('out/' + metric_type + '.png')
+        plt.close()
+
 
