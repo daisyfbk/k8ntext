@@ -519,7 +519,7 @@ def main(args):
             json.dump(metrics, f)
 
         from model_visualize import plot_loss, plot_metrics
-        plot_loss(losses)
+        plot_loss([loss.history for loss in losses])
         plot_metrics(metrics)
 
     else:
