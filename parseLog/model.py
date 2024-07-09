@@ -174,12 +174,12 @@ def generate_model(data: list[dict],
     # classification model
     model = models.Sequential([
         layers.Input(shape=(pm.WINDOW_LENGTH, len_features)),
-        layers.LSTM(len_features * 8, return_sequences=True),
-        layers.LSTM(len_features * 4, return_sequences=True),
-        layers.LSTM(len_features * 2, return_sequences=True),
-        layers.Dropout(0.2),
-        layers.TimeDistributed(layers.Dense(len_classes)),
-        layers.Activation('softmax')
+        layers.LSTM(len_features * 8, return_sequences=True, name='lstm_8x'),
+        layers.LSTM(len_features * 4, return_sequences=True, name='lstm_4x'),
+        layers.LSTM(len_features * 2, return_sequences=True, name='lstm_2x'),
+        layers.Dropout(0.2, name='dropout'),
+        layers.TimeDistributed(layers.Dense(len_classes, name='dense'), name='time_distributed'),
+        layers.Activation('softmax', name='softmax')
     ])
 
     cb = [
@@ -193,9 +193,9 @@ def generate_model(data: list[dict],
         )
 
     mt = [
-        keras_metrics.Precision(),
-        keras_metrics.Recall(),
-        keras_metrics.CategoricalAccuracy()
+        keras_metrics.Precision(name='precision'),
+        keras_metrics.Recall(name='recall'),
+        keras_metrics.CategoricalAccuracy(name='categorical_accuracy')
     ]
 
     model.compile(
