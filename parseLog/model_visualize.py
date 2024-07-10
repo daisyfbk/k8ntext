@@ -7,7 +7,7 @@ import matplotlib.lines as mlines
 import numpy as np
 from matplotlib import pyplot as plt
 
-from parameters import OUT_FOLDER, CONFUSION_MATRIX_TOP_PERCENTAGE, COLLECTED_METRICS, METRICS_YRANGES
+import parameters as pm
 
 
 def darken_color(color, factor=0.7):
@@ -72,7 +72,7 @@ def plot_loss(losses: list) -> None:
     plt.ylabel('Loss')
     plt.yscale('log')
     plt.legend()
-    plt.savefig(OUT_FOLDER + '/loss.png')
+    plt.savefig(pm.OUT_FOLDER + '/loss.png')
     plt.close()
 
     # New plot for metrics
@@ -143,7 +143,7 @@ def plot_loss(losses: list) -> None:
     plt.ylabel('Value')
     plt.yscale('log')
     plt.legend()
-    plt.savefig(OUT_FOLDER + '/metrics.png')
+    plt.savefig(pm.OUT_FOLDER + '/metrics.png')
     plt.close()
 
 
@@ -155,26 +155,22 @@ def plot_metrics(metrics: list[dict]) -> None:
     else:
         # Plot core metrics: accuracy, precision, recall, f1
         available_metrics = ['accuracy', 'precision', 'recall', 'f1']
-        data = {}
-        for metric_name in available_metrics:
-            values = [metric['core_metrics'][metric_name] for metric in metrics]
-            mean = np.mean(values)
-            std = np.std(values)
-            data[metric_name] = (mean, std)
+        data = {metric_name: [] for metric_name in available_metrics}
+        for metric in metrics:
+            for metric_name in available_metrics:
+                data[metric_name].append(metric['core_metrics'][metric_name])
 
-        # Plot metrics for scalar values
+        # Prepare data for box plot
+        data_for_plot = [data[metric_name] for metric_name in available_metrics]
+
+        # Plot metrics as box plots
         plt.figure(figsize=(10, 6))
-        x_positions = np.arange(len(available_metrics))
-        means = [data[metric_name][0] for metric_name in available_metrics]
-        stds = [data[metric_name][1] for metric_name in available_metrics]
-        plt.bar(x_positions, means, yerr=stds, align='center', alpha=0.7, ecolor='black', capsize=10)
-        plt.xticks(x_positions, available_metrics)
-        plt.ylim(min(0.8, min(means) - 0.1), max(1, max(means) + 0.1))
+        plt.boxplot(data_for_plot, tick_labels=available_metrics, notch=True, patch_artist=True)
 
-        plt.title('Core Metrics')
+        plt.title('Core Metrics - Box and Whisker Plot')
         plt.xlabel('Metric')
         plt.ylabel('Value')
-        plt.savefig(OUT_FOLDER + '/core_metrics.png')
+        plt.savefig(pm.OUT_FOLDER + '/core_metrics.png')
         plt.close()
 
 
@@ -184,8 +180,8 @@ def plot_confusion_matrix(metrics: dict) -> None:
 
     class_accuracy_keys = list(class_accuracies.keys())
     class_accuracy_keys.sort(key=lambda x: -metrics['per_class_metrics']['weight'][x])
-    if CONFUSION_MATRIX_TOP_PERCENTAGE < 1:
-        top_classes = class_accuracy_keys[:int(len(class_accuracies) * CONFUSION_MATRIX_TOP_PERCENTAGE)]
+    if pm.CONFUSION_MATRIX_TOP_PERCENTAGE < 1:
+        top_classes = class_accuracy_keys[:int(len(class_accuracies) * pm.CONFUSION_MATRIX_TOP_PERCENTAGE)]
     else:
         top_classes = class_accuracy_keys
 
@@ -209,24 +205,37 @@ def plot_confusion_matrix(metrics: dict) -> None:
             plt.text(j, i, f"{confusion_matrix[i, j]:.2f}", ha='center', va='center', color=color)
 
     plt.colorbar()
-    plt.savefig(OUT_FOLDER + '/confusion_matrix.png')
+    plt.savefig(pm.OUT_FOLDER + '/confusion_matrix.png')
     plt.close()
 
 
-def statistical_loss_to_means(folder: str) -> list:
+def statistical_loss_to_means(folder: str, required_labels: list[str]) -> tuple[list[dict], list[str]]:
     subfolders = [i for i in os.listdir(folder) if os.path.isdir(os.path.join(folder, i))]
     ret = []
 
     data = {}
-    lengths = []
+    labels = []
+    label_type = str if len(required_labels) > 1 else int
+
     for _, subfolder in enumerate(subfolders):
         with open(os.path.join(folder, subfolder, 'main.log')) as f:
+            label = []
             for line in f:
-                if 'WINDOW_LENGTH' in line:
-                    window_length = int(line.split('WINDOW_LENGTH: ')[1].split(',')[0])
-                    lengths.append(window_length)
-                    break
-        print(f'Processing {subfolder} with window length {window_length}')
+                for required_label in required_labels:
+                    if required_label in line:
+                        value = line.split(required_label + ': ')[1].split(',')[0]
+                        if label_type == int:
+                            value = int(value)
+                        label.append(value)
+
+            if len(label) == len(required_labels):
+                if label_type == str:
+                    label = ", ".join(label)
+                else:
+                    label = label[0]
+                labels.append(label)
+
+        # print(f'Processing {subfolder} with window length {window_length}')
         with open(os.path.join(folder, subfolder, 'loss.json')) as f:
             history = json.load(f)
             for b, run in enumerate(history):
@@ -237,36 +246,38 @@ def statistical_loss_to_means(folder: str) -> list:
                         k = k[:-2]
                     o[k] = v
                 history[b] = o
-            data[window_length] = history
-
+            data[label] = history
+        
     reordered_data = {}
-    argsorted = np.argsort(lengths)
-    for i in range(len(lengths)):
-        reordered_data[i] = data[lengths[argsorted[i]]]
+    argsorted = np.argsort(labels)
+    new_labels = []
+    for i in range(len(labels)):
+        reordered_data[i] = data[labels[argsorted[i]]]
+        new_labels.append(labels[argsorted[i]])
 
-    assert len(lengths) == len(subfolders)
+    assert len(labels) == len(subfolders)
 
     for i, history in reordered_data.items():
         local_object = {}
-        for _, metric in enumerate(COLLECTED_METRICS):
+        for _, metric in enumerate(pm.COLLECTED_METRICS):
             if metric[-2] == "_":
                 metric = metric[:-2]
             values = [history[k][metric] for k in range(len(history))]
-            lengths = [len(values[i]) for i in range(len(values))]
+            local_labels = [len(values[i]) for i in range(len(values))]
             local_means = []
-            for m in range(max(lengths)):
-                m = np.mean([values[i][m] for i in range(len(values)) if m < lengths[i]])
+            for m in range(max(local_labels)):
+                m = np.mean([values[i][m] for i in range(len(values)) if m < local_labels[i]])
                 local_means.append(m)
 
             local_object[metric] = local_means
 
         ret.append(local_object)
 
-    return ret
+    return ret, new_labels
 
 
-def plot_multiple_runs(history):
-    for metric_type in COLLECTED_METRICS:
+def plot_multiple_runs(history, labels, observed_metrics):
+    for metric_type in pm.COLLECTED_METRICS:
         y = [history[i][metric_type] for i in range(len(history))]
 
         plt.clf()
@@ -287,18 +298,19 @@ def plot_multiple_runs(history):
             ypos = float(sequence[-1])
             xpos = float(len(sequence) - 1)
             plt.scatter(xpos, ypos, color=color)
-            plt.text(xpos, ypos, f'{5 * (i + 1)}', color=color)
+            plt.text(xpos + 0.05, ypos, labels[i], color=color)
 
-            legend_handle = mlines.Line2D([], [], color=color, label=f'WL={5 * (i + 1)}')
+            legend_handle = mlines.Line2D([], [], color=color, label=labels[i])
             legend_handles.append(legend_handle)
 
         plt.legend(handles=legend_handles, loc='center left', bbox_to_anchor=(1, 0.5))
         # plt.yscale('log')
         plt.xlabel('Epoch')
         plt.ylabel(metric_type)
-        plt.ylim(*METRICS_YRANGES[metric_type](y))
+        plt.title(f'Changes in {metric_type.upper()} as {observed_metrics} change, averaged over all runs')
+        plt.ylim(*pm.METRICS_YRANGES[metric_type](y))
         # plt.tight_layout()
-        plt.savefig('out/' + metric_type + '.png')
+        plt.savefig(pm.OUT_FOLDER + metric_type + '.png')
         plt.close()
 
 
