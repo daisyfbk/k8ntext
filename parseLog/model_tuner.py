@@ -2,12 +2,9 @@ from keras.api import layers, models
 import keras
 import keras_tuner as kt
 import parameters as pm
-from model import preprocess_data, encode_data, train_test_split
+from functools import partial
 
-
-def build_model(hp):
-    len_classes = 140
-    len_features = 33 
+def build_model(hp, len_classes, len_features):
     pm_WINDOW_LENGTH = hp.Int('WINDOW_LENGTH', min_value=5, max_value=200, step=5) 
 
     model = models.Sequential([
@@ -33,8 +30,10 @@ def build_model(hp):
 
 
 def tuner_search(data: list[dict]):
+    from model import preprocess_data, encode_data, train_test_split
     flattened_data, total_features = preprocess_data(data)
     training_data = encode_data(flattened_data, total_features)
+    
     x_train, _, y_train, _ = train_test_split(
         training_data['X'],
         training_data['y'],
@@ -44,14 +43,18 @@ def tuner_search(data: list[dict]):
         x_train,
         y_train,
         test_size=pm.TRAIN_VALID_SPLIT)
+    
+    len_classes = training_data['len_classes']
+    len_features = training_data['len_features']
+    model_builder = partial(build_model, len_classes=len_classes, len_features=len_features)
 
     tuner = kt.Hyperband(
-        build_model,
+        model_builder,
         objective='val_categorical_accuracy',
         max_epochs=pm.MAX_EPOCHS,
         executions_per_trial=pm.STATISTICS_ATTEMPTS,
         overwrite=True,
-        directory='keras_tuner_dir',
+        directory=pm.OUT_FOLDER,
         project_name='lstm_tuning'
     )
 
