@@ -20,10 +20,10 @@ from sklearn.model_selection import train_test_split
 
 import model_features
 import parameters as pm
-from model_encoder import RisingEncoder
 from common import flatten_object
-from support.log import initialize_log
+from model_encoder import RisingEncoder
 from model_tuner import tuner_search
+from support.log import initialize_log
 
 
 def preprocess_data(__data: list[dict],
