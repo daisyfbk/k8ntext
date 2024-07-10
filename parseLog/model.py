@@ -480,6 +480,10 @@ def main(args):
     else:
         data = open_file(args.file)
 
+    if args.hyperparam_tuning:
+        tuner_search(data)
+        exit(0)
+
     if not args.model:
         losses = []
         metrics = []
@@ -549,6 +553,8 @@ if __name__ == '__main__':
                         help='Path to the model file; if provided, will do inference instead of training')
     parser.add_argument('-s', '--stats-mode', action='store_true',
                         help='Repeat process multiple times for statistics')
+    parser.add_argument('-y', '--hyperparam-tuning', action='store_true',
+                        help='Use hyperparameter tuning instead of training')
 
     __args = parser.parse_args()
 
