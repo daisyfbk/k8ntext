@@ -247,7 +247,7 @@ def statistical_loss_to_means(folder: str, required_labels: list[str]) -> tuple[
                     o[k] = v
                 history[b] = o
             data[label] = history
-        
+
     reordered_data = {}
     argsorted = np.argsort(labels)
     new_labels = []
@@ -312,5 +312,3 @@ def plot_multiple_runs(history, labels, observed_metrics):
         # plt.tight_layout()
         plt.savefig(pm.OUT_FOLDER + metric_type + '.png')
         plt.close()
-
-
