@@ -1,0 +1,14 @@
+Host kubeadm-master
+    Hostname 10.231.0.115
+    User rising
+
+Host kubeadm-worker1
+    Hostname 10.231.0.125
+    User rising
+
+Host kubeadm-worker2
+    Hostname 10.231.0.155
+    User rising
+
+Host kubeadm*
+    IdentityFile ~/.ssh/rising2023
