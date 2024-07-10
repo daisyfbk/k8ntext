@@ -8,7 +8,7 @@
 
 This document contains the project specification.
 
-*Last revision: May 21, 2024*
+*Last revision: see date in the top of the document*
 
 * Audit Project
 
@@ -133,10 +133,10 @@ graph that can be used to understand the relationships between the events.
   - Focus must be ease to train, and the ability to
     generalize to new logs
 **** Results
-- [X] A model that efficiently parses category 3 and 4 logs
-- [X] Further graphs and reports on the model capabilities,
+- [ ] A model that efficiently parses category 3 and 4 logs
+- [ ] Further graphs and reports on the model capabilities,
       accuracy, and efficiency
-- [X] An improved version of the visualizer
+- [ ] An improved version of the visualizer
 *** WAIT Weeks 12-16 (July 30 - August 26)
 - Refining queries 
   - Could be the right moment to start making /user stories/
