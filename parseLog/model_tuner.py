@@ -64,7 +64,6 @@ def tuner_search(data: list[dict]):
     tuner = kt.RandomSearch(
         model_builder,
         objective='val_categorical_accuracy',
-        max_trials=pm.MAX_TRIALS,
         executions_per_trial=pm.STATISTICS_ATTEMPTS,
         directory=pm.OUT_FOLDER,
         project_name='lstm_tuning',
