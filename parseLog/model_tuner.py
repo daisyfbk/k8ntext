@@ -12,9 +12,9 @@ def build_model(hp, len_classes, len_features):
 
     model = models.Sequential([
         layers.Input(shape=(pm_WINDOW_LENGTH, len_features)),
-        layers.LSTM(hp.Int('lstm_units_8x', min_value=len_features, max_value=len_features * 16, step=len_features), return_sequences=True, name='lstm_8x'),
-        layers.LSTM(hp.Int('lstm_units_4x', min_value=len_features, max_value=len_features * 16, step=len_features), return_sequences=True, name='lstm_4x'),
-        layers.LSTM(hp.Int('lstm_units_2x', min_value=len_features, max_value=len_features * 16, step=len_features), return_sequences=True, name='lstm_2x'),
+        layers.LSTM(hp.Int('lstm_units_8x', min_value=len_features, max_value=len_features * 24, step=len_features), return_sequences=True, name='lstm_8x'),
+        layers.LSTM(hp.Int('lstm_units_4x', min_value=len_features, max_value=len_features * 24, step=len_features), return_sequences=True, name='lstm_4x'),
+        layers.LSTM(hp.Int('lstm_units_2x', min_value=len_features, max_value=len_features * 24, step=len_features), return_sequences=True, name='lstm_2x'),
         layers.Dropout(hp.Float('dropout', min_value=0.1, max_value=0.5, step=0.1), name='dropout'),
         layers.TimeDistributed(layers.Dense(len_classes, activation='softmax', name='dense'), name='time_distributed')
     ])
@@ -51,14 +51,24 @@ def tuner_search(data: list[dict]):
     len_features = training_data['len_features']
     model_builder = partial(build_model, len_classes=len_classes, len_features=len_features)
 
-    tuner = kt.Hyperband(
+    #tuner = kt.Hyperband(
+    #    model_builder,
+    #    objective='val_categorical_accuracy',
+    #    max_epochs=pm.MAX_EPOCHS,
+    #    executions_per_trial=pm.STATISTICS_ATTEMPTS,
+    #    overwrite=True,
+    #    directory=pm.OUT_FOLDER,
+    #    project_name='lstm_tuning'
+    #)
+
+    tuner = kt.RandomSearch(
         model_builder,
         objective='val_categorical_accuracy',
-        max_epochs=pm.MAX_EPOCHS,
+        max_trials=pm.MAX_TRIALS,
         executions_per_trial=pm.STATISTICS_ATTEMPTS,
-        overwrite=True,
         directory=pm.OUT_FOLDER,
-        project_name='lstm_tuning'
+        project_name='lstm_tuning',
+        overwrite=True
     )
 
     tuner.search_space_summary()
