@@ -516,12 +516,14 @@ every five minutes.
   #+end_src
   
 ** Pod log =P2= - Image download
-- *Prerequisite*: run the following helper script to wipe the image cache on all nodes:
+- *Prerequisite*: run the following helper script to wipe the image cache on all nodes.
+  You *must* create the file =scripts/cluster-setup.sshconfig= with the SSH configuration for the nodes.
+  Refer to the example in the same directory to get started.
 
   #+BEGIN_SRC shell :results type verbatim
     for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
       echo "Pruning images on $node"
-      ssh -F ssh/cluster-setup $node "sudo crictl rmi --prune"
+      ssh -F scripts/cluster-setup.sshconfig $node "sudo crictl rmi --prune"
     done
   #+END_SRC
   

@@ -1,3 +1,3 @@
 # README
 
-This folder contains files that are unused, just to avoid deleting them.
+This folder contains additional scripts used as helpers during the project development.
