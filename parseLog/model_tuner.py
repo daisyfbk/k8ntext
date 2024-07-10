@@ -8,22 +8,19 @@ import parameters as pm
 
 
 def build_model(hp, len_classes, len_features):
-    pm_WINDOW_LENGTH = hp.Int('WINDOW_LENGTH', min_value=5, max_value=200, step=5)
+    pm_WINDOW_LENGTH = hp.Int('WINDOW_LENGTH', min_value=5, max_value=150, step=5)
 
     model = models.Sequential([
         layers.Input(shape=(pm_WINDOW_LENGTH, len_features)),
-        layers.LSTM(hp.Int('lstm_units_8x', min_value=32, max_value=1024, step=32), return_sequences=True,
-                    name='lstm_8x'),
-        layers.LSTM(hp.Int('lstm_units_4x', min_value=32, max_value=1024, step=32), return_sequences=True,
-                    name='lstm_4x'),
-        layers.LSTM(hp.Int('lstm_units_2x', min_value=32, max_value=1024, step=32), return_sequences=True,
-                    name='lstm_2x'),
+        layers.LSTM(hp.Int('lstm_units_8x', min_value=len_features, max_value=len_features * 16, step=len_features), return_sequences=True, name='lstm_8x'),
+        layers.LSTM(hp.Int('lstm_units_4x', min_value=len_features, max_value=len_features * 16, step=len_features), return_sequences=True, name='lstm_4x'),
+        layers.LSTM(hp.Int('lstm_units_2x', min_value=len_features, max_value=len_features * 16, step=len_features), return_sequences=True, name='lstm_2x'),
         layers.Dropout(hp.Float('dropout', min_value=0.1, max_value=0.5, step=0.1), name='dropout'),
         layers.TimeDistributed(layers.Dense(len_classes, activation='softmax', name='dense'), name='time_distributed')
     ])
 
     model.compile(
-        optimizer=keras.optimizers.Adam(hp.Choice('learning_rate', values=[1e-2, 1e-3, 1e-4])),
+        optimizer=keras.optimizers.Adam(hp.Choice('learning_rate', values=[0.05, 0.001, 0.005, 0.0001])),
         loss='categorical_crossentropy',
         metrics=[
             keras.metrics.Precision(name='precision'),
