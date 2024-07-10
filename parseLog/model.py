@@ -21,30 +21,9 @@ from sklearn.model_selection import train_test_split
 import model_features
 import parameters as pm
 from model_encoder import RisingEncoder
+from common import flatten_object
 from support.log import initialize_log
-
-
-def flatten_object(_object: dict) -> dict:
-    keys = _object.keys()
-    queue = []
-    for k in keys:
-        queue.append((k, _object[k]))
-
-    res = {}
-    while len(queue) > 0:
-        k, v = queue.pop(0)
-        if isinstance(v, dict):
-            for k2, v2 in v.items():
-                queue.append((f"{k}.{k2}", v2))
-            continue
-        elif isinstance(v, list):
-            for i, v2 in enumerate(v):
-                queue.append((f"{k}[{i}]", v2))
-            continue
-        else:
-            res[k] = v
-
-    return res
+from model_tuner import tuner_search
 
 
 def preprocess_data(__data: list[dict],
@@ -110,7 +89,6 @@ def preprocess_data(__data: list[dict],
     #        json.dump(stats, f, indent=2)
     #    exit(1)
 
-
     # Remove excluded features
     res = []
     for d in flattened_data:
@@ -128,9 +106,34 @@ def preprocess_data(__data: list[dict],
     return res, total_features
 
 
-def generate_model(data: list[dict],
-                   statistical_mode: bool = False) -> dict:
-    flattened_data, total_features = preprocess_data(data)
+def generate_model(len_features: int, len_classes: int) -> models.Model:
+    # classification model
+    model = models.Sequential([
+        layers.Input(shape=(pm.WINDOW_LENGTH, len_features)),
+        layers.LSTM(len_features * 8, return_sequences=True, name='lstm_8x'),
+        layers.LSTM(len_features * 4, return_sequences=True, name='lstm_4x'),
+        layers.LSTM(len_features * 2, return_sequences=True, name='lstm_2x'),
+        layers.Dropout(0.5, name='dropout'),
+        layers.TimeDistributed(layers.Dense(len_classes, name='dense'), name='time_distributed'),
+        layers.Activation('softmax', name='softmax')
+    ])
+
+    mt = [
+        keras_metrics.Precision(name='precision'),
+        keras_metrics.Recall(name='recall'),
+        keras_metrics.CategoricalAccuracy(name='categorical_accuracy')
+    ]
+
+    model.compile(
+        optimizer=Adam(learning_rate=pm.INITIAL_LEARNING_RATE),
+        loss=losses.CategoricalCrossentropy(),
+        metrics=mt
+    )
+
+    return model
+
+
+def encode_data(flattened_data: list[dict], total_features: list[str]) -> dict:
     x_before, y_before = [], []
 
     for d in flattened_data:
@@ -171,16 +174,36 @@ def generate_model(data: list[dict],
 
     log.info(f"Resulting shapes: {X.shape}, {y.shape}")
 
-    # classification model
-    model = models.Sequential([
-        layers.Input(shape=(pm.WINDOW_LENGTH, len_features)),
-        layers.LSTM(len_features * 8, return_sequences=True, name='lstm_8x'),
-        layers.LSTM(len_features * 4, return_sequences=True, name='lstm_4x'),
-        layers.LSTM(len_features * 2, return_sequences=True, name='lstm_2x'),
-        layers.Dropout(0.2, name='dropout'),
-        layers.TimeDistributed(layers.Dense(len_classes, name='dense'), name='time_distributed'),
-        layers.Activation('softmax', name='softmax')
-    ])
+    return {
+        "X": X,
+        "y": y,
+        "x_encoders": xenc,
+        "y_encoder": yle,
+        "len_features": len_features,
+        "len_classes": len_classes
+    }
+
+
+def model_training(data: list[dict],
+                   statistical_mode: bool = False) -> dict:
+    flattened_data, total_features = preprocess_data(data)
+
+    training_data = encode_data(flattened_data, total_features)
+    xenc = training_data['x_encoders']
+    yle = training_data['y_encoder']
+    len_features = training_data['len_features']
+    len_classes = training_data['len_classes']
+
+    model = generate_model(len_features, len_classes)
+
+    # indices = np.arange(len(X))
+    # x_train, x_test, y_train, y_test, i_train, i_test = train_test_split(X, y, indices, test_size=pm.TEST_TRAIN_SPLIT)
+    x_train, x_test, y_train, y_test = train_test_split(
+        training_data['X'],
+        training_data['y'],
+        test_size=pm.TEST_TRAIN_SPLIT)
+
+    print(model.summary())
 
     cb = [
         callbacks.EarlyStopping(monitor='val_loss', patience=pm.EARLY_STOPPING_PATIENCE, restore_best_weights=True),
@@ -192,53 +215,29 @@ def generate_model(data: list[dict],
             callbacks.ModelCheckpoint(filepath=pm.OUT_FOLDER + '/model-checkpoint.keras', save_best_only=True)
         )
 
-    mt = [
-        keras_metrics.Precision(name='precision'),
-        keras_metrics.Recall(name='recall'),
-        keras_metrics.CategoricalAccuracy(name='categorical_accuracy')
-    ]
-
-    model.compile(
-        optimizer=Adam(learning_rate=pm.INITIAL_LEARNING_RATE),
-        loss=losses.CategoricalCrossentropy(),
-        metrics=mt
-    )
-
-    indices = np.arange(len(X))
-
-    x_train, x_test, y_train, y_test, i_train, i_test = train_test_split(X, y, indices, test_size=pm.TEST_TRAIN_SPLIT)
-
-    print(model.summary())
-
     history = model.fit(x_train, y_train, epochs=pm.MAX_EPOCHS, callbacks=cb, validation_split=pm.TRAIN_VALID_SPLIT)
     y_pred = model.predict(x_test)
-
-    # y_pred is a tensor of shape (len(x_test), WINDOW_LENGTH, len_classes)
-    # let's derive the class labels from this tensor:
-    # for example, vector 0 will be in position 0 for the first batch, 1 for the second batch, etc.
 
     y_pred_labels = np.argmax(y_pred, axis=-1)
     y_test_labels = np.argmax(y_test, axis=-1)
 
     # original_positions = np.argsort(i_test)
-
     # y_pred_labels_unshuffled = y_pred_labels[original_positions]
     # y_test_labels_unshuffled = y_test_labels[original_positions]
 
     y_pred_decoded = []
     y_test_decoded = []
 
-    # Iterate over each sequence
     for sequence_pred, sequence_test in zip(y_pred_labels, y_test_labels):
         # Inverse transform each sequence and append to the decoded lists
         y_pred_decoded.append(yle.inverse_transform(sequence_pred))
         y_test_decoded.append(yle.inverse_transform(sequence_test))
 
-    # Convert lists of arrays back to 2D arrays if necessary
     y_pred_decoded = np.array(y_pred_decoded)
     y_test_decoded = np.array(y_test_decoded)
 
-    metrics = calculate_metrics(y_test_decoded, y_pred_decoded,
+    metrics = calculate_metrics(y_test_decoded,
+                                y_pred_decoded,
                                 include_per_class=True,
                                 include_confusion_matrix=True)
 
@@ -490,12 +489,12 @@ def main(args):
 
         if args.stats_mode:
             for i in range(pm.STATISTICS_ATTEMPTS):
-                result = generate_model(data, statistical_mode=True)
+                result = model_training(data, statistical_mode=True)
                 losses.append(result['history'])
                 metrics.append(result['metrics'])
                 log.info(f"Attempt {i + 1} done.")
         else:
-            result = generate_model(data)
+            result = model_training(data)
 
             log.info('Model generated.')
 
@@ -561,8 +560,11 @@ if __name__ == '__main__':
     initialize_log(log_level="INFO")
 
     # also exclude modules imported
-    __param_str = ', '.join([f"{k}: {v}" for k, v in vars(pm).items() if not k.startswith('__') and not callable(v)])
-    log.info("Starting model generation with the following parameters: " + __param_str)
+    __param = [f"{k}: {v}" for k, v in vars(pm).items() if not k.startswith('__') and not callable(v)
+               and (isinstance(v, int) or isinstance(v, float) or isinstance(v, str))]
+    log.info("Starting model generation with the following parameters:")
+    for p in __param:
+        log.info("" + p)
 
     if __args.model and __args.stats_mode:
         log.error('Cannot use stats mode with a model file.')
