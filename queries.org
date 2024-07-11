@@ -2729,6 +2729,105 @@ deployment.apps/test-deployment created
   resourcequota "test-quota" deleted
   #+end_src
 
+** Deployment log =D5= - Manage two Deployments contemporaneously
+- Create two Deployments together:
+  #+BEGIN_SRC shell
+    kubectl apply -f - <<EOF
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: interesting-deployment-1
+      namespace: rising
+      labels:
+        app: interesting-app
+    spec:
+      replicas: 4
+      selector:
+        matchLabels:
+          app: interesting-app
+      template:
+        metadata:
+          labels:
+            app: interesting-app
+        spec:
+          containers:
+          - name: interesting-container-1
+            image: nginx:1.19.6
+            ports:
+            - containerPort: 80
+          - name: sidecar-container-1
+            image: busybox:1.31.1
+            command: ['sh', '-c', 'echo sidecar-container-1 is running && sleep 3600']
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: interesting-deployment-2
+      namespace: rising
+      labels:
+        app: interesting-app
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: interesting-app
+      template:
+        metadata:
+          labels:
+            app: interesting-app
+        spec:
+          containers:
+          - name: interesting-container-2
+            image: nginx:latest
+          initContainers:
+          - name: init-container-1
+            image: busybox:1.31.1
+            command: ['sh', '-c', 'echo init-container-1 is running && sleep 5']
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/interesting-deployment-1 created
+  deployment.apps/interesting-deployment-2 created
+  #+end_src
+
+- Wait for the Deployments to be ready:
+  #+BEGIN_SRC shell
+  kubectl wait --for=condition=Available deployment/interesting-deployment-1 -n rising
+  kubectl wait --for=condition=Available deployment/interesting-deployment-2 -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/interesting-deployment-1 condition met
+  deployment.apps/interesting-deployment-2 condition met
+  #+end_src
+  
+- Check the rollout status of the Deployments:
+  #+BEGIN_SRC shell
+  kubectl rollout status deployment interesting-deployment-1 -n rising
+  kubectl rollout status deployment interesting-deployment-2 -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment "interesting-deployment-1" successfully rolled out
+  deployment "interesting-deployment-2" successfully rolled out
+  #+end_src
+
+- Inspect the Deployments:
+  #+BEGIN_SRC shell
+  kubectl get deployments -l app=interesting-app -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                       READY   UP-TO-DATE   AVAILABLE   AGE
+  interesting-deployment-1   4/4     4            4           89s
+  interesting-deployment-2   2/2     2            2           89s
+  #+end_src
+
 ** ReplicaSet log =RS1= - Use bare ReplicaSets to manage Pods
 - Create a ReplicaSet:
   #+BEGIN_SRC shell
@@ -3222,8 +3321,444 @@ job.batch/pi created
   cronjob.batch "hello" deleted
   #+end_src
 
+* Log setups level 1b
+** DONE Pod log =P3= - Use kubectl debug and Ephemerals Containers
+- Run a dumb Pod that does not have a shell:
+  #+BEGIN_SRC shell
+  kubectl run -it -n rising --rm --restart=Never --image=registry.k8s.io/pause:latest dumb-pod -- sh 
+  #+END_SRC
+
+- Try to launch a =kubectl exec=, it will fail:
+  #+BEGIN_SRC shell
+  kubectl exec -it dumb-pod -- sh
+  #+END_SRC
+
+- Use =kubectl debug= to attach an Ephemeral Container:
+  #+BEGIN_SRC shell
+  kubectl debug -it ephemeral-dumb-pod --image=busybox:1.31.1 --target=dumb-pod 
+  #+END_SRC
+  
+- Describe the newly created Ephemeral Container:
+  #+BEGIN_SRC shell
+  kubectl describe pod ephemeral-dumb-pod -n rising
+  kubectl describe pod dumb-pod -n rising
+  #+END_SRC
+  
+- Destroy the ephemeral Pod and the dumb Pod: 
+  #+BEGIN_SRC shell
+  kubectl delete pod ephemeral-dumb-pod -n rising
+  kubectl delete pod dumb-pod -n rising
+  #+END_SRC
+
+** DONE LimitRange log =LR1= - Create a LimitRange to restrict the resources of a Pod
+- Define a LimitRange for the namespace:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: LimitRange
+    metadata:
+      name: limit-range
+      namespace: rising
+    spec:
+      limits:
+      - default	:
+          cpu: 300m
+          memory: 200Mi
+        defaultRequest:
+          cpu: 200m
+          memory: 100Mi
+        max:
+          cpu: 500m
+          memory: 500Mi
+        min:
+          cpu: 100m
+          memory: 50Mi
+    EOF
+  #+END_SRC
+  
+- Inspect the newly created LimitRange:
+  #+BEGIN_SRC shell
+  kubectl describe limitrange limit-range -n rising
+  #+END_SRC
+  
+- Create a Pod that does not fit the LimitRange:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: bad-pod
+    namespace: rising
+  spec:
+    containers:
+    - name: bad-container
+      image: busybox:1.31.1
+      command: ["sh", "-c", "sleep 3600"]
+      resources:
+        requests:
+          cpu: 600m
+          memory: 300Mi
+  EOF
+  #+END_SRC
+
+- Inspect the offending Pod:
+  #+BEGIN_SRC shell
+  kubectl describe pod bad-pod -n rising
+  #+END_SRC
+
+- Delete it:
+  #+BEGIN_SRC shell
+  kubectl delete pod bad-pod -n rising
+  #+END_SRC
+
+- Create a lawful Pod:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: good-pod
+    namespace: rising
+  spec:
+    containers:
+    - name: good-container
+      image: busybox:1.31.1
+      command: ["sh", "-c", "sleep 3600"]
+      resources:
+        requests:
+          cpu: 200m
+          memory: 100Mi
+  EOF
+  #+END_SRC
+
+- Inspect the good Pod:
+  #+BEGIN_SRC shell
+  kubectl describe pod good-pod -n rising
+  #+END_SRC
+
+- Delete it:
+  #+BEGIN_SRC shell
+  kubectl delete pod good-pod -n rising
+  #+END_SRC
+
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl delete limitrange limit-range -n rising
+  #+END_SRC
+
 * Log setups level 3
-** Stateful Set log =SS1= - Manage a StatefulSet
+** DONE Service log =SV1= - Expose the three types of Services from a Pod 
+- Create a Pod:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: service-pod
+    namespace: rising
+    labels:
+      app: service-app
+  spec:
+    containers:
+    - name: service-container
+      image: nginx:1.19.6
+      ports:
+        - containerPort: 80
+          name: http
+  EOF
+  #+END_SRC
+  
+- Expose a ClusterIP service (by default if you don't specify its type):
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: nginx-service
+      namespace: rising
+    spec:
+      selector:
+        app: service-app
+      ports:
+      - name: http-external
+        protocol: TCP
+        port: 80
+        targetPort: http
+    EOF
+  #+END_SRC
+
+  
+- Inspect the newly create Service:
+  #+BEGIN_SRC shell
+  kubectl describe service nginx-service -n rising
+  #+END_SRC
+
+- Update the Service, and replace it with a NodePort:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: nginx-service
+      namespace: rising
+    spec:
+      type: NodePort
+      selector:
+        app: service-app
+      ports:
+      - name: http-external
+        protocol: TCP
+        port: 80
+        targetPort: http
+        nodePort: 30080
+    EOF
+  #+END_SRCi 
+  
+- Inspect the updated Service:
+  #+BEGIN_SRC shell
+  kubectl describe service nginx-service -n rising
+  #+END_SRC
+
+#+BEGIN_QUOTE
+/LoadBalancer/ services are not supported in my environment, so I can't test them.
+#+END_QUOTE
+
+- Add an ExternalName service:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: external-service
+      namespace: rising
+    spec:
+      type: ExternalName
+      externalName: risinglab.fbk.eu
+    EOF
+  #+END_SRC
+  
+- Clean all the resources:
+  #+BEGIN_SRC shell
+  kubectl delete pod service-pod -n rising
+  kubectl delete service nginx-service -n rising
+  kubectl delete service external-service -n rising
+  #+END_SRC
+
+** DONE Service log =SV2= - Expose Deployments through Services
+- Create a Deployment with an explicit containerPort:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: exposed-deployment
+    namespace: rising
+  spec:
+    selector:
+      matchLabels:
+        run: nginx-deployment
+    replicas: 2
+    template:
+      metadata:
+        labels:
+          run: nginx-deployment
+      spec:
+        containers:
+        - name: nginx-runner
+          image: nginx
+          ports:
+          - containerPort: 80
+    EOF
+#+END_SRC
+
+- Check the newly created Deployment:
+  #+BEGIN_SRC shell
+  kubectl get deployments -n rising -o wide
+  #+END_SRC
+  
+- Expose the Deployment, it will default to a ClusterIP using the only containerPort available:
+  #+BEGIN_SRC shell
+  kubectl expose deployment exposed-deployment
+  #+END_SRC
+  
+- List the Services:
+  #+BEGIN_SRC shell
+  kubectl list services -n rising -l run=nginx-deployment
+  #+END_SRC
+
+- Describe the Service:
+ #+BEGIN_SRC shell
+  kubectl describe service exposed-deployment -n rising
+  #+END_SRC
+
+- List the EndpointSlices:
+  #+BEGIN_SRC shell
+  kubectl get endpointslices -n rising
+  #+END_SRC
+
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl delete deployment exposed-deployment -n rising
+  kubectl delete service exposed-deployment -n rising
+  #+END_SRC
+
+** DONE Service log =SV3= - Use multi-port Services 
+- Create a Pod that exposes two ports:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: multi-port-pod
+    namespace: rising
+    labels:
+      app: multi-port-app
+  spec:
+    containers:
+    - name: multi-port-container
+      image: nginx:1.19.6
+      ports:
+      - containerPort: 80
+        name: http
+      - containerPort: 443
+        name: https
+  EOF
+  #+END_SRC
+
+- Expose the Pod through a Service:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: multi-port-service
+    namespace: rising
+  spec:
+    selector:
+      app: multi-port-app
+    ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: http
+    - name: https
+      protocol: TCP
+      port: 443
+      targetPort: https
+  EOF
+  #+END_SRC
+  
+- Inspect the Service:
+  #+BEGIN_SRC shell
+  kubectl describe service multi-port-service -n rising
+  #+END_SRC
+
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl delete pod multi-port-pod -n rising
+  kubectl delete service multi-port-service -n rising
+  #+END_SRC
+
+** DONE EndpointSlice log =ES1= - Use EndpointSlices to manually group selectorless Services 
+- Create two Pods and a Service that has no selector:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: endpoint-pod-1
+      namespace: rising
+    spec:
+      containers:
+      - name: endpoint-container
+        image: nginx:1.19.6
+        ports:
+        - containerPort: 80
+          name: http
+    ---
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: endpoint-pod-2
+      namespace: rising
+    spec:
+      containers:
+      - name: endpoint-container
+        image: nginx:1.27.0
+        ports:
+        - containerPort: 80
+          name: http
+    ---
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: endpoint-service
+      namespace: rising
+    spec:
+      ports:
+        - name: http
+          port: 80
+          targetPort: 4000
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/endpoint-pod-1 created
+  pod/endpoint-pod-2 created
+  service/endpoint-service created
+  #+end_src
+  
+- This Service will not create any EndpointSlice. We need to create one manually:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: discovery.k8s.io/v1
+    kind: EndpointSlice
+    metadata:
+      name: endpoint-service-1
+      namespace: rising
+      labels:
+        kubernetes.io/service-name: endpoint-service
+    addressType: IPv4
+    ports:
+      - name: http
+        appProtocol: http
+        protocol: TCP
+        port: 4000  
+    endpoints:
+        - addresses:
+            - $(kubectl get pod endpoint-pod-1 -n rising -o jsonpath='{.status.podIP}')
+        - addresses:
+            - $(kubectl get pod endpoint-pod-2 -n rising -o jsonpath='{.status.podIP}')
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  endpointslice.discovery.k8s.io/endpoint-service-1 created
+  #+end_src
+ 
+  
+- Inspect the EndpointSlice:
+  #+BEGIN_SRC shell
+  kubectl describe endpointslice endpoint-service-1 -n rising
+  #+END_SRC
+
+- Tear everything down:
+  #+BEGIN_SRC shell
+    kubectl delete pod endpoint-pod-1 -n rising
+    kubectl delete pod endpoint-pod-2 -n rising
+    kubectl delete service endpoint-service -n rising
+    kubectl delete endpointslice endpoint-service-1 -n rising
+  #+END_SRC
+
+** TODO Ingress log =IG1= - Import an external IngressController, then create an Ingress and expose a Service
+** TODO Pod Networking log =PN1= - Use Proxy and Port Forwarding to access a Pod
+** TODO NetworkPolicy log =NP1= - Create a NetworkPolicy to restrict traffic to a Pod
+* Real-life scenarios (level infinity)
+** TODO Real-life scenario =RL1= - Deploy the NGINX Ingress Controller and expose a Deployment through it
+* Log setups level 4
+** WAIT Stateful Set log =SS1= - Manage a StatefulSet
 - Create a dumb StorageClass for the StatefulSet:
   #+BEGIN_SRC shell
   cat <<EOF | kubectl apply -f -
