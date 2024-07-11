@@ -32,7 +32,8 @@ def build_model(hp, len_classes, len_features):
     return model
 
 
-def tuner_search(data: list[dict]):
+def tuner_search(data: list[dict],
+                 tuner_type: str = 'hyperband'):
     from model import preprocess_data, encode_data, train_test_split
     flattened_data, total_features = preprocess_data(data)
     training_data = encode_data(flattened_data, total_features)
@@ -51,24 +52,28 @@ def tuner_search(data: list[dict]):
     len_features = training_data['len_features']
     model_builder = partial(build_model, len_classes=len_classes, len_features=len_features)
 
-    #tuner = kt.Hyperband(
-    #    model_builder,
-    #    objective='val_categorical_accuracy',
-    #    max_epochs=pm.MAX_EPOCHS,
-    #    executions_per_trial=pm.STATISTICS_ATTEMPTS,
-    #    overwrite=True,
-    #    directory=pm.OUT_FOLDER,
-    #    project_name='lstm_tuning'
-    #)
-
-    tuner = kt.RandomSearch(
-        model_builder,
-        objective='val_categorical_accuracy',
-        executions_per_trial=pm.STATISTICS_ATTEMPTS,
-        directory=pm.OUT_FOLDER,
-        project_name='lstm_tuning',
-        overwrite=True
-    )
+    match tuner_type:
+        case 'hyperband':
+            tuner = kt.Hyperband(
+                model_builder,
+                objective='val_categorical_accuracy',
+                max_epochs=pm.MAX_EPOCHS,
+                executions_per_trial=pm.TUNER_EXECUTIONS_PER_TRIAL,
+                overwrite=True,
+                directory=pm.OUT_FOLDER,
+                project_name='lstm_tuning'
+            )
+        case 'random':
+            tuner = kt.RandomSearch(
+                model_builder,
+                objective='val_categorical_accuracy',
+                executions_per_trial=pm.STATISTICS_ATTEMPTS,
+                directory=pm.OUT_FOLDER,
+                project_name='lstm_tuning',
+                overwrite=True
+            )
+        case _:
+            raise ValueError(f"Unknown tuner type: {tuner_type}")
 
     tuner.search_space_summary()
 
