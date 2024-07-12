@@ -18,6 +18,7 @@ from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_sc
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 
+from label_proposer import brute_force_label_space
 import model_features
 import parameters as pm
 from common import flatten_object
@@ -142,7 +143,8 @@ def encode_data(flattened_data: list[dict], total_features: list[str]) -> dict:
 
     len_features = len(total_features)
     assert len(x_before[0]) == len_features, "Number of features do not match."
-    len_classes = len(set(y_before))
+    all_labels = brute_force_label_space(print_result=False)
+    len_classes = len(all_labels)
 
     log.info(f"Features: {len_features}: {total_features}")
     log.info(f"Classes: {len_classes}")
@@ -161,8 +163,9 @@ def encode_data(flattened_data: list[dict], total_features: list[str]) -> dict:
     #     log.info(f"Feature {total_features[i]}: {le.classes_}")
 
     yle = preprocessing.LabelEncoder()
-    y_before_encoded = yle.fit_transform(y_before)
-    y_before_onehot = to_categorical(y_before_encoded, num_classes=len_classes)
+    _ = yle.fit(all_labels)
+    y_encoded = yle.transform(y_before)
+    y_onehot = to_categorical(y_encoded, num_classes=len_classes)
 
     # Create batches
     X = np.zeros((len(x_before) - pm.WINDOW_LENGTH + 1, pm.WINDOW_LENGTH, len_features))
@@ -170,7 +173,7 @@ def encode_data(flattened_data: list[dict], total_features: list[str]) -> dict:
 
     for i in range(pm.WINDOW_LENGTH, len(x_before) + 1):
         X[i - pm.WINDOW_LENGTH] = x_before[i - pm.WINDOW_LENGTH:i]
-        y[i - pm.WINDOW_LENGTH] = y_before_onehot[i - pm.WINDOW_LENGTH:i]
+        y[i - pm.WINDOW_LENGTH] = y_onehot[i - pm.WINDOW_LENGTH:i]
 
     log.info(f"Resulting shapes: {X.shape}, {y.shape}")
 
@@ -180,7 +183,8 @@ def encode_data(flattened_data: list[dict], total_features: list[str]) -> dict:
         "x_encoders": xenc,
         "y_encoder": yle,
         "len_features": len_features,
-        "len_classes": len_classes
+        "len_classes": len_classes,
+        "classes": all_labels,
     }
 
 
