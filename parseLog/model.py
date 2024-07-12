@@ -18,10 +18,10 @@ from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_sc
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 
-from label_proposer import brute_force_label_space
+from label_proposer import brute_force_label_space, decode_label
 import model_features
 import parameters as pm
-from common import flatten_object
+from common import flatten_object, LABEL_UNKNOWN, tqdm
 from model_encoder import AuditEncoder, RisingEncoder
 from model_tuner import tuner_search
 from support.log import initialize_log, activate_stdout_logging, silence_stdout_logging
@@ -138,7 +138,7 @@ def generate_model(X_shape: int, y_shape: int | tuple) -> models.Model:
 def encode_data(flattened_data: list[dict],
                 total_features: list[str],
                 include_y: bool = True,
-                previous_xenc: list = None
+                previous_xenc: list | None = None
                 ) -> dict:
     x_before = []
     if include_y:
@@ -191,7 +191,7 @@ def encode_data(flattened_data: list[dict],
         # Previous implementation
         # y = np.zeros((len(x_before) - pm.WINDOW_LENGTH + 1, pm.WINDOW_LENGTH, len_classes))
 
-    for i in range(pm.WINDOW_LENGTH, len(x_before) + 1):
+    for i in tqdm(range(pm.WINDOW_LENGTH, len(x_before) + 1)):
         X[i - pm.WINDOW_LENGTH] = x_before[i - pm.WINDOW_LENGTH:i]
         if include_y:
             y[i - pm.WINDOW_LENGTH] = y_onehot[i - pm.WINDOW_LENGTH:i]
@@ -271,10 +271,12 @@ def model_training(data: list[dict],
     y_pred_decoded = []
     y_test_decoded = []
 
-    for sequence_pred in y_pred_sublabels:
+    log.info("Decoding labels (predicted)...")
+    for sequence_pred in tqdm(y_pred_sublabels):
         y_pred_decoded.append(yle.inverse_transform(sequence_pred))
 
-    for sequence_test in y_test_sublabels:
+    log.info("Decoding labels (actual)...")
+    for sequence_test in tqdm(y_test_sublabels):
         y_test_decoded.append(yle.inverse_transform(sequence_test))
 
     y_pred_decoded = np.array(y_pred_decoded)
@@ -307,6 +309,19 @@ def calculate_metrics(y_true, y_pred,
     precision = float(precision_score(y_true.flatten(), y_pred.flatten(), average='macro', zero_division=0))
     recall = float(recall_score(y_true.flatten(), y_pred.flatten(), average='macro', zero_division=0))
     f1 = float(f1_score(y_true.flatten(), y_pred.flatten(), average='macro', zero_division=0))
+    for i in ['macro', 'micro', 'weighted']:
+        print("With 0-division set to 0:")
+        print(f"{i} precision: {precision_score(y_true.flatten(), y_pred.flatten(), average=i, zero_division=0)}")
+        print(f"{i} recall: {recall_score(y_true.flatten(), y_pred.flatten(), average=i, zero_division=0)}")
+        print(f"{i} f1: {f1_score(y_true.flatten(), y_pred.flatten(), average=i, zero_division=0)}")
+        print("With 0-division set to 1:")
+        print(f"{i} precision: {precision_score(y_true.flatten(), y_pred.flatten(), average=i, zero_division=1)}")
+        print(f"{i} recall: {recall_score(y_true.flatten(), y_pred.flatten(), average=i, zero_division=1)}")
+        print(f"{i} f1: {f1_score(y_true.flatten(), y_pred.flatten(), average=i, zero_division=1)}")
+        print("With 0-division set to np.nan:")
+        print(f"{i} precision: {precision_score(y_true.flatten(), y_pred.flatten(), average=i, zero_division=np.nan)}")
+        print(f"{i} recall: {recall_score(y_true.flatten(), y_pred.flatten(), average=i, zero_division=np.nan)}")
+        print(f"{i} f1: {f1_score(y_true.flatten(), y_pred.flatten(), average=i, zero_division=np.nan)}")
 
     if include_majority_accuracy:
         original_sequence_y_true = {}
@@ -416,13 +431,15 @@ def model_inference(model: models.Model,
     training_data = encode_data(flattened_data, total_features, include_y=False, previous_xenc=x_encoders)
     X = training_data['X']
 
+    log.info("Predicting labels...")
     y_pred = model.predict(X)
 
     y_pred_labels = np.argmax(y_pred, axis=-1)
 
     y_pred_decoded = []
 
-    for sequence_pred in y_pred_labels:
+    log.info("Decoding labels...")
+    for sequence_pred in tqdm(y_pred_labels):
         y_pred_decoded.append(yle.inverse_transform(sequence_pred))
 
     y_pred_decoded = np.array(y_pred_decoded)
@@ -436,39 +453,65 @@ def model_inference(model: models.Model,
             if index not in original_sequence_y_pred:
                 original_sequence_y_pred[index] = []
 
-            original_sequence_y_pred[index].append(y_pred_decoded[i][j])
+            # the more central the value, the more weight it has
+            weight = 1 - abs(j - pm.WINDOW_LENGTH / 2) / (pm.WINDOW_LENGTH / 2)
+            original_sequence_y_pred[index].append((y_pred_decoded[i][j], weight))
 
     predicted_sequence = []
     for k, v in original_sequence_y_pred.items():
-        # Get most common element in the list
-        most_common = collections.Counter(v).most_common()
-        if len(most_common) == 1:
-            # If there is only one element, use it
-            predicted_sequence.append(int(most_common[0][0]))
-        elif most_common[0][1] > most_common[1][1]:
-            # If the first element is absolute majority, use it
-            predicted_sequence.append(int(most_common[0][0]))
-        else:
-            # If there is a tie, insert all the elements with equal weight
-            tmp = []
-            item, count = most_common[0]
-            while len(most_common) > 0 and most_common[0][1] == count:
-                tmp.append(int(most_common.pop(0)[0]))
-            predicted_sequence.append(tmp)
+        # Sum the weights for each label
+        weighted_labels = {}
+        for label, weight in v:
+            if label not in weighted_labels:
+                weighted_labels[label] = 0
+            weighted_labels[label] += weight
+
+        # Get the label with the highest weight
+        most_weighted = max(weighted_labels, key=weighted_labels.get)
+        ## Get most common element in the list
+        #most_common = collections.Counter(v).most_common()
+        #if len(most_common) == 1:
+        #    # If there is only one element, use it
+        #    predicted_sequence.append(int(most_common[0][0]))
+        #elif most_common[0][1] > most_common[1][1]:
+        #    # If the first element is absolute majority, use it
+        #    predicted_sequence.append(int(most_common[0][0]))
+        #else:
+        #    # If there is a tie, insert all the elements with equal weight
+        #    tmp = []
+        #    item, count = most_common[0]
+        #    while len(most_common) > 0 and most_common[0][1] == count:
+        #        tmp.append(int(most_common.pop(0)[0]))
+        #    predicted_sequence.append(tmp)
+        predicted_sequence.append(int(most_weighted))
 
     assert len(predicted_sequence) == len(
         data), f"Predicted sequence length does not match data length: {len(predicted_sequence)} != {len(flattened_data)}"
 
     ok = 0
+    cpcount = 0
     for i in range(len(data)):
-        if "cplabel" not in data[i]:
+        if pm.LABEL_FEATURE not in data[i]:
             continue
+        if data[i][pm.LABEL_FEATURE] in (None, LABEL_UNKNOWN):
+            continue
+        cpcount += 1
         if data[i][pm.LABEL_FEATURE] == predicted_sequence[i]:
             ok += 1
         else:
-            log.info(f"Error in sequence {i}: {data[i][pm.LABEL_FEATURE]} != {predicted_sequence[i]}")
+            # log.info(f"Error in sequence {i}: (embedded) {data[i][pm.LABEL_FEATURE]} != {predicted_sequence[i]} (predicted)")
+            try:
+                decoded_original = decode_label(data[i][pm.LABEL_FEATURE])['raw']
+                decoded_predicted = decode_label(predicted_sequence[i])['raw']
+                message = f"Error in sequence {i}: "
+                for key in decoded_original.keys():
+                    if decoded_original[key] != decoded_predicted[key]:
+                        message += f"{key}: {decoded_original[key]} != {decoded_predicted[key]}, "
+                log.warning(message)
+            except Exception:
+                pass
 
-    log.info(f"Accuracy on cplabel: {ok / len(data)}")
+    log.info(f"Accuracy on labeled: {ok / cpcount} (errors: {cpcount - ok} / {cpcount})")
 
     return predicted_sequence
 

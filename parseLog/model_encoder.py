@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.preprocessing import LabelEncoder
 from label_proposer import brute_force_label_space, decode_label, encode_label
-
+from common import LABEL_UNKNOWN
 
 class RisingEncoder:
     def __init__(self):
@@ -110,6 +110,10 @@ class AuditEncoder:
             is_namespaced = inverse_transformed[2]
             is_single_object = inverse_transformed[3]
             verb_id = inverse_transformed[4]
+
+            if all([x == 0 for x in label]):
+                ret.append(LABEL_UNKNOWN)
+                continue
 
             ret.append(encode_label(label_id, label_sub_id, is_namespaced, is_single_object, verb_id))
         return ret
