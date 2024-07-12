@@ -110,10 +110,10 @@ def generate_model(len_features: int, len_classes: int) -> models.Model:
     # classification model
     model = models.Sequential([
         layers.Input(shape=(pm.WINDOW_LENGTH, len_features)),
-        layers.LSTM(len_features * 8, return_sequences=True, name='lstm_8x'),
-        layers.LSTM(len_features * 4, return_sequences=True, name='lstm_4x'),
-        layers.LSTM(len_features * 2, return_sequences=True, name='lstm_2x'),
-        layers.Dropout(0.5, name='dropout'),
+        layers.LSTM(len_features * 3, return_sequences=True, name='lstm_8x'),
+        layers.LSTM(len_features * 6, return_sequences=True, name='lstm_4x'),
+        layers.LSTM(len_features * 12, return_sequences=True, name='lstm_2x'),
+        layers.Dropout(0.4, name='dropout'),
         layers.TimeDistributed(layers.Dense(len_classes, name='dense'), name='time_distributed'),
         layers.Activation('softmax', name='softmax')
     ])
