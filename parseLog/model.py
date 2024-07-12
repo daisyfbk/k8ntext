@@ -179,10 +179,17 @@ def encode_data(flattened_data: list[dict],
 
         log.info(f"Classes: {len_classes}, cast to a one-hot encoding of {len_labeltypes} x {len_subclasses}")
 
+        # Previous implementation
+        # yle = preprocessing.LabelEncoder()
+        # y_encoded = yle.fit_transform(y_before)
+        # y_onehot = to_categorical(y_encoded, num_classes=len_classes)
+
     # Create batches
     X = np.zeros((len(x_before) - pm.WINDOW_LENGTH + 1, pm.WINDOW_LENGTH, len_features))
     if include_y:
         y = np.zeros((len(x_before) - pm.WINDOW_LENGTH + 1, pm.WINDOW_LENGTH, len_labeltypes, len_subclasses))
+        # Previous implementation
+        # y = np.zeros((len(x_before) - pm.WINDOW_LENGTH + 1, pm.WINDOW_LENGTH, len_classes))
 
     for i in range(pm.WINDOW_LENGTH, len(x_before) + 1):
         X[i - pm.WINDOW_LENGTH] = x_before[i - pm.WINDOW_LENGTH:i]
@@ -198,6 +205,7 @@ def encode_data(flattened_data: list[dict],
             "y_encoder": yle,
             "X_shape": len_features,
             "y_shape": (len_labeltypes, len_subclasses),
+            # Previous implementation "y_shape": len_classes
         }
     else:
         log.info(f"Resulting shapes: {X.shape}")
