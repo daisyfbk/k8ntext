@@ -23,7 +23,7 @@ import parameters as pm
 from common import flatten_object
 from model_encoder import RisingEncoder
 from model_tuner import tuner_search
-from support.log import initialize_log
+from support.log import initialize_log, activate_stdout_logging, silence_stdout_logging
 
 
 def preprocess_data(__data: list[dict],
@@ -206,17 +206,32 @@ def model_training(data: list[dict],
     print(model.summary())
 
     cb = [
-        callbacks.EarlyStopping(monitor='val_loss', patience=pm.EARLY_STOPPING_PATIENCE, restore_best_weights=True),
-        callbacks.ReduceLROnPlateau(monitor='val_loss', factor=pm.REDUCE_LR_FACTOR, patience=pm.REDUCE_LR_PATIENCE)
+        callbacks.EarlyStopping(monitor='val_loss',
+                                patience=pm.EARLY_STOPPING_PATIENCE,
+                                restore_best_weights=True,
+                                verbose=1),
+        callbacks.ReduceLROnPlateau(monitor='val_loss',
+                                    factor=pm.REDUCE_LR_FACTOR,
+                                    patience=pm.REDUCE_LR_PATIENCE,
+                                    verbose=1),
     ]
 
     if not statistical_mode:
-        cb.append(
-            callbacks.ModelCheckpoint(filepath=pm.OUT_FOLDER + '/model-checkpoint.keras', save_best_only=True)
-        )
+        cb += [
+            callbacks.BackupAndRestore(backup_dir=pm.OUT_FOLDER + '/backup'),
+            callbacks.ModelCheckpoint(filepath=pm.OUT_FOLDER + '/model-checkpoint.keras', save_best_only=True),
+            # log metrics
+            callbacks.LambdaCallback(
+                on_train_begin=lambda logs: log.info(f"Training started: {logs}"),
+                on_train_end=lambda logs: log.info(f"Training ended: {logs}"),
+                on_epoch_end=lambda epoch, logs: log.info(f"Epoch {epoch}: {logs}"),
+            )
+        ]
 
+    silence_stdout_logging()
     history = model.fit(x_train, y_train, epochs=pm.MAX_EPOCHS, callbacks=cb, validation_split=pm.TRAIN_VALID_SPLIT)
     y_pred = model.predict(x_test)
+    activate_stdout_logging()
 
     y_pred_labels = np.argmax(y_pred, axis=-1)
     y_test_labels = np.argmax(y_test, axis=-1)
