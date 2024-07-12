@@ -22,7 +22,7 @@ from label_proposer import brute_force_label_space
 import model_features
 import parameters as pm
 from common import flatten_object
-from model_encoder import RisingEncoder
+from model_encoder import AuditEncoder, RisingEncoder
 from model_tuner import tuner_search
 from support.log import initialize_log, activate_stdout_logging, silence_stdout_logging
 
@@ -107,15 +107,16 @@ def preprocess_data(__data: list[dict],
     return res, total_features
 
 
-def generate_model(len_features: int, len_classes: int) -> models.Model:
+def generate_model(X_shape: int, y_shape: int | tuple) -> models.Model:
     # classification model
     model = models.Sequential([
-        layers.Input(shape=(pm.WINDOW_LENGTH, len_features)),
-        layers.LSTM(len_features * 3, return_sequences=True, name='lstm_8x'),
-        layers.LSTM(len_features * 6, return_sequences=True, name='lstm_4x'),
-        layers.LSTM(len_features * 12, return_sequences=True, name='lstm_2x'),
+        layers.Input(shape=(pm.WINDOW_LENGTH, X_shape)),
+        layers.LSTM(X_shape * 3, return_sequences=True, name='lstm_8x'),
+        layers.LSTM(X_shape * 6, return_sequences=True, name='lstm_4x'),
+        layers.LSTM(X_shape * 12, return_sequences=True, name='lstm_2x'),
         layers.Dropout(0.4, name='dropout'),
-        layers.TimeDistributed(layers.Dense(len_classes, name='dense'), name='time_distributed'),
+        layers.TimeDistributed(layers.Dense(y_shape[0] * y_shape[1], name='dense'), name='time_distributed'),
+        layers.Reshape((pm.WINDOW_LENGTH, y_shape[0], y_shape[1]), name='reshape'),
         layers.Activation('softmax', name='softmax')
     ])
 
@@ -256,24 +257,20 @@ def model_training(data: list[dict],
     y_pred = model.predict(x_test)
     activate_stdout_logging()
 
-    y_pred_labels = np.argmax(y_pred, axis=-1)
-    y_test_labels = np.argmax(y_test, axis=-1)
-
-    # original_positions = np.argsort(i_test)
-    # y_pred_labels_unshuffled = y_pred_labels[original_positions]
-    # y_test_labels_unshuffled = y_test_labels[original_positions]
+    y_pred_sublabels = np.argmax(y_pred, axis=-1)
+    y_test_sublabels = np.argmax(y_test, axis=-1)
 
     y_pred_decoded = []
     y_test_decoded = []
 
-    for sequence_pred, sequence_test in zip(y_pred_labels, y_test_labels):
-        # Inverse transform each sequence and append to the decoded lists
+    for sequence_pred in y_pred_sublabels:
         y_pred_decoded.append(yle.inverse_transform(sequence_pred))
+
+    for sequence_test in y_test_sublabels:
         y_test_decoded.append(yle.inverse_transform(sequence_test))
 
     y_pred_decoded = np.array(y_pred_decoded)
     y_test_decoded = np.array(y_test_decoded)
-
     metrics = calculate_metrics(y_test_decoded,
                                 y_pred_decoded,
                                 include_per_class=True,
