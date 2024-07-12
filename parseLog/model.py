@@ -134,11 +134,20 @@ def generate_model(len_features: int, len_classes: int) -> models.Model:
     return model
 
 
-def encode_data(flattened_data: list[dict], total_features: list[str]) -> dict:
-    x_before, y_before = [], []
+def encode_data(flattened_data: list[dict],
+                total_features: list[str],
+                include_y: bool = True,
+                previous_xenc: list = None
+                ) -> dict:
+    x_before = []
+    if include_y:
+        y_before = []
 
     for d in flattened_data:
-        y_before.append(d.pop(pm.LABEL_FEATURE))
+        if include_y:
+            y_before.append(d.pop(pm.LABEL_FEATURE))
+        else:
+            d.pop(pm.LABEL_FEATURE)
         x_before.append(list(d.values()))
 
     len_features = len(total_features)
@@ -146,46 +155,56 @@ def encode_data(flattened_data: list[dict], total_features: list[str]) -> dict:
     all_labels = brute_force_label_space(print_result=False)
     len_classes = len(all_labels)
 
-    log.info(f"Features: {len_features}: {total_features}")
-    log.info(f"Classes: {len_classes}")
-
     x_before = np.array(x_before)
-
     xenc = []
     for i in range(x_before.shape[1]):
-        le = RisingEncoder()
-        le.fit(x_before[:, i])
+        if previous_xenc is None:
+            le = RisingEncoder()
+            le.fit(x_before[:, i])
+        else:
+            le = previous_xenc[i]
         x_before[:, i] = le.transform(x_before[:, i])
         xenc.append(le)
 
-    # Enumerate the weights of each feature encoder
-    # for i, le in enumerate(xenc):
-    #     log.info(f"Feature {total_features[i]}: {le.classes_}")
+    # each label is transformed from a number to five one-hot encoded values (len_subclasses = 5)
+    log.info(f"Features: {len_features}: {total_features}")
+    
+    if include_y:
+        yle = AuditEncoder()
+        len_labeltypes = 5
+        len_subclasses = yle.length
+        y_encoded = yle.fit_transform(y_before)
+        y_onehot = to_categorical(y_encoded, num_classes=len_subclasses)
 
-    yle = preprocessing.LabelEncoder()
-    _ = yle.fit(all_labels)
-    y_encoded = yle.transform(y_before)
-    y_onehot = to_categorical(y_encoded, num_classes=len_classes)
+        log.info(f"Classes: {len_classes}, cast to a one-hot encoding of {len_labeltypes} x {len_subclasses}")
 
     # Create batches
     X = np.zeros((len(x_before) - pm.WINDOW_LENGTH + 1, pm.WINDOW_LENGTH, len_features))
-    y = np.zeros((len(x_before) - pm.WINDOW_LENGTH + 1, pm.WINDOW_LENGTH, len_classes))
+    if include_y:
+        y = np.zeros((len(x_before) - pm.WINDOW_LENGTH + 1, pm.WINDOW_LENGTH, len_labeltypes, len_subclasses))
 
     for i in range(pm.WINDOW_LENGTH, len(x_before) + 1):
         X[i - pm.WINDOW_LENGTH] = x_before[i - pm.WINDOW_LENGTH:i]
-        y[i - pm.WINDOW_LENGTH] = y_onehot[i - pm.WINDOW_LENGTH:i]
+        if include_y:
+            y[i - pm.WINDOW_LENGTH] = y_onehot[i - pm.WINDOW_LENGTH:i]
 
-    log.info(f"Resulting shapes: {X.shape}, {y.shape}")
-
-    return {
-        "X": X,
-        "y": y,
-        "x_encoders": xenc,
-        "y_encoder": yle,
-        "len_features": len_features,
-        "len_classes": len_classes,
-        "classes": all_labels,
-    }
+    if include_y:
+        log.info(f"Resulting shapes: {X.shape}, {y.shape}")
+        return {
+            "X": X,
+            "y": y,
+            "x_encoders": xenc,
+            "y_encoder": yle,
+            "X_shape": len_features,
+            "y_shape": (len_labeltypes, len_subclasses),
+        }
+    else:
+        log.info(f"Resulting shapes: {X.shape}")
+        return {
+            "X": X,
+            "x_encoders": xenc,
+            "X_shape": len_features
+        }
 
 
 def model_training(data: list[dict],
@@ -195,10 +214,10 @@ def model_training(data: list[dict],
     training_data = encode_data(flattened_data, total_features)
     xenc = training_data['x_encoders']
     yle = training_data['y_encoder']
-    len_features = training_data['len_features']
-    len_classes = training_data['len_classes']
+    X_shape = training_data['X_shape']
+    y_shape = training_data['y_shape']
 
-    model = generate_model(len_features, len_classes)
+    model = generate_model(X_shape, y_shape)
 
     # indices = np.arange(len(X))
     # x_train, x_test, y_train, y_test, i_train, i_test = train_test_split(X, y, indices, test_size=pm.TEST_TRAIN_SPLIT)
@@ -388,25 +407,9 @@ def model_inference(model: models.Model,
                     x_encoders: list[Any],
                     yle: preprocessing.LabelEncoder,
                     data: list[dict]) -> list:
-    flattened_data, _ = preprocess_data(data, features)
-
-    x_before = []
-    for d in flattened_data:
-        d.pop(pm.LABEL_FEATURE)
-        x_before.append(list(d.values()))
-
-    len_features = len(features)
-
-    x_before = np.array(x_before)
-
-    for i in range(x_before.shape[1]):
-        x_before[:, i] = x_encoders[i].transform(x_before[:, i])
-
-    # Create batches
-    X = np.zeros((len(x_before) - pm.WINDOW_LENGTH + 1, pm.WINDOW_LENGTH, len_features))
-
-    for i in range(pm.WINDOW_LENGTH, len(x_before) + 1):
-        X[i - pm.WINDOW_LENGTH] = x_before[i - pm.WINDOW_LENGTH:i]
+    flattened_data, total_features = preprocess_data(data, features)
+    training_data = encode_data(flattened_data, total_features, include_y=False, previous_xenc=x_encoders)
+    X = training_data['X']
 
     y_pred = model.predict(X)
 
