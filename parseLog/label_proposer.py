@@ -112,9 +112,9 @@ def encode_label(
 @functools.lru_cache(maxsize=None)
 def decode_label(label: int, as_string: bool = False) -> dict | str:
     if label == LABEL_IGNORE:
-        return {"error": "Label is ignored"}
+        return {"error": "Label is ignored"} if not as_string else f"Label is ignored"
     if label == LABEL_UNKNOWN:
-        return {"error": "Label is unknown"}
+        return {"error": "Label is unknown"} if not as_string else f"Label is unknown"
     
     label_id =         (label & 0b1111111111000000000000) >> 12
     label_sub_id =     (label & 0b0000000000111000000000) >> 9
@@ -123,25 +123,33 @@ def decode_label(label: int, as_string: bool = False) -> dict | str:
     verb_id =          (label & 0b0000000000000001110000) >> 4
     alternate =        (label & 0b0000000000000000001111)
 
-    key = [k for k, v in labels.items() if v == (label_id, label_sub_id)][0]
+    try:
+        key = [k for k, v in labels.items() if v == (label_id, label_sub_id)][0]
+    except IndexError:
+        return {"error": "Label cannot be decoded"} if not as_string else f"Label cannot be decoded ({label})"
+
     apigroup, version, uri = key
 
     verb = [k for k, v in verbs.items() if v == verb_id][0]
 
     if as_string:
-        return f"{verb} {apigroup}/{version}/{uri} {'(ns)' if is_namespaced else ''} {'(list)' if is_single_object else ''}"
+        return f"{verb} {apigroup}/{version}/{uri} {'(ns)' if is_namespaced else ''} {'(list)' if is_single_object else ''}".replace("  ", " ")
     else:
         return {
             "apiGroup": apigroup,
             "version": version,
             "uri": uri,
-            "label_id": label_id,
-            "label_sub_id": label_sub_id,
             "is_namespaced": is_namespaced == 1,
-            "is_single_object": is_single_object,
+            "is_single_object": is_single_object == 1,
             "verb": verb,
-            "verb_id": verb_id,
-            "alternate": alternate,
+            "raw": {
+                "label_id": label_id,
+                "label_sub_id": label_sub_id,
+                "is_namespaced": is_namespaced,
+                "is_single_object": is_single_object,
+                "verb_id": verb_id,
+                "alternate": alternate
+            },
         }
 
 
@@ -207,7 +215,7 @@ def brute_force_label_space(print_result: bool = True) -> list[int]:
                             if "error" not in decoded and allowed_operation:
                                 if print_result:
                                     decoded_str = decode_label(label, as_string=True)
-                                    print(decoded_str)
+                                    print(label, decoded_str)
                                 labels.append(label)
                         except Exception as e:
                             continue
@@ -291,7 +299,7 @@ def main(args):
                 print("Please provide a label to decode")
                 exit(1)
             decoded = decode_label(int(args.label), as_string=True)
-            print(decoded)
+            print(args.label, decoded)
 
         else:
             parser.print_help()
