@@ -388,6 +388,7 @@ def model_inference(model: models.Model,
 
     x_before = []
     for d in flattened_data:
+        d.pop(pm.LABEL_FEATURE)
         x_before.append(list(d.values()))
 
     len_features = len(features)
@@ -396,7 +397,6 @@ def model_inference(model: models.Model,
 
     for i in range(x_before.shape[1]):
         x_before[:, i] = x_encoders[i].transform(x_before[:, i])
-        # x_before[:, i] = x_encoders[i].transform(x_before[:, i].reshape(-1, 1)).flatten()
 
     # Create batches
     X = np.zeros((len(x_before) - pm.WINDOW_LENGTH + 1, pm.WINDOW_LENGTH, len_features))
@@ -453,6 +453,8 @@ def model_inference(model: models.Model,
             continue
         if data[i][pm.LABEL_FEATURE] == predicted_sequence[i]:
             ok += 1
+        else:
+            log.info(f"Error in sequence {i}: {data[i][pm.LABEL_FEATURE]} != {predicted_sequence[i]}")
 
     log.info(f"Accuracy on cplabel: {ok / len(data)}")
 
