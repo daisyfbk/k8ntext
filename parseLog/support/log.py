@@ -79,6 +79,20 @@ def initialize_log(
         log.getLogger().addHandler(filehandler)
 
 
+def silence_stdout_logging() -> None:
+    global original_stdout_log_level
+    original_stdout_log_level = log.getLogger().handlers[0].level
+    log.getLogger().handlers[0].setLevel(log.CRITICAL)
+
+
+def activate_stdout_logging() -> None:
+    if "original_stdout_log_level" in globals():
+        log.getLogger().handlers[0].setLevel(original_stdout_log_level)
+    else:
+        print("Logging was not silenced before", file=sys.stderr)
+
+
+
 def tqdm_wrapper(iterable, **kwargs):
     # get name of calling function
     return tqdm(
