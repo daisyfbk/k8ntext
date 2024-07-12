@@ -62,7 +62,7 @@ with open(temp_file, 'w') as f:
                 and o['verb'] in ('get', 'update', 'patch') \
                 and o['objectRef']['namespace'] == 'kube-system':
             # Scheduler renewing leases
-            proposal = 118976
+            proposal = 119232
         elif o['user']['username'] == 'system:kube-scheduler' and \
                 o['verb'] in ('watch',) and \
                 ('namespace' not in o['objectRef'] or o['objectRef']['namespace'] is None):
@@ -79,7 +79,7 @@ with open(temp_file, 'w') as f:
                 and o['verb'] in ('get', 'update', 'patch') \
                 and o['objectRef']['namespace'] == 'kube-system':
             # Controller manager renewing leases
-            proposal = 118976
+            proposal = 119232
         elif o['user']['username'] in ('system:apiserver', 'system:kube-controller-manager') \
                 and ('namespace' not in o['objectRef'] or o['objectRef']['namespace'] is None) \
                 and ('name' not in o['objectRef'] or o['objectRef']['name'] is None) \
