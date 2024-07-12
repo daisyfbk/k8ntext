@@ -179,14 +179,15 @@ def validate_operation(
         case _:
             raise ValueError(f"Unknown verb: {verb}")
 
-    if verb not in ("watch", "get/list"):
-        allowed_operation = allowed_operation and is_namespaced == namespaced_labels[(apiGroup, version, uri)]
+    # if verb not in ("watch", "get/list"):
+    #     allowed_operation = allowed_operation and is_namespaced == namespaced_labels[(apiGroup, version, uri)]
 
     return allowed_operation, verb
 
 
-def brute_force_label_space():
-    for label_id in range(256):
+def brute_force_label_space(print_result: bool = True) -> list[int]:
+    labels = []
+    for label_id in range(2 ** 10):
         for label_sub_id in range(8):
             for is_namespaced in range(2):
                 for is_single_object in range(2):
@@ -204,13 +205,14 @@ def brute_force_label_space():
                             allowed_operation, verb = validate_operation(apiGroup, version, uri, verb, is_namespaced)
 
                             if "error" not in decoded and allowed_operation:
-                                print(
-                                    f"Label: {label}, {bin(label)}; Meaning: "
-                                    f"verb {verb} on {apiGroup}/{version}/{uri}; "
-                                    f"resource is {'namespaced' if decoded['is_namespaced'] else 'not namespaced'};"
-                                    f" {'single object' if decoded['is_single_object'] else 'list of objects'}")
-                        except:
+                                if print_result:
+                                    decoded_str = decode_label(label, as_string=True)
+                                    print(decoded_str)
+                                labels.append(label)
+                        except Exception as e:
                             continue
+
+    return labels + [LABEL_UNKNOWN]
 
 
 def propose_label(j: dict) -> int:
@@ -254,7 +256,7 @@ def propose_label(j: dict) -> int:
         # print("Label: ", label)
         # print("Binary: ", format(label, '020b'))
     except KeyError as e:
-        # print("KeyError: ", e)
+        print("KeyError: ", e)
         return LABEL_UNKNOWN
 
     return label
@@ -282,14 +284,14 @@ def main(args):
                         infstr = get_informative_dict(j)
                         infstr['label'] = label
                         print(json.dumps(infstr))
-                    except:
-                        pass
+                    except Exception as e:
+                        raise ValueError(f"Error while processing: {j}; {e}")
         elif args.decode:
             if not args.label:
                 print("Please provide a label to decode")
                 exit(1)
-            decoded = decode_label(int(args.label))
-            print(f"{args.label} -> {decoded['apiGroup']}/{decoded['version']}/{decoded['uri']} {decoded['verb']}")
+            decoded = decode_label(int(args.label), as_string=True)
+            print(decoded)
 
         else:
             parser.print_help()
