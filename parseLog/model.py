@@ -618,6 +618,15 @@ if __name__ == '__main__':
 
     initialize_log(log_level="INFO")
 
+    if pm.KERAS_BACKEND == 'tensorflow':
+        # os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+        import tensorflow as tf
+
+        physical_devices = tf.config.list_physical_devices('GPU')
+        for device in physical_devices:
+            tf.config.experimental.set_memory_growth(device, True)
+            log.info("Memory growth enabled for device: " + str(device))
+
     # also exclude modules imported
     __param = [f"{k}: {v}" for k, v in vars(pm).items() if not k.startswith('__') and not callable(v)
                and (isinstance(v, int) or isinstance(v, float) or isinstance(v, str))]
