@@ -108,15 +108,15 @@ def preprocess_data(__data: list[dict],
 
 
 def generate_model(X_shape: int, y_shape: int | tuple) -> models.Model:
-    # classification model
     model = models.Sequential([
         layers.Input(shape=(pm.WINDOW_LENGTH, X_shape)),
-        layers.LSTM(X_shape * 3, return_sequences=True, name='lstm_8x'),
-        layers.LSTM(X_shape * 6, return_sequences=True, name='lstm_4x'),
-        layers.LSTM(X_shape * 12, return_sequences=True, name='lstm_2x'),
-        layers.Dropout(0.4, name='dropout'),
+        layers.LSTM(X_shape * 4, return_sequences=True, name='lstm_8x'),
+        layers.LSTM(X_shape * 8, return_sequences=True, name='lstm_4x'),
+        layers.LSTM(X_shape * 8, return_sequences=True, name='lstm_2x'),
+        layers.Dropout(0.3, name='dropout'),
         layers.TimeDistributed(layers.Dense(y_shape[0] * y_shape[1], name='dense'), name='time_distributed'),
         layers.Reshape((pm.WINDOW_LENGTH, y_shape[0], y_shape[1]), name='reshape'),
+        # layers.Dropout(0.5, name='dropout_2'),
         layers.Activation('softmax', name='softmax')
     ])
 
@@ -306,22 +306,9 @@ def calculate_metrics(y_true, y_pred,
         raise ValueError("Shapes of y_true and y_pred do not match.")
 
     accuracy = float(accuracy_score(y_true.flatten(), y_pred.flatten()))
-    precision = float(precision_score(y_true.flatten(), y_pred.flatten(), average='macro', zero_division=0))
-    recall = float(recall_score(y_true.flatten(), y_pred.flatten(), average='macro', zero_division=0))
-    f1 = float(f1_score(y_true.flatten(), y_pred.flatten(), average='macro', zero_division=0))
-    for i in ['macro', 'micro', 'weighted']:
-        print("With 0-division set to 0:")
-        print(f"{i} precision: {precision_score(y_true.flatten(), y_pred.flatten(), average=i, zero_division=0)}")
-        print(f"{i} recall: {recall_score(y_true.flatten(), y_pred.flatten(), average=i, zero_division=0)}")
-        print(f"{i} f1: {f1_score(y_true.flatten(), y_pred.flatten(), average=i, zero_division=0)}")
-        print("With 0-division set to 1:")
-        print(f"{i} precision: {precision_score(y_true.flatten(), y_pred.flatten(), average=i, zero_division=1)}")
-        print(f"{i} recall: {recall_score(y_true.flatten(), y_pred.flatten(), average=i, zero_division=1)}")
-        print(f"{i} f1: {f1_score(y_true.flatten(), y_pred.flatten(), average=i, zero_division=1)}")
-        print("With 0-division set to np.nan:")
-        print(f"{i} precision: {precision_score(y_true.flatten(), y_pred.flatten(), average=i, zero_division=np.nan)}")
-        print(f"{i} recall: {recall_score(y_true.flatten(), y_pred.flatten(), average=i, zero_division=np.nan)}")
-        print(f"{i} f1: {f1_score(y_true.flatten(), y_pred.flatten(), average=i, zero_division=np.nan)}")
+    precision = float(precision_score(y_true.flatten(), y_pred.flatten(), average='macro', zero_division=np.nan))
+    recall = float(recall_score(y_true.flatten(), y_pred.flatten(), average='macro', zero_division=np.nan))
+    f1 = float(f1_score(y_true.flatten(), y_pred.flatten(), average='macro', zero_division=np.nan))
 
     if include_majority_accuracy:
         original_sequence_y_true = {}

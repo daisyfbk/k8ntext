@@ -8,15 +8,17 @@ import parameters as pm
 
 
 def build_model(hp, len_classes, len_features):
-    pm_WINDOW_LENGTH = hp.Int('WINDOW_LENGTH', min_value=5, max_value=150, step=5)
+    pm_WINDOW_LENGTH = hp.Int('WINDOW_LENGTH', min_value=5, max_value=120, step=5)
 
     model = models.Sequential([
         layers.Input(shape=(pm_WINDOW_LENGTH, len_features)),
-        layers.LSTM(hp.Int('lstm_units_8x', min_value=len_features, max_value=len_features * 24, step=len_features), return_sequences=True, name='lstm_8x'),
-        layers.LSTM(hp.Int('lstm_units_4x', min_value=len_features, max_value=len_features * 24, step=len_features), return_sequences=True, name='lstm_4x'),
-        layers.LSTM(hp.Int('lstm_units_2x', min_value=len_features, max_value=len_features * 24, step=len_features), return_sequences=True, name='lstm_2x'),
+        layers.LSTM(hp.Int('lstm_units_8x', min_value=len_features, max_value=len_features * 12, step=len_features), return_sequences=True, name='lstm_8x'),
+        layers.LSTM(hp.Int('lstm_units_4x', min_value=len_features, max_value=len_features * 12, step=len_features), return_sequences=True, name='lstm_4x'),
+        layers.LSTM(hp.Int('lstm_units_2x', min_value=len_features, max_value=len_features * 12, step=len_features), return_sequences=True, name='lstm_2x'),
         layers.Dropout(hp.Float('dropout', min_value=0.1, max_value=0.5, step=0.1), name='dropout'),
-        layers.TimeDistributed(layers.Dense(len_classes, activation='softmax', name='dense'), name='time_distributed')
+        layers.TimeDistributed(layers.Dense(len_classes * pm_WINDOW_LENGTH, activation='softmax', name='dense'), name='time_distributed'),
+        layers.Reshape((pm_WINDOW_LENGTH, len_classes, pm_WINDOW_LENGTH), name='reshape'),
+        layers.Activation('softmax', name='softmax')
     ])
 
     model.compile(
