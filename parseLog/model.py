@@ -5,11 +5,7 @@ import logging as log
 from typing import Any
 
 import joblib
-import keras.api.callbacks as callbacks
-import keras.api.layers as layers
-import keras.api.losses as losses
-import keras.api.metrics as keras_metrics
-import keras.api.models as models
+from keras import callbacks, losses, metrics as keras_metrics, models, layers
 import numpy as np
 import sklearn.preprocessing as preprocessing
 from keras.api.optimizers import Adam
@@ -539,7 +535,7 @@ def main(args):
         data = open_file(args.file)
 
     if args.hyperparam_tuning:
-        tuner_search(data)
+        tuner_search(data, tuner_type=args.hyperparam_tuning)
         exit(0)
 
     if not args.model:
@@ -611,7 +607,7 @@ if __name__ == '__main__':
                         help='Path to the model file; if provided, will do inference instead of training')
     parser.add_argument('-s', '--stats-mode', action='store_true',
                         help='Repeat process multiple times for statistics')
-    parser.add_argument('-y', '--hyperparam-tuning', action='store_true',
+    parser.add_argument('-y', '--hyperparam-tuning', type=str,
                         help='Use hyperparameter tuning instead of training')
 
     __args = parser.parse_args()
