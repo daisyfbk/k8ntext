@@ -106,8 +106,18 @@ def tuner_search(data: list[dict],
 
     tuner.results_summary()
 
-    best_models = tuner.get_best_models(num_models=3)
-    for model in best_models:
+    best_models = tuner.get_best_models(num_models=4)
+    best_trials = tuner.oracle.get_best_trials(num_trials=4)
+
+    for i, model in enumerate(best_models):
+        trial = best_trials[i]
+        hyperparameters = trial.hyperparameters.values
+        
+        log.info(f"Best model {i}: {model}")
+        log.info("Hyperparameters:")
+        for param, value in hyperparameters.items():
+            log.info(f"{param}: {value}")
+        
         model.summary()
 
 
