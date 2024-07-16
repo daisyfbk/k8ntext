@@ -1158,7 +1158,7 @@ kubectl describe node kubeadm-worker1
 
   #+RESULTS:
   #+begin_src bash
-  Key created, available in /var/folders/gh/9l_dnc_94b3f42yswbpmn0fc0000gn/T/tmp.M7dVzdtOLc for user malicious-user
+  Key created, available in /var/folders/gh/9l_dnc_94b3f42yswbpmn0fc0000gn/T/tmp.aoI4Uemhvs for user malicious-user
   #+end_src
 
 - Create a CertificateSigningRequest:
@@ -3467,6 +3467,11 @@ job.batch/pi created
           name: http
   EOF
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/service-pod created
+  #+end_src
   
 - Expose a ClusterIP service (by default if you don't specify its type):
   #+BEGIN_SRC shell
@@ -3487,11 +3492,46 @@ job.batch/pi created
     EOF
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  service/nginx-service created
+  #+end_src
+
   
 - Inspect the newly create Service:
   #+BEGIN_SRC shell
   kubectl describe service nginx-service -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:              nginx-service
+  Namespace:         rising
+  Labels:            <none>
+  Annotations:       <none>
+  Selector:          app=service-app
+  Type:              ClusterIP
+  IP Family Policy:  SingleStack
+  IP Families:       IPv4
+  IP:                10.105.224.144
+  IPs:               10.105.224.144
+  Port:              http-external  80/TCP
+  TargetPort:        http/TCP
+  Endpoints:         10.244.1.236:80
+  Session Affinity:  None
+  Events:            <none>
+  #+end_src
+
+- List the Services:
+  #+BEGIN_SRC shell
+  kubectl get services -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME            TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE
+  nginx-service   ClusterIP   10.105.224.144   <none>        80/TCP    50s
+  #+end_src
 
 - Update the Service, and replace it with a NodePort:
   #+BEGIN_SRC shell
@@ -3512,12 +3552,49 @@ job.batch/pi created
         targetPort: http
         nodePort: 30080
     EOF
-  #+END_SRCi 
+  #+END_SRC 
+
+  #+RESULTS:
+  #+begin_src shell
+  service/nginx-service configured
+  #+end_src
   
 - Inspect the updated Service:
   #+BEGIN_SRC shell
   kubectl describe service nginx-service -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:                     nginx-service
+  Namespace:                rising
+  Labels:                   <none>
+  Annotations:              <none>
+  Selector:                 app=service-app
+  Type:                     NodePort
+  IP Family Policy:         SingleStack
+  IP Families:              IPv4
+  IP:                       10.105.224.144
+  IPs:                      10.105.224.144
+  Port:                     http-external  80/TCP
+  TargetPort:               http/TCP
+  NodePort:                 http-external  30080/TCP
+  Endpoints:                10.244.1.236:80
+  Session Affinity:         None
+  External Traffic Policy:  Cluster
+  Events:                   <none>
+  #+end_src
+  
+- List Services again:
+  #+BEGIN_SRC shell
+  kubectl get services -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME            TYPE       CLUSTER-IP       EXTERNAL-IP   PORT(S)        AGE
+  nginx-service   NodePort   10.105.224.144   <none>        80:30080/TCP   103s
+  #+end_src
 
 #+BEGIN_QUOTE
 /LoadBalancer/ services are not supported in my environment, so I can't test them.
@@ -3536,6 +3613,11 @@ job.batch/pi created
       externalName: risinglab.fbk.eu
     EOF
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  service/external-service created
+  #+end_src
   
 - Clean all the resources:
   #+BEGIN_SRC shell
@@ -3543,6 +3625,13 @@ job.batch/pi created
   kubectl delete service nginx-service -n rising
   kubectl delete service external-service -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod "service-pod" deleted
+  service "nginx-service" deleted
+  service "external-service" deleted
+  #+end_src
 
 ** DONE Service log =SV2= - Expose Deployments through Services
 - Create a Deployment with an explicit containerPort:
@@ -3568,39 +3657,126 @@ job.batch/pi created
           image: nginx
           ports:
           - containerPort: 80
-    EOF
-#+END_SRC
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/exposed-deployment created
+  #+end_src
 
 - Check the newly created Deployment:
   #+BEGIN_SRC shell
   kubectl get deployments -n rising -o wide
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                 READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS     IMAGES   SELECTOR
+  exposed-deployment   2/2     2            2           41s   nginx-runner   nginx    run=nginx-deployment
+  #+end_src
   
 - Expose the Deployment, it will default to a ClusterIP using the only containerPort available:
   #+BEGIN_SRC shell
   kubectl expose deployment exposed-deployment
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  service/exposed-deployment exposed
+  #+end_src
   
 - List the Services:
   #+BEGIN_SRC shell
-  kubectl list services -n rising -l run=nginx-deployment
+  kubectl get services -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                 TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)   AGE
+  exposed-deployment   ClusterIP   10.99.29.82   <none>        80/TCP    9s
+  #+end_src
 
 - Describe the Service:
  #+BEGIN_SRC shell
   kubectl describe service exposed-deployment -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  Name:              exposed-deployment
+  Namespace:         rising
+  Labels:            <none>
+  Annotations:       <none>
+  Selector:          run=nginx-deployment
+  Type:              ClusterIP
+  IP Family Policy:  SingleStack
+  IP Families:       IPv4
+  IP:                10.99.29.82
+  IPs:               10.99.29.82
+  Port:              <unset>  80/TCP
+  TargetPort:        80/TCP
+  Endpoints:         10.244.1.238:80,10.244.3.71:80
+  Session Affinity:  None
+  Events:            <none>
+  #+end_src
+
 - List the EndpointSlices:
   #+BEGIN_SRC shell
   kubectl get endpointslices -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                       ADDRESSTYPE   PORTS   ENDPOINTS                  AGE
+  exposed-deployment-dlqcs   IPv4          80      10.244.1.238,10.244.3.71   21s
+  #+end_src
+  
+- Scale the Deployment:
+  #+BEGIN_SRC shell
+  kubectl scale deployment exposed-deployment --replicas=3 -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/exposed-deployment scaled
+  #+end_src
+
+- Inspect the changes in the Service:
+  #+BEGIN_SRC shell
+  kubectl describe service exposed-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:              exposed-deployment
+  Namespace:         rising
+  Labels:            <none>
+  Annotations:       <none>
+  Selector:          run=nginx-deployment
+  Type:              ClusterIP
+  IP Family Policy:  SingleStack
+  IP Families:       IPv4
+  IP:                10.99.29.82
+  IPs:               10.99.29.82
+  Port:              <unset>  80/TCP
+  TargetPort:        80/TCP
+  Endpoints:         10.244.1.238:80,10.244.1.239:80,10.244.3.71:80
+  Session Affinity:  None
+  Events:            <none>
+  #+end_src
 
 - Clean everything up:
   #+BEGIN_SRC shell
   kubectl delete deployment exposed-deployment -n rising
   kubectl delete service exposed-deployment -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps "exposed-deployment" deleted
+  service "exposed-deployment" deleted
+  #+end_src
 
 ** DONE Service log =SV3= - Use multi-port Services 
 - Create a Pod that exposes two ports:
@@ -3625,6 +3801,11 @@ job.batch/pi created
   EOF
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  pod/multi-port-pod created
+  #+end_src
+
 - Expose the Pod through a Service:
   #+BEGIN_SRC shell
   cat <<EOF | kubectl apply -f -
@@ -3647,17 +3828,50 @@ job.batch/pi created
       targetPort: https
   EOF
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  service/multi-port-service created
+  #+end_src
   
 - Inspect the Service:
   #+BEGIN_SRC shell
   kubectl describe service multi-port-service -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  Name:              multi-port-service
+  Namespace:         rising
+  Labels:            <none>
+  Annotations:       <none>
+  Selector:          app=multi-port-app
+  Type:              ClusterIP
+  IP Family Policy:  SingleStack
+  IP Families:       IPv4
+  IP:                10.99.12.239
+  IPs:               10.99.12.239
+  Port:              http  80/TCP
+  TargetPort:        http/TCP
+  Endpoints:         10.244.1.240:80
+  Port:              https  443/TCP
+  TargetPort:        https/TCP
+  Endpoints:         10.244.1.240:443
+  Session Affinity:  None
+  Events:            <none>
+  #+end_src
+
 - Clean everything up:
   #+BEGIN_SRC shell
   kubectl delete pod multi-port-pod -n rising
   kubectl delete service multi-port-service -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod "multi-port-pod" deleted
+  service "multi-port-service" deleted
+  #+end_src
 
 ** DONE EndpointSlice log =ES1= - Use EndpointSlices to manually group selectorless Services 
 - Create two Pods and a Service that has no selector:
@@ -3709,6 +3923,16 @@ job.batch/pi created
   service/endpoint-service created
   #+end_src
   
+- Inspect EndpointSlices:
+  #+BEGIN_SRC shell
+  kubectl get endpointslices -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  No resources found in rising namespace.
+  #+end_src
+  
 - This Service will not create any EndpointSlice. We need to create one manually:
   #+BEGIN_SRC shell
     cat <<EOF | kubectl apply -f -
@@ -3737,26 +3961,431 @@ job.batch/pi created
   #+begin_src shell
   endpointslice.discovery.k8s.io/endpoint-service-1 created
   #+end_src
- 
   
 - Inspect the EndpointSlice:
   #+BEGIN_SRC shell
   kubectl describe endpointslice endpoint-service-1 -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  Name:         endpoint-service-1
+  Namespace:    rising
+  Labels:       kubernetes.io/service-name=endpoint-service
+  Annotations:  <none>
+  AddressType:  IPv4
+  Ports:
+    Name  Port  Protocol
+    ----  ----  --------
+    http  4000  TCP
+  Endpoints:
+    - Addresses:  10.244.1.243
+      Conditions:
+        Ready:    <unset>
+      Hostname:   <unset>
+      NodeName:   <unset>
+      Zone:       <unset>
+    - Addresses:  10.244.1.244
+      Conditions:
+        Ready:   <unset>
+      Hostname:  <unset>
+      NodeName:  <unset>
+      Zone:      <unset>
+  Events:        <none>
+  #+end_src
+
 - Tear everything down:
   #+BEGIN_SRC shell
-    kubectl delete pod endpoint-pod-1 -n rising
-    kubectl delete pod endpoint-pod-2 -n rising
-    kubectl delete service endpoint-service -n rising
-    kubectl delete endpointslice endpoint-service-1 -n rising
+  kubectl delete pod endpoint-pod-1 -n rising
+  kubectl delete pod endpoint-pod-2 -n rising
+  kubectl delete service endpoint-service -n rising
+  kubectl delete endpointslice endpoint-service-1 -n rising
   #+END_SRC
 
-** TODO Ingress log =IG1= - Import an external IngressController, then create an Ingress and expose a Service
-** TODO Pod Networking log =PN1= - Use Proxy and Port Forwarding to access a Pod
-** TODO NetworkPolicy log =NP1= - Create a NetworkPolicy to restrict traffic to a Pod
-* Real-life scenarios (level infinity)
-** TODO Real-life scenario =RL1= - Deploy the NGINX Ingress Controller and expose a Deployment through it
+  #+RESULTS:
+  #+begin_src shell
+  pod "endpoint-pod-1" deleted
+  pod "endpoint-pod-2" deleted
+  service "endpoint-service" deleted
+  endpointslice.discovery.k8s.io "endpoint-service-1" deleted
+  #+end_src
+
+** SCHE Ingress log =IG1= - Import an external IngressController, then create an Ingress and expose a Service
+- Import the NGINX Ingress Controller:
+  #+BEGIN_SRC shell
+  kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+  #+END_SRC
+
+- Deploy a Pod and a Service:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: ingress-pod
+    namespace: rising
+  spec:
+    containers:
+    - name: ingress-container
+      image: nginx:1.19.6
+      ports:
+      - containerPort: 80
+        name: http
+  ---
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: ingress-service
+    namespace: rising
+  spec:
+    selector:
+      app: ingress-app
+    ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: http
+  EOF
+  #+END_SRC
+
+- Create the Ingress:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: ingress
+      namespace: rising
+      annotations:
+        nginx.ingress.kubernetes.io/rewrite-target: /
+    spec:
+      rules:
+      - host: ingress.local
+        http:
+          paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 80
+    EOF
+  #+END_SRC
+  
+- Inspect the Ingress:
+  #+BEGIN_SRC shell
+  kubectl describe ingress ingress -n rising
+  #+END_SRC
+
+- List the IngressClasses:
+  #+BEGIN_SRC shell
+  kubectl get ingressclasses -n rising
+  #+END_SRC
+  
+- Clean what we created:
+  #+BEGIN_SRC shell
+  kubectl delete pod ingress-pod -n rising
+  kubectl delete service ingress-service -n rising
+  kubectl delete ingress ingress -n rising
+  #+END_SRC
+
+- Remove the NGINX Ingress Controller:
+  #+BEGIN_SRC shell
+  kubectl delete -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+  #+END_SRC
+
+** SCHE Pod Networking log =PN1= - Use Port Forwarding to access a Pod
+:PROPERTIES:
+:header-args+: :session pn1
+:END:
+
+- Create a Deployment:
+  #+BEGIN_SRC bash
+    cat <<EOF | kubectl apply -f -
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: mongo
+      labels:
+        app.kubernetes.io/name: mongo
+        app.kubernetes.io/component: backend
+    spec:
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: mongo
+          app.kubernetes.io/component: backend
+      replicas: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: mongo
+            app.kubernetes.io/component: backend
+        spec:
+          containers:
+          - name: mongo
+            image: mongo:4.2
+            args:
+              - --bind_ip
+              - 0.0.0.0
+            resources:
+              requests:
+                cpu: 100m
+                memory: 100Mi
+            ports:
+            - containerPort: 27017
+    EOF
+  #+END_SRC
+  
+- Inspect Deployments, ReplicaSets, Pods:
+  #+BEGIN_SRC bash
+  kubectl get deployments -n rising
+  kubectl get replicasets -n rising
+  kubectl get pods -n rising
+  #+END_SRC
+  
+- Create a Service to expose Mongo:
+  #+BEGIN_SRC bash
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: mongo
+      labels:
+        app.kubernetes.io/name: mongo
+        app.kubernetes.io/component: backend
+    spec:
+      ports:
+      - port: 27017
+        targetPort: 27017
+      selector:
+        app.kubernetes.io/name: mongo
+        app.kubernetes.io/component: backend
+    EOF
+  #+END_SRC
+
+- Port-forward the Pod and send the process to background:
+  #+BEGIN_SRC 
+  kubectl port-forward deployment/mongo 28015:27017 &
+  pid=$!
+  #+END_SRC
+
+- Clean everything up:
+  #+BEGIN_SRC bash 
+  kill $pid
+  kubectl delete deployment mongo -n rising
+  kubectl delete service mongo -n rising
+  #+END_SRC
+
+  
+** SCHE Proxy Log =PX1= - Manually construct a Proxy API call for Nodes, Pods, and Services  
+:PROPERTIES:
+:header-args+: :session px1
+:END:
+
+- Use =kubectl cluster-info= to obtain endpoint information:
+  #+BEGIN_SRC bash 
+    cplane=$(kubectl cluster-info | grep 'control plane' | grep -oP 'https://[^/]+' --color=never)
+    proxy_endpoint=${cplane}
+    echo $proxy_endpoint
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  https://10.231.0.115:6443
+  #+end_src
+
+
+- Try the node proxy (the response will be empty, but the call will be successful):
+  #+BEGIN_SRC bash 
+  first_node=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+  ./scripts/kube-api.sh $proxy_endpoint api/v1/nodes/${first_node}:10250/proxy 
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  #+end_src
+  
+- Deploy a Pod and a Service:
+  #+BEGIN_SRC bash
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: proxy-pod
+    namespace: rising
+  spec:
+    containers:
+    - name: nginx
+      image: nginx
+      ports:
+      - containerPort: 80
+  ---
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: proxy
+    namespace: rising
+  spec:
+    selector:
+      app: proxy
+    ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  EOF
+  #+END_SRC 
+
+  #+RESULTS:
+  #+begin_src bash
+  pod/proxy-pod created
+  service/proxy created
+  #+end_src
+
+- Try the pod proxy:
+  #+BEGIN_SRC bash
+  first_pod=$(kubectl get pods -n rising -o jsonpath='{.items[0].metadata.name}')
+  echo ./scripts/kube-api.sh $proxy_endpoint api/v1/namespaces/rising/pods/${first_pod}:80/proxy 
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  ./scripts/kube-api.sh http://10.231.0.115:6443 api/v1/namespaces/rising/pods/proxy-pod:80/proxy
+  #+end_src
+  
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl delete pod proxy-pod -n rising
+  kubectl delete service proxy -n rising
+  #+END_SRC
+
+** SCHE NetworkPolicy log =NP1= - Create a NetworkPolicy to restrict traffic to a Pod
+
+- Run some services:
+  #+BEGIN_SRC shell
+  kubectl run web1 --image=nginx --port=80 --labels="app=web" --expose --namespace=default
+  kubectl run web2 --image=nginx --port=80 --labels="app=web" --expose --namespace=rising
+  kubectl run bb --image=busybox --labels="app=bb" --namespace=rising -- sleep 3600
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  service/web1 created
+  pod/web1 created
+  service/web2 created
+  pod/web2 created
+  pod/bb created
+  #+end_src
+
+#+BEGIN_QUOTE
+ A pod is isolated for ingress if there is any NetworkPolicy that both selects the pod and has "Ingress" in its policyTypes.
+ A pod is isolated for egress if there is any NetworkPolicy that both selects the pod and has "Egress" in its policyTypes.
+#+END_QUOTE
+
+- Create a NetworkPolicy:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: bb-to-web
+      namespace: rising
+    spec:
+      podSelector:
+        matchLabels:
+          app: web
+      policyTypes:
+      - Ingress
+      ingress:
+      - from:
+        - podSelector:
+            matchLabels:
+              app: bb
+    ---
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: web-to-web-block
+      namespace: rising
+    spec:
+      podSelector: {}
+      policyTypes:
+      - Ingress
+      - Egress
+    ---
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: web-to-web-block
+      namespace: default
+    spec:
+      podSelector: {}
+      policyTypes:
+      - Ingress 
+      - Egress
+    EOF
+  #+END_SRC 
+
+  #+RESULTS:
+  #+begin_src shell
+  networkpolicy.networking.k8s.io/bb-to-web unchanged
+  networkpolicy.networking.k8s.io/web-to-web-block configured
+  networkpolicy.networking.k8s.io/web-to-web-block configured
+  #+end_src
+
+- Assess the NetworkPolicy:
+  #+BEGIN_SRC shell
+  kubectl get networkpolicies -A -o wide
+  kubectl describe networkpolicy bb-to-web -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAMESPACE   NAME               POD-SELECTOR   AGE
+  default     web-to-web-block   app=web        50s
+  rising      bb-to-web          app=web        25m
+  rising      web-to-web-block   app=web        50s
+  Name:         bb-to-web
+  Namespace:    rising
+  Created on:   2024-07-16 16:21:02 +0200 CEST
+  Labels:       <none>
+  Annotations:  <none>
+  Spec:
+    PodSelector:     app=web
+    Allowing ingress traffic:
+      To Port: <any> (traffic allowed to all ports)
+      From:
+        PodSelector: app=bb
+    Not affecting egress traffic
+    Policy Types: Ingress
+  #+end_src
+  
+- See if the busybox Pod can reach the web1 Pod:
+  #+BEGIN_SRC shell
+  kubectl exec -n rising bb -- wget -qO- http://web1.default | grep Welcome
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  <title>Welcome to nginx!</title>
+  <h1>Welcome to nginx!</h1>
+  #+end_src
+
+- See if the web1 Pod can connect to the web2 Pod:
+  #+BEGIN_SRC shell
+  kubectl exec -n default web1 -- curl -s web2.rising
+  #+END_SRC
+
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl delete networkpolicy bb-to-web web-to-web-block -n rising
+  kubectl delete networkpolicy web-to-web-block -n default
+  kubectl delete pod web1 -n default
+  kubectl delete pod web2 bb -n rising
+  kubectl delete service web1 -n default
+  kubectl delete service web2 -n rising
+  #+END_SRC 
+
 * Log setups level 4
 ** WAIT Stateful Set log =SS1= - Manage a StatefulSet
 - Create a dumb StorageClass for the StatefulSet:
@@ -3883,3 +4512,6 @@ The PersistentVolume "pv-0" is invalid: spec: Required value: must specify a vol
   #+BEGIN_SRC shell
   kubectl scale statefulsets web --replicas=2 -n rising
   #+END_SRC
+  
+* Real-life scenarios (level infinity)
+** WAIT Real-life scenario =RL1= - Deploy the NGINX Ingress Controller and expose a Deployment through it
