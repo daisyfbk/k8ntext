@@ -243,6 +243,24 @@ def label_whitelisted_log_line(whitelisted_lines):
         if create_proposal is None:
             create_proposal = LABEL_UNKNOWN
 
+        # Do the same with delete
+        line_copy['verb'] = 'delete'
+        delete_proposal = label_proposer.propose_label(line_copy)
+        if delete_proposal is None:
+            delete_proposal = LABEL_UNKNOWN
+
+        # Also with watch
+        line_copy['verb'] = 'watch'
+        watch_proposal = label_proposer.propose_label(line_copy)
+        if watch_proposal is None:
+            watch_proposal = LABEL_UNKNOWN
+
+        # Also with patch
+        line_copy['verb'] = 'patch'
+        patch_proposal = label_proposer.propose_label(line_copy)
+        if patch_proposal is None:
+            patch_proposal = LABEL_UNKNOWN
+
         # Try finding the next non-get/watch log line
         # within a reasonable 20 lines
         next_proposal = None
@@ -282,7 +300,7 @@ def label_whitelisted_log_line(whitelisted_lines):
         next_patch_info = ""
         for i in range(1, min(20, len(whitelisted_lines) - x)):
             next_line = get_informative_dict(whitelisted_lines[x + i])
-            if next_line['verb'] == 'patch':
+            if next_line['verb'] in ('patch', 'update'):
                 next_patch = label_proposer.propose_label(whitelisted_lines[x + i])
                 next_patch_info += f" after {i} lines, "
                 next_patch_info += f"{{'verb': '{next_line['verb']}', 'resource': '{next_line['resource']}'}}"
@@ -292,7 +310,7 @@ def label_whitelisted_log_line(whitelisted_lines):
         next_delete_info = ""
         for i in range(1, min(20, len(whitelisted_lines) - x)):
             next_line = get_informative_dict(whitelisted_lines[x + i])
-            if next_line['verb'] == 'delete':
+            if next_line['verb'] in ('delete', 'deletecollection'):
                 next_delete = label_proposer.propose_label(whitelisted_lines[x + i])
                 next_delete_info += f" after {i} lines, "
                 next_delete_info += f"{{'verb': '{next_line['verb']}', 'resource': '{next_line['resource']}'}}"
@@ -318,7 +336,7 @@ def label_whitelisted_log_line(whitelisted_lines):
         deltas = []
 
         def parse_ts(ts1, ts2):
-            return f"{datetime.datetime.strptime(ts1, '%Y-%m-%dT%H:%M:%S.%fZ') - datetime.datetime.strptime(ts2, '%Y-%m-%dT%H:%M:%S.%fZ')} {ts1}"
+            return f"{abs(datetime.datetime.strptime(ts1, '%Y-%m-%dT%H:%M:%S.%fZ') - datetime.datetime.strptime(ts2, '%Y-%m-%dT%H:%M:%S.%fZ'))} {ts1}"
 
         if x >= 0:
             deltas.append(parse_ts(whitelisted_lines[x - 1]['requestReceivedTimestamp'],
@@ -344,12 +362,15 @@ def label_whitelisted_log_line(whitelisted_lines):
         print("Labels: ")
         print("[a/ENTER] previous (default):\t", previous_label)
         print("[b]       proposed:\t\t", proposal)
-        print("[c]       create equivalent:\t", create_proposal)
-        print("[d]       next watch:\t\t", next_watch, next_watch_info)
-        print("[e]       next create:\t\t", next_create, next_create_info)
-        print("[f]       next patch:\t\t", next_patch, next_patch_info)
-        print("[g]       next delete:\t\t", next_delete, next_delete_info)
-        print("[h]       next non-cp action:\t", next_noncp_action, next_noncp_action_info)
+        print("[nc]      next create:\t\t", next_create, next_create_info)
+        print("[nw]      next watch:\t\t", next_watch, next_watch_info)
+        print("[np]      next patch:\t\t", next_patch, next_patch_info)
+        print("[nd]      next delete:\t\t", next_delete, next_delete_info)
+        print("[ec]      equivalent create:\t", create_proposal)
+        print("[ew]      equivalent watch:\t", watch_proposal)
+        print("[ep]      equivalent patch:\t", patch_proposal)
+        print("[ed]      equivalent delete:\t", delete_proposal)
+        print("[m]       next non-cp action:\t", next_noncp_action, next_noncp_action_info)
         print("[s]       skip")
         print("[q]       quit")
         print("[number]  type it directly")
@@ -365,17 +386,23 @@ def label_whitelisted_log_line(whitelisted_lines):
                         continue
                 case "b":
                     input_label = proposal
-                case "c":
-                    input_label = create_proposal
-                case "d":
-                    input_label = next_watch
-                case "e":
+                case "nc":
                     input_label = next_create
-                case "f":
+                case "nw":
+                    input_label = next_watch
+                case "np":
                     input_label = next_patch
-                case "g":
+                case "nd":
                     input_label = next_delete
-                case "h":
+                case "ec":
+                    input_label = create_proposal
+                case "ew":
+                    input_label = watch_proposal
+                case "ep":
+                    input_label = patch_proposal
+                case "ed":
+                    input_label = delete_proposal
+                case "m":
                     input_label = next_noncp_action
                 case "s":
                     input_label = LABEL_UNKNOWN
