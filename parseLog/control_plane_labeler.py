@@ -22,7 +22,7 @@ labelled = []
 unlabelled = []
 
 print("------")
-print("Reading input file...")
+print(f"Reading input file {args.file}...")
 
 with open(args.file) as f:
     lines = f.readlines()
@@ -246,7 +246,9 @@ print("Total lines: ", len(out_lines))
 if not manual_labelled:
     final_out_file = args.file + "_cplabel"
 else:
-    final_out_file = args.file + "_cplabel_mnlabel"
+    final_out_file = args.file + "_labelled"
+    if final_out_file.endswith('_cplabel_labelled'):
+        final_out_file = final_out_file.replace('_cplabel_labelled', '_labelled')
 
 if os.path.exists(final_out_file):
     print("Output file already exists. Overwrite? (y/n) ", end='')
