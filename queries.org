@@ -4513,5 +4513,3 @@ The PersistentVolume "pv-0" is invalid: spec: Required value: must specify a vol
   kubectl scale statefulsets web --replicas=2 -n rising
   #+END_SRC
   
-* Real-life scenarios (level infinity)
-** WAIT Real-life scenario =RL1= - Deploy the NGINX Ingress Controller and expose a Deployment through it
