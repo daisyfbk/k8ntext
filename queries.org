@@ -3321,36 +3321,247 @@ job.batch/pi created
   cronjob.batch "hello" deleted
   #+end_src
 
-* Log setups level 1b
-** DONE Pod log =P3= - Use kubectl debug and Ephemerals Containers
+* Log setups level 3
+** Pod log =P3= - Use kubectl debug and Ephemerals Containers
 - Run a dumb Pod that does not have a shell:
   #+BEGIN_SRC shell
-  kubectl run -it -n rising --rm --restart=Never --image=registry.k8s.io/pause:latest dumb-pod -- sh 
+  kubectl run -n rising --restart=Never --image=registry.k8s.io/pause:latest dumb-pod -- sleep 3600 
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/dumb-pod created
+  #+end_src
 
 - Try to launch a =kubectl exec=, it will fail:
   #+BEGIN_SRC shell
   kubectl exec -it dumb-pod -- sh
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  Unable to use a TTY - input is not a terminal or the right kind of file
+  error: Internal error occurred: error executing command in container: failed to exec in container: failed to start exec "79180519b918a7f1df405e2cd1be1c23d07ca4239d8f99e490badd377e4d5719": OCI runtime exec failed: exec failed: unable to start container process: exec: "sh": executable file not found in $PATH: unknown
+  #+end_src
+
 - Use =kubectl debug= to attach an Ephemeral Container:
   #+BEGIN_SRC shell
-  kubectl debug -it ephemeral-dumb-pod --image=busybox:1.31.1 --target=dumb-pod 
+  kubectl debug dumb-pod --image=busybox:1.31.1 --target=dumb-pod 
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Targeting container "dumb-pod". If you don't see processes from this container it may be because the container runtime doesn't support this feature.
+  Defaulting debug container name to debugger-n8xgc.
+  #+end_src
   
 - Describe the newly created Ephemeral Container:
   #+BEGIN_SRC shell
-  kubectl describe pod ephemeral-dumb-pod -n rising
   kubectl describe pod dumb-pod -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:             dumb-pod
+  Namespace:        rising
+  Priority:         0
+  Service Account:  default
+  Node:             kubeadm-worker1/192.168.38.11
+  Start Time:       Wed, 17 Jul 2024 09:10:44 +0200
+  Labels:           run=dumb-pod
+  Annotations:      <none>
+  Status:           Running
+  IP:               10.244.1.7
+  IPs:
+    IP:  10.244.1.7
+  Containers:
+    dumb-pod:
+      Container ID:  containerd://7f08d97581ad8a941dd803cddcd8b0347e8a0bf3e2098f21f2ba5b2d0e2eb8a3
+      Image:         registry.k8s.io/pause:latest
+      Image ID:      registry.k8s.io/pause@sha256:a78c2d6208eff9b672de43f880093100050983047b7b0afe0217d3656e1b0d5f
+      Port:          <none>
+      Host Port:     <none>
+      Args:
+        sleep
+        3600
+      State:          Running
+        Started:      Wed, 17 Jul 2024 09:10:45 +0200
+      Ready:          True
+      Restart Count:  0
+      Environment:    <none>
+      Mounts:
+        /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-2t2lv (ro)
+  Ephemeral Containers:
+    debugger-n8xgc:
+      Container ID:   containerd://3d6385e8dff748d82c6f762e3126597c8601902740279d174bc5c490a2c1dd89
+      Image:          busybox:1.31.1
+      Image ID:       docker.io/library/busybox@sha256:95cf004f559831017cdf4628aaf1bb30133677be8702a8c5f2994629f637a209
+      Port:           <none>
+      Host Port:      <none>
+      State:          Terminated
+        Reason:       Completed
+        Exit Code:    0
+        Started:      Wed, 17 Jul 2024 09:11:39 +0200
+        Finished:     Wed, 17 Jul 2024 09:11:39 +0200
+      Ready:          False
+      Restart Count:  0
+      Environment:    <none>
+      Mounts:         <none>
+  Conditions:
+    Type              Status
+    Initialized       True 
+    Ready             True 
+    ContainersReady   True 
+    PodScheduled      True 
+  Volumes:
+    kube-api-access-2t2lv:
+      Type:                    Projected (a volume that contains injected data from multiple sources)
+      TokenExpirationSeconds:  3607
+      ConfigMapName:           kube-root-ca.crt
+      ConfigMapOptional:       <nil>
+      DownwardAPI:             true
+  QoS Class:                   BestEffort
+  Node-Selectors:              <none>
+  Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                               node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+  Events:
+    Type    Reason     Age   From               Message
+    ----    ------     ----  ----               -------
+    Normal  Scheduled  64s   default-scheduler  Successfully assigned rising/dumb-pod to kubeadm-worker1
+    Normal  Pulling    64s   kubelet            Pulling image "registry.k8s.io/pause:latest"
+    Normal  Pulled     63s   kubelet            Successfully pulled image "registry.k8s.io/pause:latest" in 291ms (291ms including waiting)
+    Normal  Created    63s   kubelet            Created container dumb-pod
+    Normal  Started    63s   kubelet            Started container dumb-pod
+    Normal  Pulled     9s    kubelet            Container image "busybox:1.31.1" already present on machine
+    Normal  Created    9s    kubelet            Created container debugger-n8xgc
+    Normal  Started    9s    kubelet            Started container debugger-n8xgc
+  #+end_src
   
 - Destroy the ephemeral Pod and the dumb Pod: 
   #+BEGIN_SRC shell
-  kubectl delete pod ephemeral-dumb-pod -n rising
   kubectl delete pod dumb-pod -n rising
   #+END_SRC
 
-** DONE LimitRange log =LR1= - Create a LimitRange to restrict the resources of a Pod
+  #+RESULTS:
+  #+begin_src shell
+  pod "dumb-pod" deleted
+  #+end_src
+
+** Pod log =P4= - Use Port Forwarding to access a Pod
+:PROPERTIES:
+:header-args+: :session pn1
+:END:
+
+- Create a Deployment:
+  #+BEGIN_SRC bash
+    cat <<EOF | kubectl apply -f -
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: mongo
+      labels:
+        app.kubernetes.io/name: mongo
+        app.kubernetes.io/component: backend
+    spec:
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: mongo
+          app.kubernetes.io/component: backend
+      replicas: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: mongo
+            app.kubernetes.io/component: backend
+        spec:
+          containers:
+          - name: mongo
+            image: mongo:4.2
+            args:
+              - --bind_ip
+              - 0.0.0.0
+            resources:
+              requests:
+                cpu: 100m
+                memory: 100Mi
+            ports:
+            - containerPort: 27017
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  deployment.apps/mongo created
+  #+end_src
+  
+- Inspect Deployments, ReplicaSets, Pods:
+  #+BEGIN_SRC bash
+  kubectl get deployments -n rising
+  kubectl get replicasets -n rising
+  kubectl get pods -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  NAME    READY   UP-TO-DATE   AVAILABLE   AGE
+  mongo   1/1     1            1           33s
+  NAME              DESIRED   CURRENT   READY   AGE
+  mongo-f56ff5dfc   1         1         1       34s
+  NAME                    READY   STATUS    RESTARTS   AGE
+  mongo-f56ff5dfc-9mpmp   1/1     Running   0          34s
+  #+end_src
+  
+- Create a Service to expose Mongo:
+  #+BEGIN_SRC bash
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: mongo
+      labels:
+        app.kubernetes.io/name: mongo
+        app.kubernetes.io/component: backend
+    spec:
+      ports:
+      - port: 27017
+        targetPort: 27017
+      selector:
+        app.kubernetes.io/name: mongo
+        app.kubernetes.io/component: backend
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  service/mongo created
+  #+end_src
+
+- Port-forward the Pod and send the process to background:
+  #+BEGIN_SRC bash 
+  kubectl port-forward deployment/mongo 28015:27017 &
+  pid=$!
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  [1] 42462
+  #+end_src
+
+- Clean everything up:
+  #+BEGIN_SRC bash 
+  kill $pid
+  kubectl delete deployment mongo -n rising
+  kubectl delete service mongo -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  deployment.apps "mongo" deleted
+  [1]+  Terminated: 15          kubectl port-forward deployment/mongo 28015:27017
+  service "mongo" deleted
+  #+end_src
+
+** LimitRange log =LR1= - Create a LimitRange to restrict the resources of a Pod
 - Define a LimitRange for the namespace:
   #+BEGIN_SRC shell
     cat <<EOF | kubectl apply -f -
@@ -3361,7 +3572,8 @@ job.batch/pi created
       namespace: rising
     spec:
       limits:
-      - default	:
+      - type: Container 
+        default:
           cpu: 300m
           memory: 200Mi
         defaultRequest:
@@ -3375,11 +3587,26 @@ job.batch/pi created
           memory: 50Mi
     EOF
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  limitrange/limit-range created
+  #+end_src
   
 - Inspect the newly created LimitRange:
   #+BEGIN_SRC shell
   kubectl describe limitrange limit-range -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:       limit-range
+  Namespace:  rising
+  Type        Resource  Min   Max    Default Request  Default Limit  Max Limit/Request Ratio
+  ----        --------  ---   ---    ---------------  -------------  -----------------------
+  Container   cpu       100m  500m   200m             300m           -
+  Container   memory    50Mi  500Mi  100Mi            200Mi          -
+  #+end_src
   
 - Create a Pod that does not fit the LimitRange:
   #+BEGIN_SRC shell
@@ -3401,15 +3628,12 @@ job.batch/pi created
   EOF
   #+END_SRC
 
-- Inspect the offending Pod:
-  #+BEGIN_SRC shell
-  kubectl describe pod bad-pod -n rising
-  #+END_SRC
-
-- Delete it:
-  #+BEGIN_SRC shell
-  kubectl delete pod bad-pod -n rising
-  #+END_SRC
+  #+RESULTS:
+  #+begin_src shell
+  The Pod "bad-pod" is invalid: 
+  ,* spec.containers[0].resources.requests: Invalid value: "600m": must be less than or equal to cpu limit of 300m
+  ,* spec.containers[0].resources.requests: Invalid value: "300Mi": must be less than or equal to memory limit of 200Mi
+  #+end_src
 
 - Create a lawful Pod:
   #+BEGIN_SRC shell
@@ -3431,23 +3655,101 @@ job.batch/pi created
   EOF
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  pod/good-pod created
+  #+end_src
+
 - Inspect the good Pod:
   #+BEGIN_SRC shell
   kubectl describe pod good-pod -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:             good-pod
+  Namespace:        rising
+  Priority:         0
+  Service Account:  default
+  Node:             kubeadm-worker1/192.168.38.11
+  Start Time:       Wed, 17 Jul 2024 09:15:35 +0200
+  Labels:           <none>
+  Annotations:      kubernetes.io/limit-ranger: LimitRanger plugin set: cpu, memory limit for container good-container
+  Status:           Running
+  IP:               10.244.1.8
+  IPs:
+    IP:  10.244.1.8
+  Containers:
+    good-container:
+      Container ID:  containerd://796a706e5d229c104c82520ec75c4653a34068355121055202e159df932ffba1
+      Image:         busybox:1.31.1
+      Image ID:      docker.io/library/busybox@sha256:95cf004f559831017cdf4628aaf1bb30133677be8702a8c5f2994629f637a209
+      Port:          <none>
+      Host Port:     <none>
+      Command:
+        sh
+        -c
+        sleep 3600
+      State:          Running
+        Started:      Wed, 17 Jul 2024 09:15:35 +0200
+      Ready:          True
+      Restart Count:  0
+      Limits:
+        cpu:     300m
+        memory:  200Mi
+      Requests:
+        cpu:        200m
+        memory:     100Mi
+      Environment:  <none>
+      Mounts:
+        /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-29bqn (ro)
+  Conditions:
+    Type              Status
+    Initialized       True 
+    Ready             True 
+    ContainersReady   True 
+    PodScheduled      True 
+  Volumes:
+    kube-api-access-29bqn:
+      Type:                    Projected (a volume that contains injected data from multiple sources)
+      TokenExpirationSeconds:  3607
+      ConfigMapName:           kube-root-ca.crt
+      ConfigMapOptional:       <nil>
+      DownwardAPI:             true
+  QoS Class:                   Burstable
+  Node-Selectors:              <none>
+  Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                               node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+  Events:
+    Type    Reason     Age   From               Message
+    ----    ------     ----  ----               -------
+    Normal  Scheduled  10s   default-scheduler  Successfully assigned rising/good-pod to kubeadm-worker1
+    Normal  Pulled     10s   kubelet            Container image "busybox:1.31.1" already present on machine
+    Normal  Created    10s   kubelet            Created container good-container
+    Normal  Started    10s   kubelet            Started container good-container
+  #+end_src
 
 - Delete it:
   #+BEGIN_SRC shell
   kubectl delete pod good-pod -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  pod "good-pod" deleted
+  #+end_src
+
 - Clean everything up:
   #+BEGIN_SRC shell
   kubectl delete limitrange limit-range -n rising
   #+END_SRC
 
-* Log setups level 3
-** DONE Service log =SV1= - Expose the three types of Services from a Pod 
+  #+RESULTS:
+  #+begin_src shell
+  limitrange "limit-range" deleted
+  #+end_src
+
+** Service log =SV1= - Expose the three types of Services from a Pod 
 - Create a Pod:
   #+BEGIN_SRC shell
   cat <<EOF | kubectl apply -f -
@@ -3633,7 +3935,7 @@ job.batch/pi created
   service "external-service" deleted
   #+end_src
 
-** DONE Service log =SV2= - Expose Deployments through Services
+** Service log =SV2= - Expose Deployments through Services
 - Create a Deployment with an explicit containerPort:
   #+BEGIN_SRC shell
   cat <<EOF | kubectl apply -f -
@@ -3778,7 +4080,7 @@ job.batch/pi created
   service "exposed-deployment" deleted
   #+end_src
 
-** DONE Service log =SV3= - Use multi-port Services 
+** Service log =SV3= - Use multi-port Services 
 - Create a Pod that exposes two ports:
   #+BEGIN_SRC shell
   cat <<EOF | kubectl apply -f -
@@ -3873,7 +4175,7 @@ job.batch/pi created
   service "multi-port-service" deleted
   #+end_src
 
-** DONE EndpointSlice log =ES1= - Use EndpointSlices to manually group selectorless Services 
+** EndpointSlice log =ES1= - Use EndpointSlices to manually group selectorless Services 
 - Create two Pods and a Service that has no selector:
   #+BEGIN_SRC shell
     cat <<EOF | kubectl apply -f -
@@ -4010,11 +4312,56 @@ job.batch/pi created
   endpointslice.discovery.k8s.io "endpoint-service-1" deleted
   #+end_src
 
-** SCHE Ingress log =IG1= - Import an external IngressController, then create an Ingress and expose a Service
+** Ingress log =IG1= - Import an external IngressController, then create an Ingress and expose a Service
+- Mark the nodes with =ingress-ready=:
+  #+BEGIN_SRC shell
+  kubectl label node kubeadm-worker1 ingress-ready=true
+  kubectl label node kubeadm-worker2 ingress-ready=true
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  node/kubeadm-worker1 labeled
+  node/kubeadm-worker2 labeled
+  #+end_src
+
 - Import the NGINX Ingress Controller:
   #+BEGIN_SRC shell
   kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  namespace/ingress-nginx created
+  serviceaccount/ingress-nginx created
+  serviceaccount/ingress-nginx-admission created
+  role.rbac.authorization.k8s.io/ingress-nginx created
+  role.rbac.authorization.k8s.io/ingress-nginx-admission created
+  clusterrole.rbac.authorization.k8s.io/ingress-nginx created
+  clusterrole.rbac.authorization.k8s.io/ingress-nginx-admission created
+  rolebinding.rbac.authorization.k8s.io/ingress-nginx created
+  rolebinding.rbac.authorization.k8s.io/ingress-nginx-admission created
+  clusterrolebinding.rbac.authorization.k8s.io/ingress-nginx created
+  clusterrolebinding.rbac.authorization.k8s.io/ingress-nginx-admission created
+  configmap/ingress-nginx-controller created
+  service/ingress-nginx-controller created
+  service/ingress-nginx-controller-admission created
+  deployment.apps/ingress-nginx-controller created
+  job.batch/ingress-nginx-admission-create created
+  job.batch/ingress-nginx-admission-patch created
+  ingressclass.networking.k8s.io/nginx created
+  validatingwebhookconfiguration.admissionregistration.k8s.io/ingress-nginx-admission created
+  #+end_src
+
+- Wait for the Ingress Controller to be ready:
+  #+BEGIN_SRC shell
+  kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=90s
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/ingress-nginx-controller-7b6bb75c96-brwgr condition met
+  #+end_src
 
 - Deploy a Pod and a Service:
   #+BEGIN_SRC shell
@@ -4048,6 +4395,12 @@ job.batch/pi created
   EOF
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  pod/ingress-pod created
+  service/ingress-service created
+  #+end_src
+  
 - Create the Ingress:
   #+BEGIN_SRC shell
     cat <<EOF | kubectl apply -f -
@@ -4056,8 +4409,6 @@ job.batch/pi created
     metadata:
       name: ingress
       namespace: rising
-      annotations:
-        nginx.ingress.kubernetes.io/rewrite-target: /
     spec:
       rules:
       - host: ingress.local
@@ -4067,21 +4418,52 @@ job.batch/pi created
             pathType: Prefix
             backend:
               service:
-                name: web
+                name: ingress-service
                 port:
                   number: 80
     EOF
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  ingress.networking.k8s.io/ingress created
+  #+end_src
   
 - Inspect the Ingress:
   #+BEGIN_SRC shell
   kubectl describe ingress ingress -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  Name:             ingress
+  Labels:           <none>
+  Namespace:        rising
+  Address:          
+  Ingress Class:    <none>
+  Default backend:  <default>
+  Rules:
+    Host           Path  Backends
+    ----           ----  --------
+    ingress.local  
+                   /   ingress-service:80 (<none>)
+  Annotations:     <none>
+  Events:
+    Type    Reason  Age   From                      Message
+    ----    ------  ----  ----                      -------
+    Normal  Sync    5s    nginx-ingress-controller  Scheduled for sync
+  #+end_src
+
 - List the IngressClasses:
   #+BEGIN_SRC shell
   kubectl get ingressclasses -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME    CONTROLLER             PARAMETERS   AGE
+  nginx   k8s.io/ingress-nginx   <none>       59s
+  #+end_src
   
 - Clean what we created:
   #+BEGIN_SRC shell
@@ -4090,95 +4472,54 @@ job.batch/pi created
   kubectl delete ingress ingress -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  pod "ingress-pod" deleted
+  service "ingress-service" deleted
+  ingress.networking.k8s.io "ingress" deleted
+  #+end_src
+
 - Remove the NGINX Ingress Controller:
   #+BEGIN_SRC shell
   kubectl delete -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
   #+END_SRC
 
-** SCHE Pod Networking log =PN1= - Use Port Forwarding to access a Pod
-:PROPERTIES:
-:header-args+: :session pn1
-:END:
-
-- Create a Deployment:
-  #+BEGIN_SRC bash
-    cat <<EOF | kubectl apply -f -
-    apiVersion: apps/v1
-    kind: Deployment
-    metadata:
-      name: mongo
-      labels:
-        app.kubernetes.io/name: mongo
-        app.kubernetes.io/component: backend
-    spec:
-      selector:
-        matchLabels:
-          app.kubernetes.io/name: mongo
-          app.kubernetes.io/component: backend
-      replicas: 1
-      template:
-        metadata:
-          labels:
-            app.kubernetes.io/name: mongo
-            app.kubernetes.io/component: backend
-        spec:
-          containers:
-          - name: mongo
-            image: mongo:4.2
-            args:
-              - --bind_ip
-              - 0.0.0.0
-            resources:
-              requests:
-                cpu: 100m
-                memory: 100Mi
-            ports:
-            - containerPort: 27017
-    EOF
-  #+END_SRC
+  #+RESULTS:
+  #+begin_src shell
+  namespace "ingress-nginx" deleted
+  serviceaccount "ingress-nginx" deleted
+  serviceaccount "ingress-nginx-admission" deleted
+  role.rbac.authorization.k8s.io "ingress-nginx" deleted
+  role.rbac.authorization.k8s.io "ingress-nginx-admission" deleted
+  clusterrole.rbac.authorization.k8s.io "ingress-nginx" deleted
+  clusterrole.rbac.authorization.k8s.io "ingress-nginx-admission" deleted
+  rolebinding.rbac.authorization.k8s.io "ingress-nginx" deleted
+  rolebinding.rbac.authorization.k8s.io "ingress-nginx-admission" deleted
+  clusterrolebinding.rbac.authorization.k8s.io "ingress-nginx" deleted
+  clusterrolebinding.rbac.authorization.k8s.io "ingress-nginx-admission" deleted
+  configmap "ingress-nginx-controller" deleted
+  service "ingress-nginx-controller" deleted
+  service "ingress-nginx-controller-admission" deleted
+  deployment.apps "ingress-nginx-controller" deleted
+  job.batch "ingress-nginx-admission-create" deleted
+  job.batch "ingress-nginx-admission-patch" deleted
+  ingressclass.networking.k8s.io "nginx" deleted
+  validatingwebhookconfiguration.admissionregistration.k8s.io "ingress-nginx-admission" deleted
+  #+end_src
   
-- Inspect Deployments, ReplicaSets, Pods:
-  #+BEGIN_SRC bash
-  kubectl get deployments -n rising
-  kubectl get replicasets -n rising
-  kubectl get pods -n rising
-  #+END_SRC
-  
-- Create a Service to expose Mongo:
-  #+BEGIN_SRC bash
-    cat <<EOF | kubectl apply -f -
-    apiVersion: v1
-    kind: Service
-    metadata:
-      name: mongo
-      labels:
-        app.kubernetes.io/name: mongo
-        app.kubernetes.io/component: backend
-    spec:
-      ports:
-      - port: 27017
-        targetPort: 27017
-      selector:
-        app.kubernetes.io/name: mongo
-        app.kubernetes.io/component: backend
-    EOF
+- Unlabel the nodes:
+  #+BEGIN_SRC shell
+  kubectl label node kubeadm-worker1 ingress-ready-
+  kubectl label node kubeadm-worker2 ingress-ready-
   #+END_SRC
 
-- Port-forward the Pod and send the process to background:
-  #+BEGIN_SRC 
-  kubectl port-forward deployment/mongo 28015:27017 &
-  pid=$!
-  #+END_SRC
+  #+RESULTS:
+  #+begin_src shell
+  node/kubeadm-worker1 unlabeled
+  node/kubeadm-worker2 unlabeled
+  #+end_src
 
-- Clean everything up:
-  #+BEGIN_SRC bash 
-  kill $pid
-  kubectl delete deployment mongo -n rising
-  kubectl delete service mongo -n rising
-  #+END_SRC
-
-  
-** SCHE Proxy Log =PX1= - Manually construct a Proxy API call for Nodes, Pods, and Services  
+** Proxy Log =PX1= - Manually construct a Proxy API call for Nodes, Pods, and Services  
 :PROPERTIES:
 :header-args+: :session px1
 :END:
@@ -4245,12 +4586,20 @@ job.batch/pi created
 - Try the pod proxy:
   #+BEGIN_SRC bash
   first_pod=$(kubectl get pods -n rising -o jsonpath='{.items[0].metadata.name}')
-  echo ./scripts/kube-api.sh $proxy_endpoint api/v1/namespaces/rising/pods/${first_pod}:80/proxy 
+  ./scripts/kube-api.sh $proxy_endpoint api/v1/namespaces/rising/pods/${first_pod}:80/proxy 
   #+END_SRC
 
   #+RESULTS:
   #+begin_src bash
-  ./scripts/kube-api.sh http://10.231.0.115:6443 api/v1/namespaces/rising/pods/proxy-pod:80/proxy
+  #+end_src
+  
+- Try the service proxy:
+  #+BEGIN_SRC bash
+  ./scripts/kube-api.sh $proxy_endpoint api/v1/namespaces/rising/services/proxy:80/proxy 
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
   #+end_src
   
 - Clean everything up:
@@ -4259,8 +4608,13 @@ job.batch/pi created
   kubectl delete service proxy -n rising
   #+END_SRC
 
-** SCHE NetworkPolicy log =NP1= - Create a NetworkPolicy to restrict traffic to a Pod
+  #+RESULTS:
+  #+begin_src shell
+  pod "proxy-pod" deleted
+  service "proxy" deleted
+  #+end_src
 
+** NetworkPolicy log =NP1= - Create a NetworkPolicy to restrict traffic to a Pod
 - Run some services:
   #+BEGIN_SRC shell
   kubectl run web1 --image=nginx --port=80 --labels="app=web" --expose --namespace=default
@@ -4328,9 +4682,9 @@ job.batch/pi created
 
   #+RESULTS:
   #+begin_src shell
-  networkpolicy.networking.k8s.io/bb-to-web unchanged
-  networkpolicy.networking.k8s.io/web-to-web-block configured
-  networkpolicy.networking.k8s.io/web-to-web-block configured
+  networkpolicy.networking.k8s.io/bb-to-web created
+  networkpolicy.networking.k8s.io/web-to-web-block created
+  networkpolicy.networking.k8s.io/web-to-web-block created
   #+end_src
 
 - Assess the NetworkPolicy:
@@ -4342,12 +4696,12 @@ job.batch/pi created
   #+RESULTS:
   #+begin_src shell
   NAMESPACE   NAME               POD-SELECTOR   AGE
-  default     web-to-web-block   app=web        50s
-  rising      bb-to-web          app=web        25m
-  rising      web-to-web-block   app=web        50s
+  default     web-to-web-block   <none>         7s
+  rising      bb-to-web          app=web        7s
+  rising      web-to-web-block   <none>         7s
   Name:         bb-to-web
   Namespace:    rising
-  Created on:   2024-07-16 16:21:02 +0200 CEST
+  Created on:   2024-07-17 09:18:51 +0200 CEST
   Labels:       <none>
   Annotations:  <none>
   Spec:
@@ -4373,8 +4727,35 @@ job.batch/pi created
 
 - See if the web1 Pod can connect to the web2 Pod:
   #+BEGIN_SRC shell
-  kubectl exec -n default web1 -- curl -s web2.rising
+  kubectl exec -n default web1 -- curl -s http://web2.rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  <!DOCTYPE html>
+  <html>
+  <head>
+  <title>Welcome to nginx!</title>
+  <style>
+  html { color-scheme: light dark; }
+  body { width: 35em; margin: 0 auto;
+  font-family: Tahoma, Verdana, Arial, sans-serif; }
+  </style>
+  </head>
+  <body>
+  <h1>Welcome to nginx!</h1>
+  <p>If you see this page, the nginx web server is successfully installed and
+  working. Further configuration is required.</p>
+
+  <p>For online documentation and support please refer to
+  <a href="http://nginx.org/">nginx.org</a>.<br/>
+  Commercial support is available at
+  <a href="http://nginx.com/">nginx.com</a>.</p>
+
+  <p><em>Thank you for using nginx.</em></p>
+  </body>
+  </html>
+  #+end_src
 
 - Clean everything up:
   #+BEGIN_SRC shell
@@ -4386,6 +4767,18 @@ job.batch/pi created
   kubectl delete service web2 -n rising
   #+END_SRC 
 
+  #+RESULTS:
+  #+begin_src shell
+  networkpolicy.networking.k8s.io "bb-to-web" deleted
+  networkpolicy.networking.k8s.io "web-to-web-block" deleted
+  networkpolicy.networking.k8s.io "web-to-web-block" deleted
+  pod "web1" deleted
+  pod "web2" deleted
+  pod "bb" deleted
+  service "web1" deleted
+  service "web2" deleted
+  #+end_src
+  
 * Log setups level 4
 ** WAIT Stateful Set log =SS1= - Manage a StatefulSet
 - Create a dumb StorageClass for the StatefulSet:
