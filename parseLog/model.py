@@ -632,6 +632,7 @@ if __name__ == '__main__':
     # also exclude modules imported
     __param = [f"{k}: {v}" for k, v in vars(pm).items() if not k.startswith('__') and not callable(v)
                and (isinstance(v, int) or isinstance(v, float) or isinstance(v, str))]
+    __param.extend([f"{k}: {v}" for k, v in __args.__dict__.items() if not k.startswith('__') and not callable(v)])
     log.info("Starting model generation with the following parameters:")
     for p in __param:
         log.info("" + p)
