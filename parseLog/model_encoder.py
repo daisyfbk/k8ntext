@@ -85,13 +85,6 @@ class AuditEncoder:
 
             tr = self.label_encoder.transform([label_id, label_sub_id, is_namespaced, is_single_object, verb_id])
             ret.append(tr)
-            # tr = [
-            #     self.label_encoder.transform([label_id]),
-            #     self.label_encoder.transform([label_sub_id]),
-            #     self.label_encoder.transform([is_namespaced]),
-            #     self.label_encoder.transform([is_single_object]),
-            #     self.label_encoder.transform([verb_id])
-            # ]
 
         return np.array(ret)
 
@@ -105,17 +98,13 @@ class AuditEncoder:
         ret = []
         for label in one_hot_encoded_labels:
             inverse_transformed = self.label_encoder.inverse_transform(label)
-            label_id = inverse_transformed[0]
-            label_sub_id = inverse_transformed[1]
-            is_namespaced = inverse_transformed[2]
-            is_single_object = inverse_transformed[3]
-            verb_id = inverse_transformed[4]
 
             if all([x == 0 for x in label]):
                 ret.append(LABEL_UNKNOWN)
                 continue
 
-            ret.append(encode_label(label_id, label_sub_id, is_namespaced, is_single_object, verb_id))
+            ret.append(encode_label(*inverse_transformed))
+
         return ret
 
 
