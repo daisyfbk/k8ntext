@@ -133,7 +133,7 @@ def decode_label(label: int, as_string: bool = False) -> dict | str:
     verb = [k for k, v in verbs.items() if v == verb_id][0]
 
     if as_string:
-        return f"{verb} {apigroup}/{version}/{uri} {'(ns)' if is_namespaced else ''} {'(list)' if is_single_object else ''}".replace("  ", " ")
+        return f"{verb} {apigroup}/{version}/{uri} {'(ns)' if is_namespaced else ''} {'(single)' if is_single_object else '(list)'}".replace("  ", " ")
     else:
         return {
             "apiGroup": apigroup,
