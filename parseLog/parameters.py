@@ -3,7 +3,7 @@ import os
 # Supply an .env file if you want to override these values
 STATISTICS_ATTEMPTS = int(os.getenv('STATISTICS_ATTEMPTS', 40))  # Number of attempts in stats mode
 WINDOW_LENGTH = int(os.getenv('WINDOW_LENGTH', 60))  # Sliding window length
-MAX_EPOCHS = int(os.getenv('MAX_EPOCHS', 120))  # Maximum number of epochs
+MAX_EPOCHS = int(os.getenv('MAX_EPOCHS', 160))  # Maximum number of epochs
 INITIAL_LEARNING_RATE = float(os.getenv('INITIAL_LEARNING_RATE', 0.001))  # Initial learning rate
 EARLY_STOPPING_PATIENCE = int(os.getenv('EARLY_STOPPING_PATIENCE', 20))  # Epochs before early stopping kicks in
 REDUCE_LR_FACTOR = float(os.getenv('REDUCE_LR_FACTOR', 0.1))  # Factor ReduceLRonPlateau reduces learning rate by
