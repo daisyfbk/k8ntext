@@ -56,8 +56,16 @@ Have a look at [[#behaviour-analysis][behaviour analysis]] for a detailed list o
 weird behaviours that we have found in the logs.
 *** SCHE Collect datasets
 **** DONE Category 1
+- Very basic API objects, e.g. namespaces, pods
 **** DONE Category 2
-**** TODO Category 3
+- Deployments and similar
+**** SCHE Category 3
+DEADLINE: <2024-07-17>
+**** TODO Category 4
+DEADLINE: <2024-07-23>
+- Storage
+**** TODO Category 5+
+- CRDs, Webhooks, remaining things
 ** SCHE Implementation of an ML model for learning behaviours
 *** DONE Label definition
 To ease in the labeling and recognition of the data, we have
@@ -136,15 +144,23 @@ The data is then ready to be used for training a model.
   - P.S. all these metrics have been calculated with the
     worst possible odds in our favour, e.g., precision and
     recall with macro averaging.
-**** SCHE Improve the model
+*** SCHE Improve the model
 - Work has been done on adapting the model to the new Cat2 data
 - Exploratory research on WINDOW_SIZE (40 -> 60), training splits,
   and hyperparameters.
 - The model also demonstrated to work with completely randomized
   sequences with Cat1. We need to study this deeper.
-- Further work is needed with refining features and encodings.
+- I also worked with changing the output data from an integer class
+  to a tensor.
+- Further work is needed with refining features and encodings. A
+  Keras Tuner was used to help with this.
 ** SCHE Implement the final visualizer
-- Valentino is working on this.
+- The visualizer takes the output of the model and aggregates
+  actions depending on the label, user, namespace, and so on.
+  The visualizer is able to show the user a timeline of the
+  actions that have been performed in the cluster, and the
+  user can then inspect the actions to understand what is
+  happening.
 ** SCHE Strenghthen the motivation for the project
 See [[#motivation][motivation]] for a detailed explanation of the motivation
 behind the project. This section is WIP.

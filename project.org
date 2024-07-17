@@ -113,44 +113,50 @@ graph that can be used to understand the relationships between the events.
 - [X] A working prototype of the system, able to parse
   logs of category 1, that generates a graph that
   summarizes the interactions
-*** TODO Weeks 8-10 (July 2 - July 16)
+*** DONE Weeks 8-10 (July 2 - July 16)
 - (M) Designing category 2 scenarios, creating logs
   and adapting the model to the new data
 - (M) Work on hyperparameter tuning, model improvement
-- (V) Initial development of a log sorting and visualizing
-  tool that takes a labeled log and divides it into action
+- (V) Development of a log sorting and visualizing
+  tool that takes a labeled log and divides it into actions
 **** Results
 - [X] A model that efficiently parses category 2 logs
 - [X] Results of the model and hyperparameter study
 - [X] First prototype of the visualizer
-*** WAIT Weeks 11-12 (July 17 - July 30)
+*** TODO Weeks 11-12 (July 17 - July 30)
 - (V) Focus on: improving the visualizer 
-  - The visualizer should be able to take a log and
-    divide it into actions, and then show the actions
-    in a way that is easy to understand
+  - The visualizer should provide a way to easily
+    understand the interactions, possibly
+    in a timeline format
 - (M) Implement and improve for category 3 and 4 logs
 - (M) Further studies to improve the model.
   - Focus must be ease to train, and the ability to
-    generalize to new logs
+    generalize to unseen logs (no overfitting)
+- Start making /use cases/ to understand how the system
+  could be used and what features users would like to see
 **** Results
 - [ ] A model that efficiently parses category 3 and 4 logs
 - [ ] Further graphs and reports on the model capabilities,
       accuracy, and efficiency
 - [ ] An improved version of the visualizer
 *** WAIT Weeks 12-16 (July 30 - August 26)
-- Refining queries 
-  - Could be the right moment to start making /user stories/
-    to understand how the system could be used and what
-    features users would like to see
-  - Strong focus on the temporal dimension
-    - Assume an incident happened at time X, what happened
-      in timespan $[X - 1h, X + 1h]$?
-    - Is it possible to "replay" the events that led to the incident?
+- Further work on motivation and use cases
+  - Need to convince both companies and academia that
+    the system is useful and can be used in a real-world
+    scenario
+  - Find situations in which the tool would be useful
+    and how it could be used
 - Work towards feature-completeness
   - The system should be able to parse all the events
     we set out to parse
   - Each event should be thoroughly tested, the choices
     made strongly justified and documented
+  - The visualizer should be able to show all the events
+    in a meaningful way
+    - Strong focus on the temporal dimension
+      - Assume an incident happened at time X, what happened
+        in timespan $[X - 1h, X + 1h]$?
+      - Is it possible to "replay" the events that led to the incident?
 - Did we meet the list of milestones we set up?
   - Yes :: Perfect, we can move on to the next phase
   - No :: Take a time machine and go back to the previous
