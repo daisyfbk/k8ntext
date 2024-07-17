@@ -4,7 +4,7 @@ import logging as log
 import os
 import sys
 
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 import parameters as pm
 
