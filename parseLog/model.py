@@ -449,7 +449,8 @@ def model_inference(model: models.Model,
                 weighted_labels[label] = 0
             weighted_labels[label] += weight
 
-        # Get the label with the highest weight
+        # order labels by weight
+        #weighted_labels = sorted(weighted_labels.items(), key=lambda x: x[1], reverse=True)
         most_weighted = max(weighted_labels, key=weighted_labels.get)
         ## Get most common element in the list
         #most_common = collections.Counter(v).most_common()
@@ -466,6 +467,7 @@ def model_inference(model: models.Model,
         #    while len(most_common) > 0 and most_common[0][1] == count:
         #        tmp.append(int(most_common.pop(0)[0]))
         #    predicted_sequence.append(tmp)
+        # predicted_sequence.append(weighted_labels)
         predicted_sequence.append(int(most_weighted))
 
     assert len(predicted_sequence) == len(
@@ -476,17 +478,20 @@ def model_inference(model: models.Model,
     for i in range(len(data)):
         if pm.LABEL_FEATURE not in data[i]:
             continue
-        if data[i][pm.LABEL_FEATURE] in (None, LABEL_UNKNOWN):
+        original = data[i][pm.LABEL_FEATURE]
+        predicted = predicted_sequence[i]
+
+        if original in (None, LABEL_UNKNOWN):
             continue
         cpcount += 1
-        if data[i][pm.LABEL_FEATURE] == predicted_sequence[i]:
+        if original == predicted:
             ok += 1
         else:
-            # log.info(f"Error in sequence {i}: (embedded) {data[i][pm.LABEL_FEATURE]} != {predicted_sequence[i]} (predicted)")
+            # log.info(f"Error in sequence {i}: (embedded) {original} != {predicted} (predicted)")
             try:
-                decoded_original = decode_label(data[i][pm.LABEL_FEATURE])['raw']
-                decoded_predicted = decode_label(predicted_sequence[i])['raw']
-                message = f"Error in sequence {i}: "
+                decoded_original = decode_label(original)['raw']
+                decoded_predicted = decode_label(predicted)['raw']
+                message = f"Error in sequence {i}: (decoded) {original} != {predicted} (predicted), "
                 for key in decoded_original.keys():
                     if decoded_original[key] != decoded_predicted[key]:
                         message += f"{key}: {decoded_original[key]} != {decoded_predicted[key]}, "
@@ -495,6 +500,7 @@ def model_inference(model: models.Model,
                 pass
 
     log.info(f"Accuracy on labeled: {ok / cpcount} (errors: {cpcount - ok} / {cpcount})")
+
 
     return predicted_sequence
 
