@@ -98,7 +98,8 @@ def tqdm_wrapper(iterable, **kwargs):
     return tqdm(
         iterable,
         desc=f"Function {inspect.stack()[1][3]} cycling over a {type(iterable).__name__}",
-        leave=False,
+        leave=True,
         file=sys.stdout,
+        position=0
         **kwargs,
     )
