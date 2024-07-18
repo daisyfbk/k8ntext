@@ -1,5 +1,4 @@
 import argparse
-import collections
 import json
 import logging as log
 from typing import Any
@@ -21,6 +20,10 @@ from common import flatten_object, LABEL_UNKNOWN
 from model_encoder import AuditEncoder, RisingEncoder
 from model_tuner import tuner_search
 from support.log import initialize_log, activate_stdout_logging, silence_stdout_logging, tqdm
+
+from concurrent.futures import ProcessPoolExecutor
+import os
+import functools
 
 
 def preprocess_data(__data: list[dict],
@@ -201,7 +204,6 @@ def encode_data(flattened_data: list[dict],
             "y_encoder": yle,
             "X_shape": len_features,
             "y_shape": (len_labeltypes, len_subclasses),
-            # Previous implementation "y_shape": len_classes
         }
     else:
         log.info(f"Resulting shapes: {X.shape}")
@@ -210,6 +212,18 @@ def encode_data(flattened_data: list[dict],
             "x_encoders": xenc,
             "X_shape": len_features
         }
+
+
+def decode_chunk(chunk, yle):
+    return [yle.inverse_transform(sequence_pred) for sequence_pred in chunk]
+
+
+def decode_labels(y_labels, yle):
+    chunks = np.array_split(y_labels, os.cpu_count())
+    with ProcessPoolExecutor() as executor:
+        results = list(executor.map(functools.partial(decode_chunk, yle=yle), chunks))
+    y_decoded = np.concatenate(results)
+    return y_decoded
 
 
 def model_training(data: list[dict],
@@ -224,7 +238,6 @@ def model_training(data: list[dict],
 
     model = generate_model(X_shape, y_shape)
 
-    # indices = np.arange(len(X))
     # x_train, x_test, y_train, y_test, i_train, i_test = train_test_split(X, y, indices, test_size=pm.TEST_TRAIN_SPLIT)
     x_train, x_test, y_train, y_test = train_test_split(
         training_data['X'],
@@ -264,19 +277,10 @@ def model_training(data: list[dict],
     y_pred_sublabels = np.argmax(y_pred, axis=-1)
     y_test_sublabels = np.argmax(y_test, axis=-1)
 
-    y_pred_decoded = []
-    y_test_decoded = []
+    print("Decoding labels...")
+    y_pred_decoded = decode_labels(y_pred_sublabels, yle)
+    y_test_decoded = decode_labels(y_test_sublabels, yle)
 
-    log.info("Decoding labels (predicted)...")
-    for sequence_pred in tqdm(y_pred_sublabels):
-        y_pred_decoded.append(yle.inverse_transform(sequence_pred))
-
-    log.info("Decoding labels (actual)...")
-    for sequence_test in tqdm(y_test_sublabels):
-        y_test_decoded.append(yle.inverse_transform(sequence_test))
-
-    y_pred_decoded = np.array(y_pred_decoded)
-    y_test_decoded = np.array(y_test_decoded)
     metrics = calculate_metrics(y_test_decoded,
                                 y_pred_decoded,
                                 include_per_class=True,
@@ -409,7 +413,7 @@ def model_inference(model: models.Model,
                     features: list[str],
                     x_encoders: list[Any],
                     yle: preprocessing.LabelEncoder,
-                    data: list[dict]) -> list:
+                    data: list[dict]) -> dict:
     flattened_data, total_features = preprocess_data(data, features)
     training_data = encode_data(flattened_data, total_features, include_y=False, previous_xenc=x_encoders)
     X = training_data['X']
@@ -417,15 +421,9 @@ def model_inference(model: models.Model,
     log.info("Predicting labels...")
     y_pred = model.predict(X)
 
-    y_pred_labels = np.argmax(y_pred, axis=-1)
-
-    y_pred_decoded = []
-
     log.info("Decoding labels...")
-    for sequence_pred in tqdm(y_pred_labels):
-        y_pred_decoded.append(yle.inverse_transform(sequence_pred))
-
-    y_pred_decoded = np.array(y_pred_decoded)
+    y_pred_labels = np.argmax(y_pred, axis=-1)
+    y_pred_decoded = decode_labels(y_pred_labels, yle)
 
     # Calculate majorities
     original_sequence_y_pred = {}
@@ -451,7 +449,7 @@ def model_inference(model: models.Model,
                 weighted_labels[label] = 0
             weighted_labels[label] += weight
 
-        sequence_weights[k] = weighted_labels
+        sequence_weights[int(k)] = {int(k): float(v) for k, v in weighted_labels.items()}
         # log.debug(f"Weights for {k}: {weighted_labels}")
 
         most_weighted = max(weighted_labels, key=weighted_labels.get)
