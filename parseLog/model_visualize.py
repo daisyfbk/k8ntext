@@ -281,7 +281,7 @@ def plot_multiple_runs(history, labels, observed_metrics):
         legend_handles = []
         for i, sequence in enumerate(y):
             # smooth the sequence
-            sequence = np.convolve(sequence, np.ones(5) / 5, mode='valid')
+            # sequence = np.convolve(sequence, np.ones(5) / 5, mode='valid')
 
             color_intensity = (i + 1) / num_sequences
             color = colormap(1 - color_intensity)
