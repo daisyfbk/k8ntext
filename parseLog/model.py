@@ -441,6 +441,8 @@ def model_inference(model: models.Model,
             original_sequence_y_pred[index].append((y_pred_decoded[i][j], weight))
 
     predicted_sequence = []
+    sequence_weights = {}
+
     for k, v in original_sequence_y_pred.items():
         # Sum the weights for each label
         weighted_labels = {}
@@ -449,25 +451,10 @@ def model_inference(model: models.Model,
                 weighted_labels[label] = 0
             weighted_labels[label] += weight
 
-        # order labels by weight
-        #weighted_labels = sorted(weighted_labels.items(), key=lambda x: x[1], reverse=True)
+        sequence_weights[k] = weighted_labels
+        # log.debug(f"Weights for {k}: {weighted_labels}")
+
         most_weighted = max(weighted_labels, key=weighted_labels.get)
-        ## Get most common element in the list
-        #most_common = collections.Counter(v).most_common()
-        #if len(most_common) == 1:
-        #    # If there is only one element, use it
-        #    predicted_sequence.append(int(most_common[0][0]))
-        #elif most_common[0][1] > most_common[1][1]:
-        #    # If the first element is absolute majority, use it
-        #    predicted_sequence.append(int(most_common[0][0]))
-        #else:
-        #    # If there is a tie, insert all the elements with equal weight
-        #    tmp = []
-        #    item, count = most_common[0]
-        #    while len(most_common) > 0 and most_common[0][1] == count:
-        #        tmp.append(int(most_common.pop(0)[0]))
-        #    predicted_sequence.append(tmp)
-        # predicted_sequence.append(weighted_labels)
         predicted_sequence.append(int(most_weighted))
 
     assert len(predicted_sequence) == len(
@@ -475,6 +462,16 @@ def model_inference(model: models.Model,
 
     ok = 0
     cpcount = 0
+    error_statistics = {
+        "total": 0,
+        "correct": 0,
+        "errors": {
+            "predicted one, not in it": 0,
+            "predicted many, not in it": 0,
+            "predicted many, in it": 0
+        }
+    }
+
     for i in range(len(data)):
         if pm.LABEL_FEATURE not in data[i]:
             continue
@@ -491,18 +488,43 @@ def model_inference(model: models.Model,
             try:
                 decoded_original = decode_label(original)['raw']
                 decoded_predicted = decode_label(predicted)['raw']
-                message = f"Error in sequence {i}: (decoded) {original} != {predicted} (predicted), "
+                sequence_weight_local = sequence_weights[i]
+
+                message = f"Error in sequence {i}: (d) {original} != {predicted} (p), "
+
+                if len(sequence_weight_local) > 1:
+                    # round to 2 decimals
+                    if original in sequence_weight_local.keys():
+                        r = "had it in the options"
+                        error_statistics["errors"]["predicted many, in it"] += 1
+                    else:
+                        r = "missed it"
+                        error_statistics["errors"]["predicted many, not in it"] += 1
+                    message += f"solver {r}: {[(k, round(v, 2)) for k, v in sequence_weight_local.items()]}, "
+                else:
+                    error_statistics["errors"]["predicted one, not in it"] += 1
+                    message += f"solver only predicted one, " 
+
                 for key in decoded_original.keys():
                     if decoded_original[key] != decoded_predicted[key]:
                         message += f"{key}: {decoded_original[key]} != {decoded_predicted[key]}, "
-                log.warning(message)
+                
+                message = message[:-2]
+
+                log.debug(message)
             except Exception:
-                pass
+                log.exception(f"Failed to manage error message in sequence {i}")
 
     log.info(f"Accuracy on labeled: {ok / cpcount} (errors: {cpcount - ok} / {cpcount})")
+    log.info(f"Error statistics: {error_statistics}")
 
-
-    return predicted_sequence
+    return {
+        "predicted_sequence": [int(x) for x in predicted_sequence],
+        "original_sequence": [d[pm.LABEL_FEATURE] if pm.LABEL_FEATURE in d else None for d in data],
+        "accuracy": ok / cpcount,
+        "error_statistics": error_statistics,
+        "sequence_weights": sequence_weights
+    }
 
 
 def open_file(file: str) -> list:
@@ -596,14 +618,18 @@ def main(args):
         with open(args.model + '.features', 'r') as f:
             features = json.load(f)
 
-        y_pred = model_inference(model, features, x_encoders, y_encoders, data)
+        result = model_inference(model, features, x_encoders, y_encoders, data)
 
+        y_pred = result['predicted_sequence']
         for log_line, label in zip(data, y_pred):
             log_line["predicted_label"] = label
 
-        with open(pm.OUT_FOLDER + '/results.json', 'w') as f:
+        with open(pm.OUT_FOLDER + '/labeled.json', 'w') as f:
             for line in data:
                 f.write(json.dumps(line) + '\n')
+        
+        with open(pm.OUT_FOLDER + '/inference.json', 'w') as f:
+            json.dump(result, f)
 
 
 if __name__ == '__main__':
