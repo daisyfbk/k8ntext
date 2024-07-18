@@ -156,19 +156,15 @@ def get_associate_action_uuid(candidate_actions, log_line):
                     return action_values.get(UUID)
 
     for key, action_val in candidate_actions.items():
-        if log_line.get('name') is not None and action_val.get('name') is not None and\
-                log_line.get('name').startswith(action_val.get('name')):
-            return action_val.get(UUID)
+        if log_line.get('name') is not None and action_val.get('name') is not None:
+            if log_line.get('name').startswith(action_val.get('name')) or \
+                    action_val.get('name').startswith(log_line.get('name')):
+                return action_val.get(UUID)
 
         # delete namespaces rule
         if (action_val.get('verb') == 'delete' or action_val.get('verb') == 'create') and \
                 action_val.get('resource') == 'namespaces':
             if log_line.get('namespace') == action_val.get('name'):
-                return action_val.get(UUID)
-
-        # cronjobs rule
-        if log_line.get('resource') == 'cronjobs':
-            if action_val.get('name').startswith(log_line.get('name')):
                 return action_val.get(UUID)
 
 
