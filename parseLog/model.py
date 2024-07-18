@@ -231,8 +231,6 @@ def model_training(data: list[dict],
         training_data['y'],
         test_size=pm.TEST_TRAIN_SPLIT)
 
-    print(model.summary())
-
     cb = [
         callbacks.EarlyStopping(monitor='val_loss',
                                 patience=pm.EARLY_STOPPING_PATIENCE,
@@ -257,6 +255,8 @@ def model_training(data: list[dict],
         ]
 
     silence_stdout_logging()
+    model.summary(print_fn=log.info, expand_nested=True, show_trainable=True)
+    model.summary(expand_nested=True, show_trainable=True)
     history = model.fit(x_train, y_train, epochs=pm.MAX_EPOCHS, callbacks=cb, validation_split=pm.TRAIN_VALID_SPLIT)
     y_pred = model.predict(x_test)
     activate_stdout_logging()
