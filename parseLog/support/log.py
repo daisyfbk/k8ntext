@@ -46,7 +46,7 @@ def initialize_log(
     hostname = os.uname()[1]
     uid = dt.datetime.now().strftime("%Y%m%d_%H%M%S.%f_") + "_" + hostname
 
-    pm.OUT_FOLDER = f"out/{uid}/"
+    pm.OUT_FOLDER += f"/{uid}/"
     formatter = f"[{uid}] - %(asctime)s - %(levelname)s - %(message)s"
 
     os.makedirs(pm.OUT_FOLDER, exist_ok=True)
@@ -90,7 +90,6 @@ def activate_stdout_logging() -> None:
         log.getLogger().handlers[0].setLevel(original_stdout_log_level)
     else:
         print("Logging was not silenced before", file=sys.stderr)
-
 
 
 def tqdm_wrapper(iterable, **kwargs):
