@@ -11,16 +11,12 @@ import parameters as pm
 
 
 def darken_color(color, factor=0.7):
-    """Darken a given color by a specified factor."""
-    # Convert color to RGB
     rgb = mcolors.to_rgb(color)
-    # Darken the RGB values
     darkened_rgb = [max(x * factor, 0) for x in rgb]
     return mcolors.to_hex(darkened_rgb)
 
 
 def plot_loss(losses: list) -> None:
-    # Find the maximum length of loss histories
     for loss in losses:
         keys = list(loss.keys())
         for key in keys:
@@ -29,7 +25,6 @@ def plot_loss(losses: list) -> None:
 
     max_length = max(max(len(loss['loss']), len(loss['val_loss'])) for loss in losses)
 
-    # Initialize lists to store adjusted loss histories
     all_losses = []
     all_val_losses = []
 
@@ -44,11 +39,9 @@ def plot_loss(losses: list) -> None:
         all_losses.append(adjusted_loss)
         all_val_losses.append(adjusted_val_loss)
 
-    # Convert lists to NumPy arrays
     all_losses = np.array(all_losses)
     all_val_losses = np.array(all_val_losses)
 
-    # Calculate mean and standard deviation safely
     mean_loss = np.nanmean(all_losses, axis=0)
     std_loss = np.nanstd(all_losses, axis=0)
     mean_val_loss = np.nanmean(all_val_losses, axis=0)
@@ -101,10 +94,8 @@ def plot_loss(losses: list) -> None:
 
             metrics[metric].append(adjusted_metric)
 
-    # Convert lists to NumPy arrays
     metrics = {metric: np.array(values) for metric, values in metrics.items()}
 
-    # Calculate mean and standard deviation safely
     mean_metrics = {metric: np.nanmean(values, axis=0) for metric, values in metrics.items()}
     std_metrics = {metric: np.nanstd(values, axis=0) for metric, values in metrics.items()}
 
@@ -278,6 +269,7 @@ def statistical_loss_to_means(folder: str, required_labels: list[str]) -> tuple[
 
 def plot_multiple_runs(history, labels, observed_metrics):
     for metric_type in pm.COLLECTED_METRICS:
+        log.debug(f'Plotting {metric_type} for {observed_metrics}')
         y = [history[i][metric_type] for i in range(len(history))]
 
         plt.clf()
@@ -298,6 +290,7 @@ def plot_multiple_runs(history, labels, observed_metrics):
             ypos = float(sequence[-1])
             xpos = float(len(sequence) - 1)
             plt.scatter(xpos, ypos, color=color)
+            log.debug(f'Max for label {labels[i]}: {ypos}')
             plt.text(xpos + 0.05, ypos, labels[i], color=color)
 
             legend_handle = mlines.Line2D([], [], color=color, label=labels[i])
