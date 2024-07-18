@@ -142,6 +142,7 @@ def decode_label(label: int, as_string: bool = False) -> dict | str:
     if alternate:
         alternate <<= 3
         label_sub_id |= alternate
+        alternate = 0
 
     try:
         key = [k for k, v in labels.items() if v == (label_id, label_sub_id)][0]
