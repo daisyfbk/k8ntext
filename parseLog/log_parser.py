@@ -5,8 +5,9 @@ import configparser
 from enum import Enum
 import label_proposer
 from termcolor import colored
-from common import IGNORED_NAMESPACES, LABEL_UNKNOWN, tqdm, exists_subkey
+from common import IGNORED_NAMESPACES, LABEL_UNKNOWN, exists_subkey
 import datetime
+from support.log import tqdm
 import subprocess
 
 parser = argparse.ArgumentParser(

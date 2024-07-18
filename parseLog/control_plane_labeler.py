@@ -4,9 +4,10 @@ import os
 import subprocess
 import sys
 
-from common import LABEL_UNKNOWN, tqdm, exists_subkey
+from common import LABEL_UNKNOWN, exists_subkey
 from label_proposer import propose_label
 from log_parser import get_informative_dict
+from support.log import tqdm
 
 parser = argparse.ArgumentParser(description='Label control plane logs')
 parser.add_argument('-f', '--file', type=str, help='Input file', required=True)
