@@ -17,10 +17,10 @@ from sklearn.model_selection import train_test_split
 from label_proposer import brute_force_label_space, decode_label
 import model_features
 import parameters as pm
-from common import flatten_object, LABEL_UNKNOWN, tqdm
+from common import flatten_object, LABEL_UNKNOWN
 from model_encoder import AuditEncoder, RisingEncoder
 from model_tuner import tuner_search
-from support.log import initialize_log, activate_stdout_logging, silence_stdout_logging
+from support.log import initialize_log, activate_stdout_logging, silence_stdout_logging, tqdm
 
 
 def preprocess_data(__data: list[dict],
