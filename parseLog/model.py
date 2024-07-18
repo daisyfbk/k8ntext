@@ -641,10 +641,11 @@ if __name__ == '__main__':
                         help='Repeat process multiple times for statistics')
     parser.add_argument('-y', '--hyperparam-tuning', type=str,
                         help='Use hyperparameter tuning instead of training')
+    parser.add_argument('-l', '--log-level', type=str, help='Log level', default='INFO')
 
     __args = parser.parse_args()
 
-    initialize_log(log_level="INFO")
+    initialize_log(log_level=__args.log_level)
 
     if pm.KERAS_BACKEND == 'tensorflow':
         # os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
