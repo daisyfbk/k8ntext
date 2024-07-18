@@ -30,6 +30,12 @@ def load_labels():
 
             if '' in local_available_verbs:
                 local_available_verbs.remove('')
+
+            if (apigroup, version, uri) in __labels:
+                raise ValueError(f"Duplicate entry for {apigroup}/{version}/{uri}: {__labels[(apigroup, version, uri)]}")
+            if (int(__id), int(sub_id)) in set(__labels.values()):
+                raise ValueError(f"Duplicate entry for {apigroup}/{version}/{uri}: {__id}, {sub_id}")
+            
             __available_verbs[(apigroup, version, uri)] = local_available_verbs
             __labels[(apigroup, version, uri)] = (int(__id), int(sub_id))
 
@@ -53,16 +59,6 @@ verbs = load_verbs()
 
 
 def generate_label(verb: str, objectRef: dict) -> int:
-    """
-    We use 22 bits to encode the label
-    A First 10 bits: type (at most 1024 types, I expect 100-200 types, upper range is for less important types)
-    B Next 3 bits: sub-type (at most 15 sub-types, I expect 1-2 sub-types per type)
-    C Next bit: is the resource namespaced
-    D Next bit: is it querying a single object or a list of objects? check if objectRef.name exists
-    E Next 3 bits: verb (there are only 8 verbs)
-    F Remaining 4 bits: variations (let's keep ample space for variations)
-    """
-
     apiGroup = objectRef['apiGroup']
     apiVersion = objectRef['apiVersion']
     resource = objectRef['resource']
@@ -95,13 +91,33 @@ def generate_label(verb: str, objectRef: dict) -> int:
 
 @functools.lru_cache(maxsize=None)
 def encode_label(
-        label_id: int,
-        label_sub_id: int,
-        is_namespaced: int,
-        is_single_object: int,
-        verb_id: int,
-        alternate: int = 0
+    label_id: int,
+    label_sub_id: int,
+    is_namespaced: int,
+    is_single_object: int,
+    verb_id: int,
 ) -> int:
+    """
+    We use 22 bits to encode the label
+    A First 10 bits: type (at most 1024 types, I expect 100-200 types, upper range is for less important types)
+    B Next 3 bits: sub-type (at most 15 sub-types, I expect 1-2 sub-types per type)
+    C Next bit: is the resource namespaced
+    D Next bit: is it querying a single object or a list of objects? check if objectRef.name exists
+    E Next 3 bits: verb (there are only 8 verbs)
+    F Remaining 4 bits: variations (let's keep ample space for variations)
+    """
+
+    if label_sub_id >= 2 ** 3 and label_sub_id < 2 ** 5:
+        # put the two least significant bits of label_sub_id into the alternate field
+        alternate = label_sub_id & 0b11000
+        alternate >>= 3
+        label_sub_id &= 0b00111
+    else:
+        alternate = 0
+
+    if label_sub_id > 2 ** 3:
+        raise RuntimeError(f"Label sub-id is too large: {label_sub_id}")
+    
     label = (label_id << 8) | (label_sub_id << 5) | (is_namespaced << 4) | (is_single_object << 3) | verb_id
     label <<= 4
     label |= alternate
@@ -122,6 +138,10 @@ def decode_label(label: int, as_string: bool = False) -> dict | str:
     is_single_object = (label & 0b0000000000000010000000) >> 7
     verb_id =          (label & 0b0000000000000001110000) >> 4
     alternate =        (label & 0b0000000000000000001111)
+
+    if alternate:
+        alternate <<= 3
+        label_sub_id |= alternate
 
     try:
         key = [k for k, v in labels.items() if v == (label_id, label_sub_id)][0]
@@ -196,7 +216,7 @@ def validate_operation(
 def brute_force_label_space(print_result: bool = True) -> list[int]:
     labels = []
     for label_id in range(2 ** 10):
-        for label_sub_id in range(8):
+        for label_sub_id in range(11):
             for is_namespaced in range(2):
                 for is_single_object in range(2):
                     for verb_id in range(8):
