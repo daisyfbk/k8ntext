@@ -11,11 +11,12 @@ from support.log import silence_stdout_logging, activate_stdout_logging
 def build_model(hp, X_shape: int, y_shape: int | tuple) -> models.Sequential:
     model = models.Sequential([
         layers.Input(shape=(pm.WINDOW_LENGTH, X_shape)),
-        layers.LSTM(hp.Int('lstm_units_8x', min_value=X_shape, max_value=X_shape * 12, step=X_shape), return_sequences=True, name='lstm_8x'),
-        layers.LSTM(hp.Int('lstm_units_4x', min_value=X_shape, max_value=X_shape * 12, step=X_shape), return_sequences=True, name='lstm_4x'),
-        layers.LSTM(hp.Int('lstm_units_2x', min_value=X_shape, max_value=X_shape * 12, step=X_shape), return_sequences=True, name='lstm_2x'),
-        layers.Dropout(hp.Float('dropout', min_value=0.1, max_value=0.5, step=0.1), name='dropout'),
+        layers.Bidirectional(layers.LSTM(hp.Int('lstm_units', min_value=X_shape, max_value=X_shape * 9, step=X_shape), return_sequences=True, name='lstm_1'), name='bidirectional_1'),
+        layers.BatchNormalization(name='batch_norm_1'),
+        layers.Bidirectional(layers.LSTM(hp.Int('lstm_units', min_value=X_shape, max_value=X_shape * 9, step=X_shape), return_sequences=True, name='lstm_2'), name='bidirectional_2'),
+        layers.Dropout(hp.Float('dropout', min_value=0.1, max_value=0.5, step=0.1), name='dropout_1'),
         layers.TimeDistributed(layers.Dense(y_shape[0] * y_shape[1], name='dense'), name='time_distributed'),
+        layers.BatchNormalization(name='batch_norm_2'),
         layers.Reshape((pm.WINDOW_LENGTH, y_shape[0], y_shape[1]), name='reshape'),
         layers.Activation('softmax', name='softmax')
     ])
