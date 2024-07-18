@@ -282,7 +282,7 @@ def model_training(data: list[dict],
                                 include_per_class=True,
                                 include_confusion_matrix=True)
 
-    log.info(f"Model metrics (core): {metrics['core_metrics']}")
+    log.info(f"Model metrics (core, adjusted using macro averaging): {metrics['core_metrics']}")
 
     return {
         "model": model,
@@ -366,9 +366,9 @@ def calculate_metrics(y_true, y_pred,
         for k, v in label_categorizations.items():
             k = int(k)
             per_class_metrics['accuracy'][k] = float(accuracy_score(v, [k] * len(v)))
-            per_class_metrics['precision'][k] = precision_score([k] * len(v), v, average='macro', zero_division=0)
-            per_class_metrics['recall'][k] = recall_score([k] * len(v), v, average='macro', zero_division=0)
-            per_class_metrics['f1'][k] = f1_score([k] * len(v), v, average='macro', zero_division=0)
+            per_class_metrics['precision'][k] = precision_score([k] * len(v), v, average='macro', zero_division=np.nan)
+            per_class_metrics['recall'][k] = recall_score([k] * len(v), v, average='macro', zero_division=np.nan)
+            per_class_metrics['f1'][k] = f1_score([k] * len(v), v, average='macro', zero_division=np.nan)
             per_class_metrics['weight'][k] = len(v)
 
     else:
