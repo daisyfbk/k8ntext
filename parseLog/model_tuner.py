@@ -8,6 +8,7 @@ import gc
 import parameters as pm
 from support.log import silence_stdout_logging, activate_stdout_logging
 
+
 def build_model(hp, X_shape: int, y_shape: int | tuple) -> models.Sequential:
     model = models.Sequential([
         layers.Input(shape=(pm.WINDOW_LENGTH, X_shape)),
@@ -119,7 +120,7 @@ def tuner_search(data: list[dict],
         for param, value in hyperparameters.items():
             log.info(f"{param}: {value}")
         
-        model.summary()
+        model.summary(print_fn=log.info, expand_nested=True, show_trainable=True)
 
 
 class ClearMemory(callbacks.Callback):
