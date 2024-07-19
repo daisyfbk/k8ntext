@@ -209,6 +209,54 @@ def plot_confusion_matrix(metrics: dict) -> None:
     plt.close()
 
 
+def plot_error_statistics(error_statistics: dict) -> None:
+    plt.figure(figsize=(15, 6))
+
+    colors = plt.get_cmap('tab10').colors
+    labels = list(error_statistics['errors'].keys())
+
+    for i, (label, indices) in enumerate(error_statistics['errors'].items()):
+        plt.scatter(indices, [i]*len(indices), c=colors[i], label=label, alpha=0.6)
+
+    plt.legend()
+    plt.xlabel('Sequence Index')
+    plt.yticks(range(len(labels)), labels)
+    plt.title('Error Distribution by Sequence Index')
+    plt.savefig(pm.OUT_FOLDER + '/error_distribution.png')
+
+    # plot indecisions
+    plt.clf()
+    indecision_ids = []
+    correct_label_positions = []
+    indecisions = error_statistics['indecisions']
+
+    for indecision_id, data in indecisions.items():
+        original, _, sequence = data
+
+        sorted_sequence = sorted(sequence.items(), key=lambda x: -x[1])
+        correct_label_position = 0
+        while correct_label_position < len(sorted_sequence) - 1 \
+            and sorted_sequence[correct_label_position][0] != original:
+            correct_label_position += 1
+
+        if sorted_sequence[correct_label_position][0] != original:
+            raise ValueError(f'Original label {original} not found in sequence {sorted_sequence}')
+        
+        # Store data for plotting
+        indecision_ids.append(indecision_id)
+        correct_label_positions.append(correct_label_position)
+
+    # Plotting
+    plt.figure(figsize=(30, 6))
+    plt.scatter(indecision_ids, correct_label_positions, color='blue', label='Correct Label Position')
+    plt.xlabel('Indecision ID')
+    plt.ylabel('Position of Correct Label')
+    plt.title('Position of Correct Label in Sorted Indecisions')
+    plt.xticks(indecision_ids, rotation=90)
+    plt.legend()
+    plt.savefig(pm.OUT_FOLDER + '/indecisions.png')
+
+
 def statistical_loss_to_means(folder: str, required_labels: list[str]) -> tuple[list[dict], list[str]]:
     subfolders = [i for i in os.listdir(folder) if os.path.isdir(os.path.join(folder, i))]
     ret = []
