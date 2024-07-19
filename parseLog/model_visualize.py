@@ -142,7 +142,8 @@ def plot_metrics(metrics: list[dict]) -> None:
     plt.clf()
 
     if len(metrics) == 1:
-        plot_confusion_matrix(metrics[0])
+        pass
+        # plot_confusion_matrix(metrics[0])
     else:
         # Plot core metrics: accuracy, precision, recall, f1
         available_metrics = ['accuracy', 'precision', 'recall', 'f1']
@@ -171,27 +172,35 @@ def plot_confusion_matrix(metrics: dict) -> None:
 
     class_accuracy_keys = list(class_accuracies.keys())
     class_accuracy_keys.sort(key=lambda x: -metrics['per_class_metrics']['weight'][x])
-    if pm.CONFUSION_MATRIX_TOP_PERCENTAGE < 1:
-        top_classes = class_accuracy_keys[:int(len(class_accuracies) * pm.CONFUSION_MATRIX_TOP_PERCENTAGE)]
-    else:
-        top_classes = class_accuracy_keys
+    perfect_classes = set()
 
-    confusion_matrix = np.zeros((len(top_classes), len(top_classes)))
+    # if the diagonal i == j is 1 and (j, any i) and (i, any j) is 0, then has been perfectly classified and we don't want to see it, we delete it
+    for i in range(len(class_accuracy_keys)):
+        try:
+            if abs(metrics['confusion_matrix'][class_accuracy_keys[i]][class_accuracy_keys[i]] - 1) < 1e-4:
+                perfect_classes.add(class_accuracy_keys[i])
+        except KeyError:
+            continue
 
-    for i, class_i in enumerate(top_classes):
-        for j, class_j in enumerate(top_classes):
+    class_accuracy_keys = [class_label for class_label in class_accuracy_keys if class_label not in perfect_classes]
+
+    confusion_matrix = np.zeros((len(class_accuracy_keys), len(class_accuracy_keys)))
+
+    for i, class_i in enumerate(class_accuracy_keys):
+        for j, class_j in enumerate(class_accuracy_keys):
             confusion_matrix[i, j] = metrics['confusion_matrix'].get(class_i, {int(class_j): 0}).get(int(class_j), 0)
 
-    plt.figure(figsize=(len(top_classes) // 2, len(top_classes) // 2))
+    figsize = int(len(class_accuracy_keys) * 2 / 3)
+    plt.figure(figsize=(figsize, figsize))
     plt.imshow(confusion_matrix, interpolation='nearest', cmap='Blues')
     plt.title('Confusion Matrix')
     plt.xlabel('Predicted')
     plt.ylabel('True')
-    plt.xticks(range(len(top_classes)), [class_label for class_label in top_classes], rotation=90)
-    plt.yticks(range(len(top_classes)), [class_label for class_label in top_classes])
+    plt.xticks(range(len(class_accuracy_keys)), [class_label for class_label in class_accuracy_keys], rotation=90)
+    plt.yticks(range(len(class_accuracy_keys)), [class_label for class_label in class_accuracy_keys])
     # Put text on each cell
-    for i in range(len(top_classes)):
-        for j in range(len(top_classes)):
+    for i in range(len(class_accuracy_keys)):
+        for j in range(len(class_accuracy_keys)):
             color = 'white' if confusion_matrix[i, j] > confusion_matrix.max() / 2 else 'black'
             plt.text(j, i, f"{confusion_matrix[i, j]:.2f}", ha='center', va='center', color=color)
 
