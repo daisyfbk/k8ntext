@@ -146,8 +146,8 @@ def decode_label(label: int, as_string: bool = False) -> dict | str:
 
     try:
         key = [k for k, v in labels.items() if v == (label_id, label_sub_id)][0]
-    except IndexError:
-        return {"error": "Label cannot be decoded"} if not as_string else f"Label cannot be decoded ({label})"
+    except IndexError as e:
+        return {"error": "Label cannot be decoded", "reason": e} if not as_string else f"Label cannot be decoded ({label})"
 
     apigroup, version, uri = key
 
