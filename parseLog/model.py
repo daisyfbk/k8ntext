@@ -177,6 +177,9 @@ def encode_data(flattened_data: list[dict],
         y_onehot = to_categorical(y_encoded, num_classes=len_subclasses)
 
         log.info(f"Classes: {len_classes}, cast to a one-hot encoding of {len_labeltypes} x {len_subclasses}")
+        
+        len_local_classes = len(set(y_before))
+        log.info(f"Classes in the dataset: {len_local_classes}")
 
         # Previous implementation
         # yle = preprocessing.LabelEncoder()
@@ -464,10 +467,11 @@ def model_inference(model: models.Model,
         "total": 0,
         "correct": 0,
         "errors": {
-            "predicted one, not in it": 0,
-            "predicted many, not in it": 0,
-            "predicted many, in it": 0
-        }
+            "predicted one, not in it": [],
+            "predicted many, not in it": [],
+            "predicted many, in it": []
+        },
+        "indecisions": {}
     }
 
     for i in range(len(data)):
@@ -484,8 +488,16 @@ def model_inference(model: models.Model,
         else:
             # log.info(f"Error in sequence {i}: (embedded) {original} != {predicted} (predicted)")
             try:
-                decoded_original = decode_label(original)['raw']
-                decoded_predicted = decode_label(predicted)['raw']
+                decoded_original = decode_label(original)
+                decoded_predicted = decode_label(predicted)
+                
+                decoded_original = decoded_original['raw'] 
+                try:
+                    decoded_predicted = decoded_predicted['raw']
+                except Exception:
+                    log.error("Failed to decode predicted label, skipping")
+                    continue
+
                 sequence_weight_local = sequence_weights[i]
 
                 message = f"Error in sequence {i}: (d) {original} != {predicted} (p), "
@@ -494,13 +506,15 @@ def model_inference(model: models.Model,
                     # round to 2 decimals
                     if original in sequence_weight_local.keys():
                         r = "had it in the options"
-                        error_statistics["errors"]["predicted many, in it"] += 1
+                        error_statistics["errors"]["predicted many, in it"].append(i)
+                        error_statistics["indecisions"][i] = (original, predicted, sequence_weight_local)
+                        log.info(f"Indecision in sequence {i}: predicted {[predicted]}, original {original}, seq {sequence_weight_local}")
                     else:
                         r = "missed it"
-                        error_statistics["errors"]["predicted many, not in it"] += 1
+                        error_statistics["errors"]["predicted many, not in it"].append(i)
                     message += f"solver {r}: {[(k, round(v, 2)) for k, v in sequence_weight_local.items()]}, "
                 else:
-                    error_statistics["errors"]["predicted one, not in it"] += 1
+                    error_statistics["errors"]["predicted one, not in it"].append(i)
                     message += f"solver only predicted one, " 
 
                 for key in decoded_original.keys():
@@ -513,8 +527,11 @@ def model_inference(model: models.Model,
             except Exception:
                 log.exception(f"Failed to manage error message in sequence {i}")
 
+    error_statistics["total"] = cpcount
+    error_statistics["correct"] = ok
+
     log.info(f"Accuracy on labeled: {ok / cpcount} (errors: {cpcount - ok} / {cpcount})")
-    log.info(f"Error statistics: {error_statistics}")
+    # log.info(f"Error statistics: {error_statistics}")
 
     return {
         "predicted_sequence": [int(x) for x in predicted_sequence],
@@ -591,10 +608,6 @@ def main(args):
                 joblib.dump(result['y_encoders'], f)
             with open(pm.OUT_FOLDER + '/model.keras' + '.features', 'w') as f:
                 json.dump(result['features'], f)
-            # with open(pm.OUT_FOLDER + '/model.keras' + '.original_sequence', 'w') as f:
-            #     json.dump(result['original_sequence'], f)
-            # with open(pm.OUT_FOLDER + '/model.keras' + '.predicted_sequence', 'w') as f:
-            #     json.dump(result['predicted_sequence'], f)
 
         # Always save the loss and accuracy data
         with open(pm.OUT_FOLDER + '/loss.json', 'w') as f:
@@ -628,6 +641,10 @@ def main(args):
         
         with open(pm.OUT_FOLDER + '/inference.json', 'w') as f:
             json.dump(result, f)
+
+        if result['error_statistics']['total'] > 0:
+            from model_visualize import plot_error_statistics
+            plot_error_statistics(result['error_statistics'])
 
 
 if __name__ == '__main__':
