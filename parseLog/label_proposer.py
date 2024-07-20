@@ -115,9 +115,6 @@ def encode_label(
     else:
         alternate = 0
 
-    if label_sub_id > 2 ** 3:
-        raise RuntimeError(f"Label sub-id is too large: {label_sub_id}")
-    
     label = (label_id << 8) | (label_sub_id << 5) | (is_namespaced << 4) | (is_single_object << 3) | verb_id
     label <<= 4
     label |= alternate
