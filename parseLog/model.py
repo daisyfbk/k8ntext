@@ -564,6 +564,15 @@ def open_file(file: str) -> list:
 
     return data
 
+def save_model(result: dict, base_path: str, model_basename: str = "model.keras"):
+    model = result['model']
+    model.save(base_path + '/' + model_basename)
+    with open(base_path + '/' + model_basename + '.x_encoders', 'wb') as f:
+        joblib.dump(result['x_encoders'], f)
+    with open(base_path + '/' + model_basename + '.y_encoders', 'wb') as f:
+        joblib.dump(result['y_encoders'], f)
+    with open(base_path + '/' + model_basename + '.features', 'w') as f:
+        json.dump(result['features'], f)
 
 def main(args):
     if not args.file:
@@ -586,11 +595,23 @@ def main(args):
         metrics = []
 
         if args.stats_mode:
+            if args.stats_mode == 'save':
+                save_models = True
+                log.info('Starting statistics mode with model saving.')
+            else:
+                save_models = False
+                log.info('Starting statistics mode.')
+
             for i in range(pm.STATISTICS_ATTEMPTS):
                 result = model_training(data, statistical_mode=True)
                 losses.append(result['history'])
                 metrics.append(result['metrics'])
                 log.info(f"Attempt {i + 1} done.")
+
+                if save_models:
+                    os.makedirs(pm.OUT_FOLDER + f'/attempt_{i}', exist_ok=True)
+                    save_model(result, pm.OUT_FOLDER + f'/attempt_{i}', model_basename=f'model_{i}.keras')
+                
         else:
             result = model_training(data)
 
@@ -600,14 +621,7 @@ def main(args):
             losses.append(result['history'])
             metrics.append(result['metrics'])
 
-            # Save the model and the features
-            model.save(pm.OUT_FOLDER + '/model.keras')
-            with open(pm.OUT_FOLDER + '/model.keras' + '.x_encoders', 'wb') as f:
-                joblib.dump(result['x_encoders'], f)
-            with open(pm.OUT_FOLDER + '/model.keras' + '.y_encoders', 'wb') as f:
-                joblib.dump(result['y_encoders'], f)
-            with open(pm.OUT_FOLDER + '/model.keras' + '.features', 'w') as f:
-                json.dump(result['features'], f)
+            save_model(result, pm.OUT_FOLDER)
 
         # Always save the loss and accuracy data
         with open(pm.OUT_FOLDER + '/loss.json', 'w') as f:
@@ -652,8 +666,8 @@ if __name__ == '__main__':
     parser.add_argument('-f', '--file', type=str, help='Path to the files, one or many', nargs='+')
     parser.add_argument('-m', '--model', type=str,
                         help='Path to the model file; if provided, will do inference instead of training')
-    parser.add_argument('-s', '--stats-mode', action='store_true',
-                        help='Repeat process multiple times for statistics')
+    parser.add_argument('-s', '--stats-mode', nargs='?', const='stats_only', default=None,
+                        help='Repeat process multiple times for statistics. Use "-s save" to save models.')
     parser.add_argument('-y', '--hyperparam-tuning', type=str,
                         help='Use hyperparameter tuning instead of training')
     parser.add_argument('-l', '--log-level', type=str, help='Log level', default='INFO')
