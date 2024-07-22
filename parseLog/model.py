@@ -697,4 +697,10 @@ if __name__ == '__main__':
         log.error('Cannot use stats mode with a model file.')
         exit(1)
 
-    main(__args)
+    if pm.KERAS_BACKEND == "tensorflow":
+        strategy = tf.distribute.MirroredStrategy()
+        log.info(f"Number of devices mirroring: {strategy.num_replicas_in_sync}")
+        with strategy.scope():
+            main(__args)
+    else:
+        main(__args)
