@@ -4780,45 +4780,267 @@ job.batch/pi created
   #+end_src
   
 * Log setups level 4
-** WAIT Stateful Set log =SS1= - Manage a StatefulSet
-- Create a dumb StorageClass for the StatefulSet:
+# statefulsets, statefulsets/scale, statefulsets/status
+# persistentvolumeclaims, persistentvolumeclaims/status
+# persistentvolumes, persistentvolumes/status
+# csinodes
+# csistoragecapacities
+# storageclasses
+# mutatingwebhookconfigurations
+# validatingwebhookconfigurations
+# customresourcedefinitions
+# customresourcedefinitions/status
+** SCHE Storage log =ST1= - Install a custom CSI driver and create a StorageClass
+- Deploy an NFS server:
   #+BEGIN_SRC shell
-  cat <<EOF | kubectl apply -f -
-  apiVersion: storage.k8s.io/v1
-  kind: StorageClass
-  metadata:
-    name: local-storage
+  kubectl create -f https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/deploy/example/nfs-provisioner/nfs-server.yaml
+  #+END_SRC
+
+- Install the NFS CSI Driver:
+  #+BEGIN_SRC shell
+  ver="v4.8.0"
+  repo="https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/$ver/deploy"
+  
+  kubectl apply -f $repo/rbac-csi-nfs.yaml
+  kubectl apply -f $repo/csi-nfs-driverinfo.yaml
+  kubectl apply -f $repo/csi-nfs-controller.yaml
+  kubectl apply -f $repo/csi-nfs-node.yaml
+  #+END_SRC
+
+- List and describe the CSINodes:
+  #+BEGIN_SRC shell
+  kubectl get csinodes
+  kubectl describe csinode kubeadm-master
+  #+END_SRC
+
+- List and describe the CSIDriver:
+  #+BEGIN_SRC shell
+  kubectl get csidrivers
+  kubectl describe csidriver nfs.csi.k8s.io
+  #+END_SRC
+
+- Create a StorageClass: (using nfs-server.default.svc.cluster.local)
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: storage.k8s.io/v1
+    kind: StorageClass
+    metadata:
+      name: nfs-storage
+      namespace: rising
+    provisioner: nfs.csi.k8s.io
+    parameters:
+      server: nfs-server.rising.svc.cluster.local
+      path: "/"
+      readOnly: "false"
     annotations:
       storageclass.kubernetes.io/is-default-class: "true"
-  provisioner: kubernetes.io/no-provisioner
-  volumeBindingMode: WaitForFirstConsumer
-  EOF
+    EOF
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  storageclass.storage.k8s.io/nfs-storage created
+  #+end_src
   
-- Create some PersistentVolumes:
+- List and describe the StorageClasses:
   #+BEGIN_SRC shell
-  cat <<EOF | kubectl apply -f -
-  apiVersion: v1
-  kind: PersistentVolume
-  metadata:
-    name: pv-0
-  spec:
+  kubectl get storageclasses -n rising
+  kubectl describe storageclass local-storage -n rising
+  #+END_SRC
+
+** SCHE Storage log =ST2= - Set up a PersistentVolume and a PersistentVolumeClaim with a Deployment 
+- Create a Deployment with PVCs:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: nginx-deployment
+      namespace: rising
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: nginx
+      template:
+        metadata:
+          labels:
+            app: nginx
+        spec:
+          containers:
+          - name: nginx
+            image: nginx:1.19.6
+            ports:
+            - containerPort: 80
+            volumeMounts:
+            - mountPath: /usr/share/nginx/html
+              name: storage
+      volumeClaimTemplates:
+      - metadata:
+          name: storage
+        spec:
+          accessModes: [ "ReadWriteOnce" ]
+          resources:
+            requests:
+              storage: 1Gi
+          storageClassName: nfs-storage
+    EOF
+  #+END_SRC 
+  
+- Wait for the Deployment to be ready:
+  #+BEGIN_SRC shell
+  kubectl wait --for=condition=Ready deployment/nginx-deployment -n rising
+  #+END_SRC
+
+- Inspect the Deployment:
+  #+BEGIN_SRC shell
+  kubectl get deployments -n rising
+  #+END_SRC
+
+- Inspect the Pods:
+  #+BEGIN_SRC shell
+  kubectl get pods -l app=nginx -n rising
+  #+END_SRC
+
+- Inspect the PV and PVC:
+  #+BEGIN_SRC shell
+  kubectl get pv
+  kubectl get pvc -n rising
+  #+END_SRC
+
+- Scale up the Deployment:
+  #+BEGIN_SRC shell
+  kubectl scale deployment nginx-deployment --replicas=3 -n rising
+  #+END_SRC
+
+- Inspect the Pods again:
+  #+BEGIN_SRC shell
+  kubectl wait --for=condition=Ready pod -l app=nginx -n rising
+  kubectl get pods -l app=nginx -n rising
+  #+END_SRC
+
+- Inspect the PV and PVC again:
+  #+BEGIN_SRC shell
+  kubectl get pv
+  kubectl get pvc -n rising
+  #+END_SRC
+
+- Scale down to 1:
+  #+BEGIN_SRC shell
+  kubectl scale deployment nginx-deployment --replicas=1 -n rising
+  #+END_SRC
+
+- Inspect the Pods again:
+  #+BEGIN_SRC shell
+  kubectl wait --for=condition=Ready pod -l app=nginx -n rising
+  kubectl get pods -l app=nginx -n rising
+  #+END_SRC
+
+- Inspect the PV and PVC again:
+  #+BEGIN_SRC shell
+  kubectl get pv
+  kubectl get pvc -n rising
+  #+END_SRC
+
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl delete deployment nginx-deployment -n rising
+  #+END_SRC
+
+** SCHE Storage log =ST3= - Pre-bind a PVC to a PV and use CSI manual provisioning
+- Create a PV and a PVC:
+#+BEGIN_SRC shell
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+    annotations:
+    pv.kubernetes.io/provisioned-by: nfs.csi.k8s.io
+    name: pv-nginx
+spec:
     capacity:
-      storage: 1Gi
-    volumeMode: Filesystem
+    storage: 10Gi
     accessModes:
-      - ReadWriteOnce
-    persistentVolumeReclaimPolicy: Retain
-    storageClassName: local-storage
-    local:
+    - ReadWriteOnce
+    persistentVolumeReclaimPolicy: Delete
+    mountOptions:
+    - nfsvers=4.1
+    csi:
+    driver: nfs.csi.k8s.io
+    volumeHandle: nfs-server.rising.svc.cluster.local/share##
+    volumeAttributes:
+        server: nfs-server.rising.svc.cluster.local
+        share: /
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+    name: pvc-nginx
+    namespace: rising
+spec:
+    accessModes:
+    - ReadWriteOnce
+    resources:
+    requests:
+        storage: 10Gi
+    volumeName: pv-nginx
+    storageClassName: ""
 EOF
 #+END_SRC
 
 #+RESULTS:
 #+begin_src shell
-The PersistentVolume "pv-0" is invalid: spec: Required value: must specify a volume type
+persistentvolume/pv-nginx created
+persistentvolumeclaim/pvc-nginx created
 #+end_src
 
+- Create a Pod that uses the PV:
+#+BEGIN_SRC shell
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+    name: nginx-nfs-example
+    namespace: rising
+spec:
+    containers:
+    - image: nginx
+        name: nginx
+        ports:
+        - containerPort: 80
+            protocol: TCP
+        volumeMounts:
+        - mountPath: /var/www
+            name: pvc-nginx
+            readOnly: false
+    volumes:
+    - name: pvc-nginx
+        persistentVolumeClaim:
+        claimName: pvc-nginx
+EOF
+#+END_SRC
+
+- Verify that the Pod is running and has the volume mounted:
+#+BEGIN_SRC shell
+kubectl wait --for=condition=Ready pod/nginx-nfs-example -n rising
+kubectl exec nginx-nfs-example -- bash -c "findmnt /var/www -o TARGET,SOURCE,FSTYPE"
+#+END_SRC
+
+
+- Tear everything down:
+#+BEGIN_SRC shell
+kubectl delete pod nginx-nfs-example -n rising
+kubectl delete pvc pvc-nginx -n rising
+kubectl delete pv pv-nginx
+#+END_SRC
+
+#+RESULTS:
+#+begin_src shell
+pod "nginx-nfs-example" deleted
+persistentvolumeclaim "pvc-nginx" deleted
+persistentvolume "pv-nginx" deleted
+#+end_src
+** SCHE Stateful Set log =SS1= - Manage a StatefulSet
 - Create a StatefulSet with an associated Service:
   #+begin_src sh
   cat <<EOF | kubectl apply -f -
@@ -4906,3 +5128,88 @@ The PersistentVolume "pv-0" is invalid: spec: Required value: must specify a vol
   kubectl scale statefulsets web --replicas=2 -n rising
   #+END_SRC
   
+- Inspect the Pods:
+  #+BEGIN_SRC shell
+  kubectl get pods -l app=nginx -n rising
+  #+END_SRC
+
+- Inspect the PersistentVolumes and the PersistentVolumeClaims:
+  #+BEGIN_SRC shell
+  kubectl get pv
+  kubectl get pvc -n rising
+  #+END_SRC
+  
+- Clean everything up (StatefulSets retain PVCs by default, so we need to delete them first):
+  #+BEGIN_SRC shell
+  kubectl delete statefulset web -n rising
+  kubectl delete service nginx -n rising
+  kubectl delete pvc www-web-0 www-web-1 www-web-2 www-web-3 -n rising
+  kubectl delete pv pv-0
+  kubectl delete storageclass local-storage
+  #+END_SRC
+** SCHE Storage log =ST4= - Tear down the NFS CSI Driver and its components
+- Delete the StorageClass:
+  #+BEGIN_SRC shell
+  kubectl delete storageclass nfs-storage 
+  #+END_SRC
+
+- Delete the NFS CSI Driver:
+  #+BEGIN_SRC shell
+  ver="v4.8.0"
+  repo="https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/$ver/deploy"
+  
+  kubectl delete -f $repo/csi-nfs-node.yaml
+  kubectl delete -f $repo/csi-nfs-controller.yaml
+  kubectl delete -f $repo/csi-nfs-driverinfo.yaml
+  kubectl delete -f $repo/rbac-csi-nfs.yaml
+  #+END_SRC
+
+- Delete the NFS server:
+  #+BEGIN_SRC shell
+  kubectl delete -f https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/deploy/example/nfs-provisioner/nfs-server.yaml
+  #+END_SRC
+
+** SCHE AdmissionControl log =AC1= - Create a MutatingWebhookConfiguration and a ValidatingWebhookConfiguration
+- Install Gatekeeper:
+  #+BEGIN_SRC shell
+  kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.16.3/deploy/gatekeeper.yaml 
+  #+END_SRC
+
+- Wait for the Gatekeeper components to be ready:
+  #+BEGIN_SRC shell
+  kubectl wait --for=condition=Ready pod -l app=gatekeeper-controller-manager -n gatekeeper-system
+  #+END_SRC
+
+- List the CRDs created by Gatekeeper:
+  #+BEGIN_SRC shell
+  kubectl get crds
+  #+END_SRC
+
+- Get and list the ValidatingWebhookConfigurations:
+  #+BEGIN_SRC shell
+  kubectl get validatingwebhookconfigurations.admissionregistration.k8s.io -n gatekeeper-system
+  kubectl describe validatingwebhookconfigurations.admissionregistration.k8s.io gatekeeper-validating-webhook-configuration -n gatekeeper-system
+  #+END_SRC
+
+- Get and list the MutatingWebhookConfigurations:
+  #+BEGIN_SRC shell
+  kubectl get mutatingwebhookconfigurations.admissionregistration.k8s.io -n gatekeeper-system
+  kubectl describe mutatingwebhookconfigurations.admissionregistration.k8s.io gatekeeper-mutating-webhook-configuration -n gatekeeper-system
+  #+END_SRC
+  
+- Get and list the PodDisruptionBudgets:
+  #+BEGIN_SRC shell
+  kubectl get poddisruptionbudgets.policy -n gatekeeper-system
+  kubectl describe poddisruptionbudgets.policy gatekeeper-controller-manager -n gatekeeper-system
+  #+END_SRC
+
+#+BEGIN_QUOTE
+Creating and managing OPA policies is out of scope for this document.
+#+END_QUOTE
+
+- Uninstall Gatekeeper:
+  #+BEGIN_SRC shell
+  kubectl delete -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.16.3/deploy/gatekeeper.yaml
+  #+END_SRC
+
+
