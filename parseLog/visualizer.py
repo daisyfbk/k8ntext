@@ -2,16 +2,16 @@ import json
 import argparse
 import csv
 import uuid
-from termcolor import colored
-
 from label_proposer import decode_label
 from log_parser import get_informative_dict
+from visualizer_graph import AuditGraph
+from termcolor import colored
 
 ACTION_KEY_SEPARATOR = "%"
 UUID = "UUID"
 
 
-# This functions returns two dictionary:
+# This function returns two dictionary:
 # 1) actions_dict: the dictionary that contains the single actions performed with their corresponding informative_dict
 # 2) dict_divided_by_label: a dictionary that contains all the informative_dict grouped by label
 def get_actions_and_labels_dicts():
@@ -77,7 +77,7 @@ def get_actions_and_labels_dicts():
                     if not actions_dict.get(action_key):  # if action is empty
                         action_detail = get_informative_dict(json_data)  # get new dict, not the same as before
                         action_detail.pop('requestURI', None)
-                        action_detail[UUID] = uuid.uuid4()
+                        action_detail[UUID] = str(uuid.uuid4())
                         actions_dict[action_key] = action_detail
 
     return actions_dict, dict_divided_by_label
@@ -167,7 +167,6 @@ def get_associate_action_uuid(candidate_actions, log_line):
             if log_line.get('namespace') == action_val.get('name'):
                 return action_val.get(UUID)
 
-
     return "1010"
 
 
@@ -194,12 +193,16 @@ def main():
 
     assign_uuid_to_lines(actions_dict, dict_divided_by_label)
 
-    for key, values in dict_divided_by_label.items():
-        for value2 in values:
-            uuid_value = value2.get(UUID)
-            value2.pop('UUID', None)
-            if uuid_value == '1010':
-                print(colored(str(key) + str(value2), 'light_yellow', 'on_magenta'))
+    # visualize log without uuid
+    # for key, values in dict_divided_by_label.items():
+    #     for value2 in values:
+    #         uuid_value = value2.get(UUID)
+    #         value2.pop('UUID', None)
+    #         if uuid_value == '1010':
+    #             print(colored(str(key) + str(value2), 'light_yellow', 'on_magenta'))
+
+    audit_graph = AuditGraph(actions_dict, dict_divided_by_label)
+    audit_graph.plot_graph()
 
 
 if __name__ == "__main__":
