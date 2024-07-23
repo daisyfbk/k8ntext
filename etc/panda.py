@@ -3,14 +3,13 @@ import matplotlib.pyplot as plt
 import json
 
 data = json.loads(open("../logs/models/data.json").read())
-
-# Convert the JSON data to a pandas DataFrame
 df = pd.DataFrame(data).sort_values(by='f1')
 
-# Plotting
 fig, ax = plt.subplots()
-# Assuming 'mode' is categorical and you want different colors for each mode
-colors = {'normal': 'blue', 'focal': 'green'}
+labels = list(df['mode'].unique())
+cmap = plt.get_cmap('tab20')
+colors = {label: plt.cm.tab20(i) for i, label in enumerate(labels)}
+
 for mode, color in colors.items():
     mode_df = df[df['mode'] == mode]
     ax.scatter(mode_df['f1'], mode_df['error_statistics'], c=color, label=mode)
