@@ -37,6 +37,13 @@ class RisingEncoder:
 
     def inverse_transform(self, ids):
         return [self.reverse_mapping.get(i, "UNKNOWN") for i in ids]
+    
+    def get_config(self):
+        return {
+            "mapping": self.mapping,
+            "reverse_mapping": self.reverse_mapping,
+            "next_id": self.next_id,
+        }
 
 
 @keras.saving.register_keras_serializable()
@@ -110,4 +117,8 @@ class AuditEncoder:
 
         return ret
 
-
+    def get_config(self):
+        return {
+            "length": self.length,
+            "label_encoder": self.label_encoder,
+        }
