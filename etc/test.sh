@@ -1,14 +1,15 @@
 #!/bin/zsh
 
 idx=0
-json=results2.json
+json=results.json
 jq -n '[]' > "$json"
-# model=3.1.2-splitchecks-40tt-0.1-withsave
-model=3.1.4-focalbatch-withsave
-# model=3.1.2-withsave
+# 1 = "3.1.8*"
+
+model=$(find . -type d -name $1 | grep -v validation | sort | tail -n 1 | cut -f 2 -d '/')
+
 cat $model/main.log | egrep 'f1' | while read -r line; do
     f1=$(echo "$line" | sed "s/.*'f1': \([0-9.]*\).*/\1/")
-    jq --argjson f1 "$f1" --argjson i "$idx" '. + [{"mode": "focal", "f1": $f1, "i": $i}]' "$json" > tmp.json
+    jq --argjson f1 "$f1" --argjson i "$idx" '. + [{"mode": "win100focal", "f1": $f1, "i": $i}]' "$json" > tmp.json
     mv tmp.json "$json"
     idx=$((idx+1))
 done
