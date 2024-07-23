@@ -2,7 +2,9 @@ import numpy as np
 from sklearn.preprocessing import LabelEncoder
 from label_proposer import brute_force_label_space, decode_label, encode_label
 from common import LABEL_UNKNOWN
+import keras
 
+@keras.saving.register_keras_serializable()
 class RisingEncoder:
     def __init__(self):
         self.mapping = {}
@@ -37,6 +39,7 @@ class RisingEncoder:
         return [self.reverse_mapping.get(i, "UNKNOWN") for i in ids]
 
 
+@keras.saving.register_keras_serializable()
 class AuditEncoder:
     # Takes a class, decodes it into a series of numbers, and one-hot encodes it
     def __init__(self):
