@@ -671,6 +671,9 @@ if __name__ == '__main__':
     parser.add_argument('-y', '--hyperparam-tuning', type=str,
                         help='Use hyperparameter tuning instead of training')
     parser.add_argument('-l', '--log-level', type=str, help='Log level', default='INFO')
+    parser.add_argument('-G', '--gpu', type=int, help='GPU to use, ignored if only one or no GPU is available',
+                        default=-1)
+    parser.add_argument('--mirroring', action='store_true', help='Use mirrored strategy for multi-GPU training')
 
     __args = parser.parse_args()
 
@@ -681,6 +684,11 @@ if __name__ == '__main__':
         import tensorflow as tf
 
         physical_devices = tf.config.list_physical_devices('GPU')
+
+        if len(physical_devices) > 1 and 0 <= __args.gpu < len(physical_devices):
+            tf.config.experimental.set_visible_devices(physical_devices[__args.gpu], 'GPU')
+            log.info(f"Visible device set to {__args.gpu}")
+
         for device in physical_devices:
             tf.config.experimental.set_memory_growth(device, True)
             log.info("Memory growth enabled for device: " + str(device))
@@ -697,7 +705,10 @@ if __name__ == '__main__':
         log.error('Cannot use stats mode with a model file.')
         exit(1)
 
-    if pm.KERAS_BACKEND == "tensorflow":
+    if pm.KERAS_BACKEND == "tensorflow" and \
+        __args.mirroring and \
+        len(tf.config.list_physical_devices('GPU')) > 1:
+        
         strategy = tf.distribute.MirroredStrategy()
         if strategy.num_replicas_in_sync > 1:
             with strategy.scope():
