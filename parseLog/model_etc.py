@@ -16,7 +16,6 @@ class AuditLoss(losses.Loss):
     def get_config(self):
         config = super().get_config()
         config.update({
-            "name": self.name,
-            **self.kwargs
+            "name": self.name
         })
         return config
