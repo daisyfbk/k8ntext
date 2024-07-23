@@ -41,7 +41,7 @@ class CustomFormatter(log.Formatter):
 
 
 def initialize_log(
-    log_level: str = "DEBUG", name: str = "main", console_only: bool = False
+        log_level: str = "DEBUG", name: str = "main", console_only: bool = False
 ) -> None:
     hostname = os.uname()[1]
     uid = dt.datetime.now().strftime("%Y%m%d_%H%M%S.%f_") + "_" + hostname
@@ -100,5 +100,5 @@ def tqdm_wrapper(iterable, **kwargs):
         leave=True,
         file=sys.stdout,
         position=0
-        **kwargs,
+                 ** kwargs,
     )

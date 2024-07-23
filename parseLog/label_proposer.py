@@ -32,10 +32,11 @@ def load_labels():
                 local_available_verbs.remove('')
 
             if (apigroup, version, uri) in __labels:
-                raise ValueError(f"Duplicate entry for {apigroup}/{version}/{uri}: {__labels[(apigroup, version, uri)]}")
+                raise ValueError(
+                    f"Duplicate entry for {apigroup}/{version}/{uri}: {__labels[(apigroup, version, uri)]}")
             if (int(__id), int(sub_id)) in set(__labels.values()):
                 raise ValueError(f"Duplicate entry for {apigroup}/{version}/{uri}: {__id}, {sub_id}")
-            
+
             __available_verbs[(apigroup, version, uri)] = local_available_verbs
             __labels[(apigroup, version, uri)] = (int(__id), int(sub_id))
 
@@ -91,11 +92,11 @@ def generate_label(verb: str, objectRef: dict) -> int:
 
 @functools.lru_cache(maxsize=None)
 def encode_label(
-    label_id: int,
-    label_sub_id: int,
-    is_namespaced: int,
-    is_single_object: int,
-    verb_id: int,
+        label_id: int,
+        label_sub_id: int,
+        is_namespaced: int,
+        is_single_object: int,
+        verb_id: int,
 ) -> int:
     """
     We use 22 bits to encode the label
@@ -128,13 +129,13 @@ def decode_label(label: int, as_string: bool = False) -> dict | str:
         return {"error": "Label is ignored"} if not as_string else f"Label is ignored"
     if label == LABEL_UNKNOWN:
         return {"error": "Label is unknown"} if not as_string else f"Label is unknown"
-    
-    label_id =         (label & 0b1111111111000000000000) >> 12
-    label_sub_id =     (label & 0b0000000000111000000000) >> 9
-    is_namespaced =    (label & 0b0000000000000100000000) >> 8
+
+    label_id = (label & 0b1111111111000000000000) >> 12
+    label_sub_id = (label & 0b0000000000111000000000) >> 9
+    is_namespaced = (label & 0b0000000000000100000000) >> 8
     is_single_object = (label & 0b0000000000000010000000) >> 7
-    verb_id =          (label & 0b0000000000000001110000) >> 4
-    alternate =        (label & 0b0000000000000000001111)
+    verb_id = (label & 0b0000000000000001110000) >> 4
+    alternate = (label & 0b0000000000000000001111)
 
     if alternate:
         alternate <<= 3
@@ -144,14 +145,16 @@ def decode_label(label: int, as_string: bool = False) -> dict | str:
     try:
         key = [k for k, v in labels.items() if v == (label_id, label_sub_id)][0]
     except IndexError as e:
-        return {"error": "Label cannot be decoded", "reason": e} if not as_string else f"Label cannot be decoded ({label})"
+        return {"error": "Label cannot be decoded",
+                "reason": e} if not as_string else f"Label cannot be decoded ({label})"
 
     apigroup, version, uri = key
 
     verb = [k for k, v in verbs.items() if v == verb_id][0]
 
     if as_string:
-        return f"{verb} {apigroup}/{version}/{uri} {'(ns)' if is_namespaced else ''} {'(single)' if is_single_object else '(list)'}".replace("  ", " ")
+        return f"{verb} {apigroup}/{version}/{uri} {'(ns)' if is_namespaced else ''} {'(single)' if is_single_object else '(list)'}".replace(
+            "  ", " ")
     else:
         return {
             "apiGroup": apigroup,

@@ -1,10 +1,11 @@
+import gc
+import logging as log
 from functools import partial
 
 import keras
 import keras_tuner as kt
 from keras.api import layers, models, callbacks, backend
-import logging as log
-import gc
+
 import parameters as pm
 from support.log import silence_stdout_logging, activate_stdout_logging
 
@@ -12,9 +13,11 @@ from support.log import silence_stdout_logging, activate_stdout_logging
 def build_model(hp, X_shape: int, y_shape: int | tuple) -> models.Sequential:
     model = models.Sequential([
         layers.Input(shape=(pm.WINDOW_LENGTH, X_shape)),
-        layers.Bidirectional(layers.LSTM(hp.Int('lstm_units', min_value=X_shape, max_value=X_shape * 9, step=X_shape), return_sequences=True, name='lstm_1'), name='bidirectional_1'),
+        layers.Bidirectional(layers.LSTM(hp.Int('lstm_units', min_value=X_shape, max_value=X_shape * 9, step=X_shape),
+                                         return_sequences=True, name='lstm_1'), name='bidirectional_1'),
         layers.BatchNormalization(name='batch_norm_1'),
-        layers.Bidirectional(layers.LSTM(hp.Int('lstm_units', min_value=X_shape, max_value=X_shape * 9, step=X_shape), return_sequences=True, name='lstm_2'), name='bidirectional_2'),
+        layers.Bidirectional(layers.LSTM(hp.Int('lstm_units', min_value=X_shape, max_value=X_shape * 9, step=X_shape),
+                                         return_sequences=True, name='lstm_2'), name='bidirectional_2'),
         layers.Dropout(hp.Float('dropout', min_value=0.1, max_value=0.5, step=0.1), name='dropout_1'),
         layers.TimeDistributed(layers.Dense(y_shape[0] * y_shape[1], name='dense'), name='time_distributed'),
         layers.BatchNormalization(name='batch_norm_2'),
@@ -114,12 +117,12 @@ def tuner_search(data: list[dict],
     for i, model in enumerate(best_models):
         trial = best_trials[i]
         hyperparameters = trial.hyperparameters.values
-        
+
         log.info(f"Best model {i}: {model}")
         log.info("Hyperparameters:")
         for param, value in hyperparameters.items():
             log.info(f"{param}: {value}")
-        
+
         model.summary(print_fn=log.info, expand_nested=True, show_trainable=True)
 
 
@@ -139,4 +142,3 @@ class PrintBestModelSoFar(callbacks.Callback):
         print(f"Best trial so far: {best_trial.trial_id}")
         best_model = self.tuner.get_best_models(num_models=1)[0]
         best_model.summary()
-

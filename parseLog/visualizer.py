@@ -1,6 +1,6 @@
-import json
 import argparse
 import csv
+import json
 
 from label_proposer import decode_label
 from log_parser import get_informative_dict
@@ -30,7 +30,8 @@ def main():
                 informative_dict.pop("requestURI", None)
 
                 decoded = decode_label(label)
-                decoded_resource, decoded_subresource, *_ = decoded.get('uri').split("/") + [None]  # trick to get None if the subresource is not present
+                decoded_resource, decoded_subresource, *_ = decoded.get('uri').split("/") + [
+                    None]  # trick to get None if the subresource is not present
                 decoded_verb = decoded.get('verb')
 
                 # useful to debug
@@ -39,10 +40,12 @@ def main():
 
                 if (informative_dict.get('resource') == decoded_resource and
                         informative_dict.get('subresource') == decoded_subresource and
-                        verbs_dict.get(informative_dict.get('verb')) == verbs_dict.get(decoded_verb)):  # compare verbs number instead of verbs directly
+                        verbs_dict.get(informative_dict.get('verb')) == verbs_dict.get(
+                            decoded_verb)):  # compare verbs number instead of verbs directly
 
                     action_key = str(label) + "_"
-                    if informative_dict['namespace'] is None and informative_dict['name'] is None:  # since namespace and name are both empty, use the username to create the key
+                    if informative_dict['namespace'] is None and informative_dict[
+                        'name'] is None:  # since namespace and name are both empty, use the username to create the key
                         action_key += informative_dict['username']
                     else:
                         action_key += str(informative_dict['namespace']) + "_" + str(informative_dict['name'])

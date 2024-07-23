@@ -1,8 +1,10 @@
+import keras
 import numpy as np
 from sklearn.preprocessing import LabelEncoder
-from label_proposer import brute_force_label_space, decode_label, encode_label
+
 from common import LABEL_UNKNOWN
-import keras
+from label_proposer import brute_force_label_space, decode_label, encode_label
+
 
 @keras.saving.register_keras_serializable()
 class RisingEncoder:
@@ -37,7 +39,7 @@ class RisingEncoder:
 
     def inverse_transform(self, ids):
         return [self.reverse_mapping.get(i, "UNKNOWN") for i in ids]
-    
+
     def get_config(self):
         return {
             "mapping": self.mapping,
@@ -62,10 +64,10 @@ class AuditEncoder:
                 continue
             decoded = decoded['raw']
             label_id = decoded['label_id']
-            #label_sub_id = decoded['label_sub_id']
-            #is_namespaced = decoded['is_namespaced']
-            #is_single_object = decoded['is_single_object']
-            #verb_id = decoded['verb_id']
+            # label_sub_id = decoded['label_sub_id']
+            # is_namespaced = decoded['is_namespaced']
+            # is_single_object = decoded['is_single_object']
+            # verb_id = decoded['verb_id']
 
             # labels.append([label_id, label_sub_id, is_namespaced, is_single_object, verb_id])
             distinct_label_ids.add(label_id)
@@ -77,7 +79,6 @@ class AuditEncoder:
         self.label_encoder.fit(np.array(distinct_label_ids))
 
         self.length = len(distinct_label_ids)
-
 
     def transform(self, labels):
         ret = []
@@ -103,7 +104,7 @@ class AuditEncoder:
 
     def fit_transform(self, labels):
         return self.transform(labels)
-    
+
     def inverse_transform(self, one_hot_encoded_labels):
         ret = []
         for label in one_hot_encoded_labels:

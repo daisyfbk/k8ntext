@@ -1,29 +1,28 @@
 import argparse
+import functools
 import json
 import logging as log
+import os
+from concurrent.futures import ProcessPoolExecutor
 from typing import Any
 
 import joblib
-from keras import callbacks, losses, metrics as keras_metrics, models, layers
 import numpy as np
 import sklearn.preprocessing as preprocessing
+from keras import callbacks, losses, metrics as keras_metrics, models, layers
 from keras.api.optimizers import Adam
 from keras.api.utils import to_categorical
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 
-from label_proposer import brute_force_label_space, decode_label
 import model_features
 import parameters as pm
 from common import flatten_object, LABEL_UNKNOWN
+from label_proposer import brute_force_label_space, decode_label
 from model_encoder import AuditEncoder, RisingEncoder
 from model_tuner import tuner_search
 from support.log import initialize_log, activate_stdout_logging, silence_stdout_logging, tqdm
-
-from concurrent.futures import ProcessPoolExecutor
-import os
-import functools
 
 
 def preprocess_data(__data: list[dict],
@@ -113,7 +112,8 @@ def generate_model(X_shape: int, y_shape: int | tuple) -> models.Model:
         layers.BatchNormalization(name='batch_norm_1'),
         layers.Bidirectional(layers.LSTM(X_shape * 3, return_sequences=True, name='lstm_2'), name='bidirectional_2'),
         layers.Dropout(0.4, name='dropout_1'),
-        layers.TimeDistributed(layers.Dense(y_shape[0] * y_shape[1], activation='relu', name='dense'), name='time_distributed'),
+        layers.TimeDistributed(layers.Dense(y_shape[0] * y_shape[1], activation='relu', name='dense'),
+                               name='time_distributed'),
         layers.BatchNormalization(name='batch_norm_2'),
         layers.Reshape((pm.WINDOW_LENGTH, y_shape[0], y_shape[1]), name='reshape'),
         layers.Activation('softmax', name='softmax')
@@ -168,7 +168,7 @@ def encode_data(flattened_data: list[dict],
 
     # each label is transformed from a number to five one-hot encoded values (len_subclasses = 5)
     log.info(f"Features: {len_features}: {total_features}")
-    
+
     if include_y:
         yle = AuditEncoder()
         len_labeltypes = 5
@@ -177,7 +177,7 @@ def encode_data(flattened_data: list[dict],
         y_onehot = to_categorical(y_encoded, num_classes=len_subclasses)
 
         log.info(f"Classes: {len_classes}, cast to a one-hot encoding of {len_labeltypes} x {len_subclasses}")
-        
+
         len_local_classes = len(set(y_before))
         log.info(f"Classes in the dataset: {len_local_classes}")
 
@@ -490,8 +490,8 @@ def model_inference(model: models.Model,
             try:
                 decoded_original = decode_label(original)
                 decoded_predicted = decode_label(predicted)
-                
-                decoded_original = decoded_original['raw'] 
+
+                decoded_original = decoded_original['raw']
                 try:
                     decoded_predicted = decoded_predicted['raw']
                 except Exception:
@@ -508,19 +508,20 @@ def model_inference(model: models.Model,
                         r = "had it in the options"
                         error_statistics["errors"]["predicted many, in it"].append(i)
                         error_statistics["indecisions"][i] = (original, predicted, sequence_weight_local)
-                        log.info(f"Indecision in sequence {i}: predicted {[predicted]}, original {original}, seq {sequence_weight_local}")
+                        log.info(
+                            f"Indecision in sequence {i}: predicted {[predicted]}, original {original}, seq {sequence_weight_local}")
                     else:
                         r = "missed it"
                         error_statistics["errors"]["predicted many, not in it"].append(i)
                     message += f"solver {r}: {[(k, round(v, 2)) for k, v in sequence_weight_local.items()]}, "
                 else:
                     error_statistics["errors"]["predicted one, not in it"].append(i)
-                    message += f"solver only predicted one, " 
+                    message += f"solver only predicted one, "
 
                 for key in decoded_original.keys():
                     if decoded_original[key] != decoded_predicted[key]:
                         message += f"{key}: {decoded_original[key]} != {decoded_predicted[key]}, "
-                
+
                 message = message[:-2]
 
                 log.debug(message)
@@ -564,6 +565,7 @@ def open_file(file: str) -> list:
 
     return data
 
+
 def save_model(result: dict, base_path: str, model_basename: str = "model.keras"):
     model = result['model']
     model.save(base_path + '/' + model_basename)
@@ -573,6 +575,7 @@ def save_model(result: dict, base_path: str, model_basename: str = "model.keras"
         joblib.dump(result['y_encoders'], f)
     with open(base_path + '/' + model_basename + '.features', 'w') as f:
         json.dump(result['features'], f)
+
 
 def main(args):
     if not args.file:
@@ -611,7 +614,7 @@ def main(args):
                 if save_models:
                     os.makedirs(pm.OUT_FOLDER + f'/attempt_{i}', exist_ok=True)
                     save_model(result, pm.OUT_FOLDER + f'/attempt_{i}', model_basename=f'model_{i}.keras')
-                
+
         else:
             result = model_training(data)
 
@@ -652,7 +655,7 @@ def main(args):
         with open(pm.OUT_FOLDER + '/labeled.json', 'w') as f:
             for line in data:
                 f.write(json.dumps(line) + '\n')
-        
+
         with open(pm.OUT_FOLDER + '/inference.json', 'w') as f:
             json.dump(result, f)
 
@@ -694,9 +697,11 @@ if __name__ == '__main__':
             log.info("Memory growth enabled for device: " + str(device))
 
     # also exclude modules imported
-    __param = [f"{k}: {v}" for k, v in vars(pm).items() if not k.startswith('__') and not callable(v)
+    __param = [f"{k}: {v}" for k, v in vars(pm).items() \
+               if not k.startswith('__') and not callable(v)
                and (isinstance(v, int) or isinstance(v, float) or isinstance(v, str))]
-    __param.extend([f"{k}: {v}" for k, v in __args.__dict__.items() if not k.startswith('__') and not callable(v)])
+    __param.extend([f"{k}: {v}" for k, v in __args.__dict__.items() \
+                    if not k.startswith('__') and not callable(v)])
     log.info("Starting model generation with the following parameters:")
     for p in __param:
         log.info("" + p)
@@ -706,9 +711,9 @@ if __name__ == '__main__':
         exit(1)
 
     if pm.KERAS_BACKEND == "tensorflow" and \
-        __args.mirroring and \
-        len(tf.config.list_physical_devices('GPU')) > 1:
-        
+            __args.mirroring and \
+            len(tf.config.list_physical_devices('GPU')) > 1:
+
         strategy = tf.distribute.MirroredStrategy()
         if strategy.num_replicas_in_sync > 1:
             with strategy.scope():
