@@ -46,7 +46,7 @@ def parse_user_agent(user_agent: str) -> dict:
 FEATURES = [
     'objectRef',
     'objectRef.apiGroup',
-    #'objectRef.name',
+    # 'objectRef.name',
     'objectRef.namespace',
     'objectRef.resource',
     'objectRef.subresource',
@@ -103,7 +103,7 @@ FEATURES = [
 ]
 
 FEATURE_PREPROCESSING = {
-    #"requestReceivedTimestamp": lambda x: int(datetime.datetime.fromisoformat(x[:-1]).timestamp()),
+    # "requestReceivedTimestamp": lambda x: int(datetime.datetime.fromisoformat(x[:-1]).timestamp()),
     "stageTimestamp": lambda x: int(datetime.datetime.fromisoformat(x[:-1]).timestamp()),
     "userAgent": lambda x: parse_user_agent(x),
     # "objectRef.namespace": lambda x: 1 if x is not None and x != '' else 0,

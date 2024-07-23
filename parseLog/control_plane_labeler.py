@@ -101,7 +101,7 @@ with open(temp_file, 'w') as f:
             proposal = propose_label(o)
         elif o['user']['username'] == 'system:apiserver' and \
                 o['verb'] in ('list', 'get') and \
-                o['objectRef']['resource'] in ('services','resourcequotas'):
+                o['objectRef']['resource'] in ('services', 'resourcequotas'):
             proposal = propose_label(o)
         elif o['user']['username'] == 'system:apiserver' and \
                 o['verb'] in ('watch',) and \
@@ -109,9 +109,9 @@ with open(temp_file, 'w') as f:
                 o['objectRef']['resource'] in ('configmaps', 'leases'):
             proposal = propose_label(o)
         elif o['user']['username'] == 'system:apiserver' and \
-            o['verb'] in ('patch',) and \
-            o['objectRef']['resource'] in ('secrets',) and \
-            exists_subkey(o, 'requestObject', 'metadata', 'labels', 'kubernetes.io/legacy-token-last-used'):
+                o['verb'] in ('patch',) and \
+                o['objectRef']['resource'] in ('secrets',) and \
+                exists_subkey(o, 'requestObject', 'metadata', 'labels', 'kubernetes.io/legacy-token-last-used'):
             proposal = propose_label(o)
             # o['requestObject']['metadata']['labels']['kubernetes.io/legacy-token-last-used']
 
@@ -146,7 +146,7 @@ with open(temp_file, 'w') as f:
         elif "system:nodes" in o['user']['groups'] \
                 and o['objectRef']['resource'] == 'configmaps' \
                 and o['objectRef']['name'] == "kube-root-ca.crt" \
-                and o['verb'] in ('get','list','watch'):
+                and o['verb'] in ('get', 'list', 'watch'):
             # Node watching root CA config map
             proposal = propose_label(o)
 
@@ -181,13 +181,13 @@ with open(temp_file, 'w') as f:
             user_response = input().lower()
             if user_response != 'y':
                 proposal = o['label']
-        
+
         o['label'] = proposal
         if proposal == LABEL_UNKNOWN:
             count -= 1
         else:
             o['cplabel'] = True
-                    
+
         f.write(json.dumps(o, separators=(',', ':')) + '\n')
 
 with open(temp_file) as f:

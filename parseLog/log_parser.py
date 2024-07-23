@@ -1,14 +1,16 @@
-import json
 import argparse
-import re
 import configparser
-from enum import Enum
-import label_proposer
-from termcolor import colored
-from common import IGNORED_NAMESPACES, LABEL_UNKNOWN, exists_subkey
 import datetime
-from support.log import tqdm
+import json
+import re
 import subprocess
+from enum import Enum
+
+from termcolor import colored
+
+import label_proposer
+from common import IGNORED_NAMESPACES, LABEL_UNKNOWN, exists_subkey
+from support.log import tqdm
 
 parser = argparse.ArgumentParser(
     prog='parseLog',
@@ -152,14 +154,14 @@ def take_a_decision_about_log_line(json_data):
                 (objectref_name == "generic-garbage-collector" or objectref_name == "resourcequota-controller")):
             return Decision.black_listed
 
-#     if (config.getboolean('ignore_log','blacklisted_resources_liv2') and objectref_resource in blacklisted_resources_liv2) or \
-#             (config.getboolean('ignore_log','blacklisted_resources_liv3') and objectref_resource in blacklisted_resources_liv3) or \
-#             (config.getboolean('ignore_log','blacklisted_resources_liv4') and objectref_resource in blacklisted_resources_liv4) or \
-#             (config.getboolean('ignore_log','blacklisted_resources_liv7') and objectref_resource in blacklisted_resources_liv7) or \
-#             (config.getboolean('ignore_log','blacklisted_resources_liv9') and objectref_resource in blacklisted_resources_liv9) or \
-#             (config.getboolean('ignore_log','blacklisted_resources_liv10') and objectref_resource in blacklisted_resources_liv10) or \
-#             (config.getboolean('ignore_log','blacklisted_resources_liv20') and objectref_resource in blacklisted_resources_liv20):
-#         return Decision.white_listed
+    #     if (config.getboolean('ignore_log','blacklisted_resources_liv2') and objectref_resource in blacklisted_resources_liv2) or \
+    #             (config.getboolean('ignore_log','blacklisted_resources_liv3') and objectref_resource in blacklisted_resources_liv3) or \
+    #             (config.getboolean('ignore_log','blacklisted_resources_liv4') and objectref_resource in blacklisted_resources_liv4) or \
+    #             (config.getboolean('ignore_log','blacklisted_resources_liv7') and objectref_resource in blacklisted_resources_liv7) or \
+    #             (config.getboolean('ignore_log','blacklisted_resources_liv9') and objectref_resource in blacklisted_resources_liv9) or \
+    #             (config.getboolean('ignore_log','blacklisted_resources_liv10') and objectref_resource in blacklisted_resources_liv10) or \
+    #             (config.getboolean('ignore_log','blacklisted_resources_liv20') and objectref_resource in blacklisted_resources_liv20):
+    #         return Decision.white_listed
 
     return Decision.white_listed
 
@@ -331,7 +333,6 @@ def label_whitelisted_log_line(whitelisted_lines):
             next_noncp_action_info += f"{{'verb': '{next_line['verb']}', 'resource': '{next_line['resource']}'}}"
             break
 
-
         # Delta of the previous and next 5 lines
         # for the user to have a better context
         deltas = []
@@ -351,10 +352,11 @@ def label_whitelisted_log_line(whitelisted_lines):
         for i in range(min(5, len(whitelisted_lines) - x), 5):
             deltas.append("-")
 
-        print(f"\t({x-1}) {deltas[0]}")
-        print(colored(f"De   -> ({x}) 0:00:00.000000 {current_line['requestReceivedTimestamp']}\n", 'light_yellow', 'on_magenta', ['bold']), end='  ')
+        print(f"\t({x - 1}) {deltas[0]}")
+        print(colored(f"De   -> ({x}) 0:00:00.000000 {current_line['requestReceivedTimestamp']}\n", 'light_yellow',
+                      'on_magenta', ['bold']), end='  ')
         for i in range(1, 5):
-            print(f"\t({x+i}) {deltas[i]}")
+            print(f"\t({x + i}) {deltas[i]}")
         print()
 
         print("Progress: ", x + 1, "/", len(whitelisted_lines))
@@ -434,7 +436,7 @@ def label_whitelisted_log_line(whitelisted_lines):
             print("Invalid input, putting default label")
             input_label = previous_label
 
-        line['label'] = input_label # add label to json
+        line['label'] = input_label  # add label to json
         with open(temporary_backup_filename, 'a') as temp_file:
             temp_file.write(json.dumps(line, separators=(',', ':')) + "\n")
 
