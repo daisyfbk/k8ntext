@@ -4780,21 +4780,27 @@ job.batch/pi created
   #+end_src
   
 * Log setups level 4
-# statefulsets, statefulsets/scale, statefulsets/status
-# persistentvolumeclaims, persistentvolumeclaims/status
-# persistentvolumes, persistentvolumes/status
-# csinodes
-# csistoragecapacities
-# storageclasses
-# mutatingwebhookconfigurations
-# validatingwebhookconfigurations
-# customresourcedefinitions
-# customresourcedefinitions/status
-** SCHE Storage log =ST1= - Install a custom CSI driver and create a StorageClass
+** Storage log =ST1= - Install a custom CSI driver and create a StorageClass
 - Deploy an NFS server:
   #+BEGIN_SRC shell
   kubectl create -f https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/deploy/example/nfs-provisioner/nfs-server.yaml
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  service/nfs-server created
+  deployment.apps/nfs-server created
+  #+end_src
+
+- Wait for the NFS server to be ready:
+  #+BEGIN_SRC shell
+  kubectl rollout status deployment nfs-server
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment "nfs-server" successfully rolled out
+  #+end_src
 
 - Install the NFS CSI Driver:
   #+BEGIN_SRC shell
@@ -4807,11 +4813,50 @@ job.batch/pi created
   kubectl apply -f $repo/csi-nfs-node.yaml
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  serviceaccount/csi-nfs-controller-sa created
+  serviceaccount/csi-nfs-node-sa created
+  clusterrole.rbac.authorization.k8s.io/nfs-external-provisioner-role created
+  clusterrolebinding.rbac.authorization.k8s.io/nfs-csi-provisioner-binding created
+  csidriver.storage.k8s.io/nfs.csi.k8s.io created
+  deployment.apps/csi-nfs-controller created
+  daemonset.apps/csi-nfs-node created
+  #+end_src
+
+- Wait for the NFS CSI Driver to be ready:
+  #+BEGIN_SRC shell
+  kubectl rollout status daemonset csi-nfs-node -n kube-system
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  daemon set "csi-nfs-node" successfully rolled out
+  #+end_src
+
 - List and describe the CSINodes:
   #+BEGIN_SRC shell
   kubectl get csinodes
   kubectl describe csinode kubeadm-master
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME              DRIVERS   AGE
+  kubeadm-master    1         155d
+  kubeadm-worker1   1         155d
+  kubeadm-worker2   1         90d
+  Name:               kubeadm-master
+  Labels:             <none>
+  Annotations:        storage.alpha.kubernetes.io/migrated-plugins:
+                        kubernetes.io/aws-ebs,kubernetes.io/azure-disk,kubernetes.io/azure-file,kubernetes.io/cinder,kubernetes.io/gce-pd,kubernetes.io/vsphere-vo...
+  CreationTimestamp:  Mon, 19 Feb 2024 09:50:44 +0100
+  Spec:
+    Drivers:
+      nfs.csi.k8s.io:
+        Node ID:  kubeadm-master
+  Events:         <none>
+  #+end_src
 
 - List and describe the CSIDriver:
   #+BEGIN_SRC shell
@@ -4819,7 +4864,33 @@ job.batch/pi created
   kubectl describe csidriver nfs.csi.k8s.io
   #+END_SRC
 
-- Create a StorageClass: (using nfs-server.default.svc.cluster.local)
+  #+RESULTS:
+  #+begin_src shell
+  NAME             ATTACHREQUIRED   PODINFOONMOUNT   STORAGECAPACITY   TOKENREQUESTS   REQUIRESREPUBLISH   MODES        AGE
+  nfs.csi.k8s.io   false            false            false             <unset>         false               Persistent   66s
+  Name:         nfs.csi.k8s.io
+  Namespace:    
+  Labels:       <none>
+  Annotations:  <none>
+  API Version:  storage.k8s.io/v1
+  Kind:         CSIDriver
+  Metadata:
+    Creation Timestamp:  2024-07-23T13:59:04Z
+    Resource Version:    9498996
+    UID:                 75b5d4cd-2e0e-4633-9282-0b4df03f388c
+  Spec:
+    Attach Required:     false
+    Fs Group Policy:     File
+    Pod Info On Mount:   false
+    Requires Republish:  false
+    Se Linux Mount:      false
+    Storage Capacity:    false
+    Volume Lifecycle Modes:
+      Persistent
+  Events:  <none>
+  #+end_src
+
+- Create a StorageClass: (using nfs-server.rising.svc.cluster.local)
   #+BEGIN_SRC shell
     cat <<EOF | kubectl apply -f -
     apiVersion: storage.k8s.io/v1
@@ -4830,10 +4901,11 @@ job.batch/pi created
     provisioner: nfs.csi.k8s.io
     parameters:
       server: nfs-server.rising.svc.cluster.local
-      path: "/"
-      readOnly: "false"
-    annotations:
-      storageclass.kubernetes.io/is-default-class: "true"
+      share: /
+    reclaimPolicy: Delete
+    volumeBindingMode: Immediate
+    mountOptions:
+      - nfsvers=4.1
     EOF
   #+END_SRC
 
@@ -4843,12 +4915,31 @@ job.batch/pi created
   #+end_src
   
 - List and describe the StorageClasses:
+  # in the dataset I got it wrong with the describe, so get happens twice
   #+BEGIN_SRC shell
   kubectl get storageclasses -n rising
-  kubectl describe storageclass local-storage -n rising
+  kubectl describe storageclass nfs-storage -n rising
   #+END_SRC
 
-** SCHE Storage log =ST2= - Set up a PersistentVolume and a PersistentVolumeClaim with a Deployment 
+  #+RESULTS:
+  #+begin_src shell
+  NAME          PROVISIONER      RECLAIMPOLICY   VOLUMEBINDINGMODE   ALLOWVOLUMEEXPANSION   AGE
+  nfs-storage   nfs.csi.k8s.io   Delete          Immediate           false                  7s
+  Name:            nfs-storage
+  IsDefaultClass:  No
+  Annotations:     kubectl.kubernetes.io/last-applied-configuration={"apiVersion":"storage.k8s.io/v1","kind":"StorageClass","metadata":{"annotations":{},"name":"nfs-storage"},"mountOptions":["nfsvers=4.1"],"parameters":{"server":"nfs-server.rising.svc.cluster.local","share":"/"},"provisioner":"nfs.csi.k8s.io","reclaimPolicy":"Delete","volumeBindingMode":"Immediate"}
+
+  Provisioner:           nfs.csi.k8s.io
+  Parameters:            server=nfs-server.rising.svc.cluster.local,share=/
+  AllowVolumeExpansion:  <unset>
+  MountOptions:
+    nfsvers=4.1
+  ReclaimPolicy:      Delete
+  VolumeBindingMode:  Immediate
+  Events:             <none>
+  #+end_src
+
+** Storage log =ST2= - Set up a PersistentVolume and a PersistentVolumeClaim with a Deployment 
 - Create a Deployment with PVCs:
   #+BEGIN_SRC shell
     cat <<EOF | kubectl apply -f -
@@ -4875,32 +4966,65 @@ job.batch/pi created
             volumeMounts:
             - mountPath: /usr/share/nginx/html
               name: storage
-      volumeClaimTemplates:
-      - metadata:
-          name: storage
-        spec:
-          accessModes: [ "ReadWriteOnce" ]
-          resources:
-            requests:
-              storage: 1Gi
-          storageClassName: nfs-storage
+          volumes:
+          - name: storage
+            persistentVolumeClaim:
+              claimName: nginx-pvc
+    ---
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: nginx-pvc
+      namespace: rising
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      storageClassName: nfs-storage
+      resources:
+        requests:
+          storage: 1Gi
     EOF
   #+END_SRC 
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/nginx-deployment created
+  persistentvolumeclaim/nginx-pvc created
+  #+end_src
   
 - Wait for the Deployment to be ready:
   #+BEGIN_SRC shell
-  kubectl wait --for=condition=Ready deployment/nginx-deployment -n rising
+  kubectl rollout status deployment nginx-deployment -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment "nginx-deployment" successfully rolled out
+  #+end_src
 
 - Inspect the Deployment:
   #+BEGIN_SRC shell
-  kubectl get deployments -n rising
+  kubectl get deployments -n rising 
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME               READY   UP-TO-DATE   AVAILABLE   AGE
+  nfs-server         1/1     1            1           30m
+  nginx-deployment   2/2     2            2           10s
+  #+end_src
 
 - Inspect the Pods:
   #+BEGIN_SRC shell
   kubectl get pods -l app=nginx -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                                READY   STATUS    RESTARTS   AGE
+  nginx-deployment-695dcf87d8-h27b5   1/1     Running   0          14s
+  nginx-deployment-695dcf87d8-zsf85   1/1     Running   0          14s
+  #+end_src
 
 - Inspect the PV and PVC:
   #+BEGIN_SRC shell
@@ -4908,27 +5032,23 @@ job.batch/pi created
   kubectl get pvc -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM              STORAGECLASS   REASON   AGE
+  pvc-879c9f02-9804-451b-a15c-1787e7c96eff   1Gi        RWO            Delete           Bound    rising/nginx-pvc   nfs-storage             19s
+  NAME        STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+  nginx-pvc   Bound    pvc-879c9f02-9804-451b-a15c-1787e7c96eff   1Gi        RWO            nfs-storage    19s
+  #+end_src
+
 - Scale up the Deployment:
   #+BEGIN_SRC shell
   kubectl scale deployment nginx-deployment --replicas=3 -n rising
   #+END_SRC
 
-- Inspect the Pods again:
-  #+BEGIN_SRC shell
-  kubectl wait --for=condition=Ready pod -l app=nginx -n rising
-  kubectl get pods -l app=nginx -n rising
-  #+END_SRC
-
-- Inspect the PV and PVC again:
-  #+BEGIN_SRC shell
-  kubectl get pv
-  kubectl get pvc -n rising
-  #+END_SRC
-
-- Scale down to 1:
-  #+BEGIN_SRC shell
-  kubectl scale deployment nginx-deployment --replicas=1 -n rising
-  #+END_SRC
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/nginx-deployment scaled
+  #+end_src
 
 - Inspect the Pods again:
   #+BEGIN_SRC shell
@@ -4936,89 +5056,234 @@ job.batch/pi created
   kubectl get pods -l app=nginx -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  pod/nginx-deployment-695dcf87d8-5gm6g condition met
+  pod/nginx-deployment-695dcf87d8-h27b5 condition met
+  pod/nginx-deployment-695dcf87d8-zsf85 condition met
+  NAME                                READY   STATUS    RESTARTS   AGE
+  nginx-deployment-695dcf87d8-5gm6g   1/1     Running   0          11s
+  nginx-deployment-695dcf87d8-h27b5   1/1     Running   0          34s
+  nginx-deployment-695dcf87d8-zsf85   1/1     Running   0          34s
+  #+end_src
+
 - Inspect the PV and PVC again:
   #+BEGIN_SRC shell
   kubectl get pv
   kubectl get pvc -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM              STORAGECLASS   REASON   AGE
+  pvc-879c9f02-9804-451b-a15c-1787e7c96eff   1Gi        RWO            Delete           Bound    rising/nginx-pvc   nfs-storage             42s
+  NAME        STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+  nginx-pvc   Bound    pvc-879c9f02-9804-451b-a15c-1787e7c96eff   1Gi        RWO            nfs-storage    42s
+  #+end_src
+
+- Describe the PV:
+  #+BEGIN_SRC shell
+  kubectl describe pv $(kubectl get pv | grep nginx-pvc | awk '{print $1}')
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:            pvc-879c9f02-9804-451b-a15c-1787e7c96eff
+  Labels:          <none>
+  Annotations:     pv.kubernetes.io/provisioned-by: nfs.csi.k8s.io
+                   volume.kubernetes.io/provisioner-deletion-secret-name: 
+                   volume.kubernetes.io/provisioner-deletion-secret-namespace: 
+  Finalizers:      [external-provisioner.volume.kubernetes.io/finalizer kubernetes.io/pv-protection]
+  StorageClass:    nfs-storage
+  Status:          Bound
+  Claim:           rising/nginx-pvc
+  Reclaim Policy:  Delete
+  Access Modes:    RWO
+  VolumeMode:      Filesystem
+  Capacity:        1Gi
+  Node Affinity:   <none>
+  Message:         
+  Source:
+      Type:              CSI (a Container Storage Interface (CSI) volume source)
+      Driver:            nfs.csi.k8s.io
+      FSType:            
+      VolumeHandle:      nfs-server.rising.svc.cluster.local##pvc-879c9f02-9804-451b-a15c-1787e7c96eff##
+      ReadOnly:          false
+      VolumeAttributes:      csi.storage.k8s.io/pv/name=pvc-879c9f02-9804-451b-a15c-1787e7c96eff
+                             csi.storage.k8s.io/pvc/name=nginx-pvc
+                             csi.storage.k8s.io/pvc/namespace=rising
+                             server=nfs-server.rising.svc.cluster.local
+                             share=/
+                             storage.kubernetes.io/csiProvisionerIdentity=1721743146785-6770-nfs.csi.k8s.io
+                             subdir=pvc-879c9f02-9804-451b-a15c-1787e7c96eff
+  Events:                <none>
+  #+end_src
 
 - Clean everything up:
   #+BEGIN_SRC shell
   kubectl delete deployment nginx-deployment -n rising
+  kubectl patch pvc nginx-pvc -p '{"metadata":{"finalizers":null}}' -n rising
+  kubectl delete pvc nginx-pvc -n rising
   #+END_SRC
 
-** SCHE Storage log =ST3= - Pre-bind a PVC to a PV and use CSI manual provisioning
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps "nginx-deployment" deleted
+  persistentvolumeclaim/nginx-pvc patched
+  persistentvolumeclaim "nginx-pvc" deleted
+  #+end_src
+
+- Oh wait. List the PVs:
+  #+BEGIN_SRC shell
+  kubectl get pv
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS        CLAIM              STORAGECLASS   REASON   AGE
+  pvc-879c9f02-9804-451b-a15c-1787e7c96eff   1Gi        RWO            Delete           Terminating   rising/nginx-pvc   nfs-storage             107s
+  #+end_src
+
+- The PV is in the /Terminating/ state: we need to delete it manually.
+  #+BEGIN_SRC shell
+  kubectl patch pv $(kubectl get pv | grep nginx-pvc | awk '{print $1}') -p '{"metadata":{"finalizers":null}}'
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  persistentvolume/pvc-879c9f02-9804-451b-a15c-1787e7c96eff patched
+  #+end_src
+  
+- List the PVs: it should be empty.
+  #+BEGIN_SRC shell
+  kubectl get pv
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  No resources found
+  #+end_src
+
+** Storage log =ST3= - Pre-bind a PVC to a PV and use CSI manual provisioning
 - Create a PV and a PVC:
-#+BEGIN_SRC shell
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-    annotations:
-    pv.kubernetes.io/provisioned-by: nfs.csi.k8s.io
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: PersistentVolume
+  metadata:
     name: pv-nginx
-spec:
+  spec:
     capacity:
-    storage: 10Gi
+      storage: 10Gi
     accessModes:
-    - ReadWriteOnce
+      - ReadWriteOnce
     persistentVolumeReclaimPolicy: Delete
     mountOptions:
-    - nfsvers=4.1
+      - nfsvers=4.1
     csi:
-    driver: nfs.csi.k8s.io
-    volumeHandle: nfs-server.rising.svc.cluster.local/share##
-    volumeAttributes:
+      driver: nfs.csi.k8s.io
+      volumeHandle: nfs-server.rising.svc.cluster.local/share##
+      volumeAttributes:
         server: nfs-server.rising.svc.cluster.local
         share: /
----
-kind: PersistentVolumeClaim
-apiVersion: v1
-metadata:
+  ---
+  apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
     name: pvc-nginx
     namespace: rising
-spec:
+  spec:
     accessModes:
-    - ReadWriteOnce
+      - ReadWriteOnce
     resources:
-    requests:
+      requests:
         storage: 10Gi
     volumeName: pv-nginx
-    storageClassName: ""
-EOF
+    storageClassName: "" 
+  EOF
+  #+END_SRC
+  
+  #+RESULTS:
+  #+begin_src shell
+  persistentvolume/pv-nginx created
+  persistentvolumeclaim/pvc-nginx created
+  #+end_src
+
+- Inspect the newly created PV and PVC:
+  #+BEGIN_SRC shell
+  kubectl describe pv pv-nginx
+  kubectl describe -n rising pvc pvc-nginx
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:            pv-nginx
+  Labels:          <none>
+  Annotations:     pv.kubernetes.io/bound-by-controller: yes
+  Finalizers:      [kubernetes.io/pv-protection]
+  StorageClass:    
+  Status:          Bound
+  Claim:           rising/pvc-nginx
+  Reclaim Policy:  Delete
+  Access Modes:    RWO
+  VolumeMode:      Filesystem
+  Capacity:        10Gi
+  Node Affinity:   <none>
+  Message:         
+  Source:
+      Type:              CSI (a Container Storage Interface (CSI) volume source)
+      Driver:            nfs.csi.k8s.io
+      FSType:            
+      VolumeHandle:      nfs-server.rising.svc.cluster.local/share##
+      ReadOnly:          false
+      VolumeAttributes:      server=nfs-server.rising.svc.cluster.local
+                             share=/
+  Events:                <none>
+  Name:          pvc-nginx
+  Namespace:     rising
+  StorageClass:  
+  Status:        Bound
+  Volume:        pv-nginx
+  Labels:        <none>
+  Annotations:   pv.kubernetes.io/bind-completed: yes
+  Finalizers:    [kubernetes.io/pvc-protection]
+  Capacity:      10Gi
+  Access Modes:  RWO
+  VolumeMode:    Filesystem
+  Used By:       <none>
+  Events:        <none>
+  #+end_src
+
+- Create a Pod that uses the PV:
+#+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: nginx-nfs-example
+    namespace: rising
+  spec:
+    containers:
+      - image: nginx
+        name: nginx
+        ports:
+          - containerPort: 80
+            protocol: TCP
+        volumeMounts:
+          - mountPath: /var/www
+            name: pvc-nginx
+            readOnly: false
+    volumes:
+      - name: pvc-nginx
+        persistentVolumeClaim:
+          claimName: pvc-nginx
+  EOF
 #+END_SRC
 
 #+RESULTS:
 #+begin_src shell
-persistentvolume/pv-nginx created
-persistentvolumeclaim/pvc-nginx created
+pod/nginx-nfs-example created
 #+end_src
-
-- Create a Pod that uses the PV:
-#+BEGIN_SRC shell
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: Pod
-metadata:
-    name: nginx-nfs-example
-    namespace: rising
-spec:
-    containers:
-    - image: nginx
-        name: nginx
-        ports:
-        - containerPort: 80
-            protocol: TCP
-        volumeMounts:
-        - mountPath: /var/www
-            name: pvc-nginx
-            readOnly: false
-    volumes:
-    - name: pvc-nginx
-        persistentVolumeClaim:
-        claimName: pvc-nginx
-EOF
-#+END_SRC
 
 - Verify that the Pod is running and has the volume mounted:
 #+BEGIN_SRC shell
@@ -5026,21 +5291,32 @@ kubectl wait --for=condition=Ready pod/nginx-nfs-example -n rising
 kubectl exec nginx-nfs-example -- bash -c "findmnt /var/www -o TARGET,SOURCE,FSTYPE"
 #+END_SRC
 
+#+RESULTS:
+#+begin_src shell
+pod/nginx-nfs-example condition met
+TARGET   SOURCE                                FSTYPE
+/var/www nfs-server.rising.svc.cluster.local:/ nfs4
+#+end_src
 
 - Tear everything down:
 #+BEGIN_SRC shell
-kubectl delete pod nginx-nfs-example -n rising
-kubectl delete pvc pvc-nginx -n rising
-kubectl delete pv pv-nginx
+  kubectl delete pod nginx-nfs-example -n rising
+  kubectl patch pvc pvc-nginx -p '{"metadata":{"finalizers":null}}' -n rising
+  kubectl patch pv pv-nginx -p '{"metadata":{"finalizers":null}}'
+  kubectl delete pvc pvc-nginx -n rising
+  kubectl delete pv pv-nginx
 #+END_SRC
 
 #+RESULTS:
 #+begin_src shell
 pod "nginx-nfs-example" deleted
+persistentvolumeclaim/pvc-nginx patched
+persistentvolume/pv-nginx patched
 persistentvolumeclaim "pvc-nginx" deleted
 persistentvolume "pv-nginx" deleted
 #+end_src
-** SCHE Stateful Set log =SS1= - Manage a StatefulSet
+
+** Stateful Set log =SS1= - Manage a StatefulSet
 - Create a StatefulSet with an associated Service:
   #+begin_src sh
   cat <<EOF | kubectl apply -f -
@@ -5070,7 +5346,7 @@ persistentvolume "pv-nginx" deleted
         app: nginx 
     serviceName: "nginx"
     replicas: 3 
-    minReadySeconds: 10 # by default is 0
+    minReadySeconds: 10 
     template:
       metadata:
         labels:
@@ -5079,7 +5355,7 @@ persistentvolume "pv-nginx" deleted
         terminationGracePeriodSeconds: 10
         containers:
         - name: nginx
-          image: registry.k8s.io/nginx-slim:0.24
+          image: nginx:1.19.6
           ports:
           - containerPort: 80
             name: web
@@ -5090,6 +5366,7 @@ persistentvolume "pv-nginx" deleted
     - metadata:
         name: www
       spec:
+        storageClassName: nfs-storage
         accessModes: [ "ReadWriteOnce" ]
         resources:
           requests:
@@ -5103,55 +5380,180 @@ persistentvolume "pv-nginx" deleted
   statefulset.apps/web created
   #+end_src
 
+- Wait until the StatefulSet is ready:
+  #+BEGIN_SRC shell
+  kubectl rollout status statefulset web -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Waiting for 2 pods to be ready...
+  Waiting for 2 pods to be ready...
+  Waiting for 2 pods to be ready...
+  Waiting for 1 pods to be ready...
+  Waiting for 1 pods to be ready...
+  Waiting for 1 pods to be ready...
+  partitioned roll out complete: 3 new pods have been updated...
+  #+end_src
+
 - Inspect the StatefulSet:
   #+BEGIN_SRC shell
   kubectl get statefulsets web -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  NAME   READY   AGE
+  web    3/3     61s
+  #+end_src
+
 - Inspect the Pods:
   #+BEGIN_SRC shell
   kubectl get pods -l app=nginx -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME    READY   STATUS    RESTARTS   AGE
+  web-0   1/1     Running   0          64s
+  web-1   1/1     Running   0          44s
+  web-2   1/1     Running   0          24s
+  #+end_src
+
+- List the PV and PVCs:
+  #+BEGIN_SRC shell
+  kubectl get pv
+  kubectl get pvc -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM              STORAGECLASS   REASON   AGE
+  pvc-039ed6f6-5414-4350-a2fa-753a71ec4fe7   200Mi      RWO            Delete           Bound    rising/www-web-2   nfs-storage             28s
+  pvc-bbb1988c-85a3-44d1-9e42-56c75be23ea2   200Mi      RWO            Delete           Bound    rising/www-web-1   nfs-storage             48s
+  pvc-bf2283f0-82aa-4406-b547-19ae80300ced   200Mi      RWO            Delete           Bound    rising/www-web-0   nfs-storage             68s
+  NAME        STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+  www-web-0   Bound    pvc-bf2283f0-82aa-4406-b547-19ae80300ced   200Mi      RWO            nfs-storage    68s
+  www-web-1   Bound    pvc-bbb1988c-85a3-44d1-9e42-56c75be23ea2   200Mi      RWO            nfs-storage    48s
+  www-web-2   Bound    pvc-039ed6f6-5414-4350-a2fa-753a71ec4fe7   200Mi      RWO            nfs-storage    28s
+  #+end_src
 
 - Scale up the StatefulSet:
   #+BEGIN_SRC shell
   kubectl scale statefulsets web --replicas=4 -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  statefulset.apps/web scaled
+  #+end_src
+
 - Inspect the Pods again:
   #+BEGIN_SRC shell
+  kubectl rollout status statefulset web -n rising
   kubectl get pods -l app=nginx -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  partitioned roll out complete: 4 new pods have been updated...
+  NAME    READY   STATUS    RESTARTS   AGE
+  web-0   1/1     Running   0          86s
+  web-1   1/1     Running   0          66s
+  web-2   1/1     Running   0          46s
+  web-3   1/1     Running   0          11s
+  #+end_src
 
 - Scale down to 2:
   #+BEGIN_SRC shell
   kubectl scale statefulsets web --replicas=2 -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  statefulset.apps/web scaled
+  #+end_src
   
 - Inspect the Pods:
   #+BEGIN_SRC shell
   kubectl get pods -l app=nginx -n rising
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  NAME    READY   STATUS    RESTARTS   AGE
+  web-0   1/1     Running   0          103s
+  web-1   1/1     Running   0          83s
+  #+end_src
+
 - Inspect the PersistentVolumes and the PersistentVolumeClaims:
   #+BEGIN_SRC shell
   kubectl get pv
   kubectl get pvc -n rising
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM              STORAGECLASS   REASON   AGE
+  pvc-039ed6f6-5414-4350-a2fa-753a71ec4fe7   200Mi      RWO            Delete           Bound    rising/www-web-2   nfs-storage             69s
+  pvc-738a62e3-5ef6-4516-8def-4177f89a23e6   200Mi      RWO            Delete           Bound    rising/www-web-3   nfs-storage             34s
+  pvc-bbb1988c-85a3-44d1-9e42-56c75be23ea2   200Mi      RWO            Delete           Bound    rising/www-web-1   nfs-storage             89s
+  pvc-bf2283f0-82aa-4406-b547-19ae80300ced   200Mi      RWO            Delete           Bound    rising/www-web-0   nfs-storage             109s
+  NAME        STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+  www-web-0   Bound    pvc-bf2283f0-82aa-4406-b547-19ae80300ced   200Mi      RWO            nfs-storage    109s
+  www-web-1   Bound    pvc-bbb1988c-85a3-44d1-9e42-56c75be23ea2   200Mi      RWO            nfs-storage    89s
+  www-web-2   Bound    pvc-039ed6f6-5414-4350-a2fa-753a71ec4fe7   200Mi      RWO            nfs-storage    69s
+  www-web-3   Bound    pvc-738a62e3-5ef6-4516-8def-4177f89a23e6   200Mi      RWO            nfs-storage    34s
+  #+end_src
   
+- Re-scale up to 3, see that the number of PV/PVC is unchanged:
+  #+BEGIN_SRC shell
+  kubectl scale statefulsets web --replicas=3 -n rising
+  kubectl get pv
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  statefulset.apps/web scaled
+  NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM              STORAGECLASS   REASON   AGE
+  pvc-039ed6f6-5414-4350-a2fa-753a71ec4fe7   200Mi      RWO            Delete           Bound    rising/www-web-2   nfs-storage             117s
+  pvc-738a62e3-5ef6-4516-8def-4177f89a23e6   200Mi      RWO            Delete           Bound    rising/www-web-3   nfs-storage             82s
+  pvc-bbb1988c-85a3-44d1-9e42-56c75be23ea2   200Mi      RWO            Delete           Bound    rising/www-web-1   nfs-storage             2m17s
+  pvc-bf2283f0-82aa-4406-b547-19ae80300ced   200Mi      RWO            Delete           Bound    rising/www-web-0   nfs-storage             2m37s
+  #+end_src
+
 - Clean everything up (StatefulSets retain PVCs by default, so we need to delete them first):
   #+BEGIN_SRC shell
-  kubectl delete statefulset web -n rising
-  kubectl delete service nginx -n rising
-  kubectl delete pvc www-web-0 www-web-1 www-web-2 www-web-3 -n rising
-  kubectl delete pv pv-0
-  kubectl delete storageclass local-storage
+    kubectl delete statefulset web -n rising
+    kubectl delete service nginx -n rising
+    kubectl delete pvc www-web-0 www-web-1 www-web-2 www-web-3 -n rising
+    for i in {0..3}; do kubectl patch pv $(kubectl get pv | grep www-web-$i | awk '{print $1}') -p '{"metadata":{"finalizers":null}}'; done
   #+END_SRC
-** SCHE Storage log =ST4= - Tear down the NFS CSI Driver and its components
+
+  #+RESULTS:
+  #+begin_src shell
+  statefulset.apps "web" deleted
+  service "nginx" deleted
+  persistentvolumeclaim "www-web-0" deleted
+  persistentvolumeclaim "www-web-1" deleted
+  persistentvolumeclaim "www-web-2" deleted
+  persistentvolumeclaim "www-web-3" deleted
+  persistentvolume/pvc-bf2283f0-82aa-4406-b547-19ae80300ced patched
+  persistentvolume/pvc-bbb1988c-85a3-44d1-9e42-56c75be23ea2 patched
+  persistentvolume/pvc-039ed6f6-5414-4350-a2fa-753a71ec4fe7 patched
+  persistentvolume/pvc-738a62e3-5ef6-4516-8def-4177f89a23e6 patched
+  #+end_src
+
+** Storage log =ST4= - Tear down the NFS CSI Driver and its components
 - Delete the StorageClass:
   #+BEGIN_SRC shell
   kubectl delete storageclass nfs-storage 
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  storageclass.storage.k8s.io "nfs-storage" deleted
+  #+end_src
 
 - Delete the NFS CSI Driver:
   #+BEGIN_SRC shell
@@ -5164,26 +5566,97 @@ persistentvolume "pv-nginx" deleted
   kubectl delete -f $repo/rbac-csi-nfs.yaml
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  daemonset.apps "csi-nfs-node" deleted
+  deployment.apps "csi-nfs-controller" deleted
+  csidriver.storage.k8s.io "nfs.csi.k8s.io" deleted
+  serviceaccount "csi-nfs-controller-sa" deleted
+  serviceaccount "csi-nfs-node-sa" deleted
+  clusterrole.rbac.authorization.k8s.io "nfs-external-provisioner-role" deleted
+  clusterrolebinding.rbac.authorization.k8s.io "nfs-csi-provisioner-binding" deleted
+  #+end_src
+
 - Delete the NFS server:
   #+BEGIN_SRC shell
   kubectl delete -f https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/deploy/example/nfs-provisioner/nfs-server.yaml
   #+END_SRC
 
-** SCHE AdmissionControl log =AC1= - Create a MutatingWebhookConfiguration and a ValidatingWebhookConfiguration
+  #+RESULTS:
+  #+begin_src shell
+  service "nfs-server" deleted
+  deployment.apps "nfs-server" deleted
+  #+end_src
+
+** AdmissionControl log =AC1= - Create a MutatingWebhookConfiguration and a ValidatingWebhookConfiguration
 - Install Gatekeeper:
   #+BEGIN_SRC shell
   kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.16.3/deploy/gatekeeper.yaml 
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  namespace/gatekeeper-system created
+  resourcequota/gatekeeper-critical-pods created
+  customresourcedefinition.apiextensions.k8s.io/assign.mutations.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/assignimage.mutations.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/assignmetadata.mutations.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/configs.config.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/constraintpodstatuses.status.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/constrainttemplatepodstatuses.status.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/constrainttemplates.templates.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/expansiontemplate.expansion.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/expansiontemplatepodstatuses.status.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/modifyset.mutations.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/mutatorpodstatuses.status.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/providers.externaldata.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/syncsets.syncset.gatekeeper.sh created
+  serviceaccount/gatekeeper-admin created
+  role.rbac.authorization.k8s.io/gatekeeper-manager-role created
+  clusterrole.rbac.authorization.k8s.io/gatekeeper-manager-role created
+  rolebinding.rbac.authorization.k8s.io/gatekeeper-manager-rolebinding created
+  clusterrolebinding.rbac.authorization.k8s.io/gatekeeper-manager-rolebinding created
+  secret/gatekeeper-webhook-server-cert created
+  service/gatekeeper-webhook-service created
+  deployment.apps/gatekeeper-audit created
+  deployment.apps/gatekeeper-controller-manager created
+  poddisruptionbudget.policy/gatekeeper-controller-manager created
+  mutatingwebhookconfiguration.admissionregistration.k8s.io/gatekeeper-mutating-webhook-configuration created
+  validatingwebhookconfiguration.admissionregistration.k8s.io/gatekeeper-validating-webhook-configuration created
+  #+end_src
+  
 - Wait for the Gatekeeper components to be ready:
   #+BEGIN_SRC shell
-  kubectl wait --for=condition=Ready pod -l app=gatekeeper-controller-manager -n gatekeeper-system
+  kubectl rollout status deployment/gatekeeper-controller-manager -n gatekeeper-system
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment "gatekeeper-controller-manager" successfully rolled out
+  #+end_src
 
 - List the CRDs created by Gatekeeper:
   #+BEGIN_SRC shell
   kubectl get crds
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                                                 CREATED AT
+  assign.mutations.gatekeeper.sh                       2024-07-23T13:54:46Z
+  assignimage.mutations.gatekeeper.sh                  2024-07-23T13:54:47Z
+  assignmetadata.mutations.gatekeeper.sh               2024-07-23T13:54:47Z
+  configs.config.gatekeeper.sh                         2024-07-23T13:54:48Z
+  constraintpodstatuses.status.gatekeeper.sh           2024-07-23T13:54:48Z
+  constrainttemplatepodstatuses.status.gatekeeper.sh   2024-07-23T13:54:48Z
+  constrainttemplates.templates.gatekeeper.sh          2024-07-23T13:54:49Z
+  expansiontemplate.expansion.gatekeeper.sh            2024-07-23T13:54:49Z
+  expansiontemplatepodstatuses.status.gatekeeper.sh    2024-07-23T13:54:49Z
+  modifyset.mutations.gatekeeper.sh                    2024-07-23T13:54:50Z
+  mutatorpodstatuses.status.gatekeeper.sh              2024-07-23T13:54:50Z
+  providers.externaldata.gatekeeper.sh                 2024-07-23T13:54:50Z
+  syncsets.syncset.gatekeeper.sh                       2024-07-23T13:54:50Z
+  #+end_src
 
 - Get and list the ValidatingWebhookConfigurations:
   #+BEGIN_SRC shell
@@ -5191,17 +5664,190 @@ persistentvolume "pv-nginx" deleted
   kubectl describe validatingwebhookconfigurations.admissionregistration.k8s.io gatekeeper-validating-webhook-configuration -n gatekeeper-system
   #+END_SRC
 
+  #+RESULTS:
+  #+begin_src shell
+  NAME                                          WEBHOOKS   AGE
+  gatekeeper-validating-webhook-configuration   2          83s
+  Name:         gatekeeper-validating-webhook-configuration
+  Namespace:    
+  Labels:       gatekeeper.sh/system=yes
+  Annotations:  <none>
+  API Version:  admissionregistration.k8s.io/v1
+  Kind:         ValidatingWebhookConfiguration
+  Metadata:
+    Creation Timestamp:  2024-07-23T13:54:53Z
+    Generation:          2
+    Resource Version:    9498442
+    UID:                 4cd2b027-61cf-4e9b-9ce1-60a23b9578bd
+  Webhooks:
+    Admission Review Versions:
+      v1
+      v1beta1
+    Client Config:
+      Ca Bundle:  LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURNVENDQWhtZ0F3SUJBZ0lCQURBTkJna3Foa2lHOXcwQkFRc0ZBREF0TVJNd0VRWURWUVFLRXdwbllYUmwKYTJWbGNHVnlNUll3RkFZRFZRUURFdzFuWVhSbGEyVmxjR1Z5TFdOaE1CNFhEVEkwTURjeU16RXlOVFExTkZvWApEVE0wTURjeU1URXpOVFExTkZvd0xURVRNQkVHQTFVRUNoTUtaMkYwWld0bFpYQmxjakVXTUJRR0ExVUVBeE1OCloyRjBaV3RsWlhCbGNpMWpZVENDQVNJd0RRWUpLb1pJaHZjTkFRRUJCUUFEZ2dFUEFEQ0NBUW9DZ2dFQkFMUXgKSW5KeTVoWnJOb3FDQ09GRnZtWlBIaWxLUzloWGYzRXhUNVNaV3JRVDRMSmdXTFJyeEpQekFUUGpwWVR3Yi91dApsU09TM0M3aGpSYWxTT2F1bktUSG9WQ0FGZ2E5bnQ2MFZTT2x0eXhLMmVzSGVTTnIyeFFhVC9oY3phTTZUYzdqCm9kSUR2ZWhEN0ROcUl2dmlvUmcvOG1MWVh6TXpWNEt4alpad0pPR3ZWYjY5QThtSXNIdDA3VHBLM3ZsUG5mZ0cKOWVtQmtJc1pvcGR6S0hxSkhibWJFRXErdFlUTDdxZU5XbjNYRVJtMndNNkRuZHNnUFQzRzAvSktlVWI4aG83TgpMYlk4enRHOTlxOHRHbXRaK1ZZRFZWTG5QdFZoWC9qV0UrREwzYTArNWFETDlUNVhjbi8rZzhRQTJub0R6UkI2Ckt6cVZzOEpSWlV4cVl3QzdjQTBDQXdFQUFhTmNNRm93RGdZRFZSMFBBUUgvQkFRREFnS2tNQThHQTFVZEV3RUIKL3dRRk1BTUJBZjh3SFFZRFZSME9CQllFRkZXRkpReHNERFdXVlM2ZndKNnRsbkxocWJLM01CZ0dBMVVkRVFRUgpNQStDRFdkaGRHVnJaV1Z3WlhJdFkyRXdEUVlKS29aSWh2Y05BUUVMQlFBRGdnRUJBQURhQ254eVYvYytESkt3ClFMQWNmTlhkYUttMTc0NDh1dDBaeTNqT21zNzVnZUZwZDkyVG8zRUxoKyt6N2RYcmV5UXdyTlg1QWgyQVJ0OFkKZlZNMU5oTEI0K24wL29CYXc2d0dBdTlNbGEwZXU1d2VuK2g4cGF4Qk9QeCtuc0ZpOURTUmE1QThOT3RSUzYvUgorTzZncDJsWlBxVklXS1dEREZnUDZtN3RwN0lENlFTdGM0dm13dUlUM09vd0tYRytzbGxDbnJnbHVlM1lLZTZSCjlBa3NQQ2kxNlRBeFRlS0FtQkNmTVFPK3JaOEZzSklacDhSazB2Tm42TVROK083QXYwRldtaHNrRE1VcGd4TzUKOG1rbE9aeEs5aFR0ZW1nVU0wbWdpb2hGcUVYbm53Zi9kMVdlUVl5VklmWVMrekNIbzRwUU5xVnA1a3JaZVVpQwozUEdiNktrPQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+      Service:
+        Name:        gatekeeper-webhook-service
+        Namespace:   gatekeeper-system
+        Path:        /v1/admit
+        Port:        443
+    Failure Policy:  Ignore
+    Match Policy:    Exact
+    Name:            validation.gatekeeper.sh
+    Namespace Selector:
+      Match Expressions:
+        Key:       admission.gatekeeper.sh/ignore
+        Operator:  DoesNotExist
+        Key:       kubernetes.io/metadata.name
+        Operator:  NotIn
+        Values:
+          gatekeeper-system
+    Object Selector:
+    Rules:
+      API Groups:
+        ,*
+      API Versions:
+        ,*
+      Operations:
+        CREATE
+        UPDATE
+      Resources:
+        ,*
+        pods/ephemeralcontainers
+        pods/exec
+        pods/log
+        pods/eviction
+        pods/portforward
+        pods/proxy
+        pods/attach
+        pods/binding
+        deployments/scale
+        replicasets/scale
+        statefulsets/scale
+        replicationcontrollers/scale
+        services/proxy
+        nodes/proxy
+        services/status
+      Scope:          *
+    Side Effects:     None
+    Timeout Seconds:  3
+    Admission Review Versions:
+      v1
+      v1beta1
+    Client Config:
+      Ca Bundle:  LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURNVENDQWhtZ0F3SUJBZ0lCQURBTkJna3Foa2lHOXcwQkFRc0ZBREF0TVJNd0VRWURWUVFLRXdwbllYUmwKYTJWbGNHVnlNUll3RkFZRFZRUURFdzFuWVhSbGEyVmxjR1Z5TFdOaE1CNFhEVEkwTURjeU16RXlOVFExTkZvWApEVE0wTURjeU1URXpOVFExTkZvd0xURVRNQkVHQTFVRUNoTUtaMkYwWld0bFpYQmxjakVXTUJRR0ExVUVBeE1OCloyRjBaV3RsWlhCbGNpMWpZVENDQVNJd0RRWUpLb1pJaHZjTkFRRUJCUUFEZ2dFUEFEQ0NBUW9DZ2dFQkFMUXgKSW5KeTVoWnJOb3FDQ09GRnZtWlBIaWxLUzloWGYzRXhUNVNaV3JRVDRMSmdXTFJyeEpQekFUUGpwWVR3Yi91dApsU09TM0M3aGpSYWxTT2F1bktUSG9WQ0FGZ2E5bnQ2MFZTT2x0eXhLMmVzSGVTTnIyeFFhVC9oY3phTTZUYzdqCm9kSUR2ZWhEN0ROcUl2dmlvUmcvOG1MWVh6TXpWNEt4alpad0pPR3ZWYjY5QThtSXNIdDA3VHBLM3ZsUG5mZ0cKOWVtQmtJc1pvcGR6S0hxSkhibWJFRXErdFlUTDdxZU5XbjNYRVJtMndNNkRuZHNnUFQzRzAvSktlVWI4aG83TgpMYlk4enRHOTlxOHRHbXRaK1ZZRFZWTG5QdFZoWC9qV0UrREwzYTArNWFETDlUNVhjbi8rZzhRQTJub0R6UkI2Ckt6cVZzOEpSWlV4cVl3QzdjQTBDQXdFQUFhTmNNRm93RGdZRFZSMFBBUUgvQkFRREFnS2tNQThHQTFVZEV3RUIKL3dRRk1BTUJBZjh3SFFZRFZSME9CQllFRkZXRkpReHNERFdXVlM2ZndKNnRsbkxocWJLM01CZ0dBMVVkRVFRUgpNQStDRFdkaGRHVnJaV1Z3WlhJdFkyRXdEUVlKS29aSWh2Y05BUUVMQlFBRGdnRUJBQURhQ254eVYvYytESkt3ClFMQWNmTlhkYUttMTc0NDh1dDBaeTNqT21zNzVnZUZwZDkyVG8zRUxoKyt6N2RYcmV5UXdyTlg1QWgyQVJ0OFkKZlZNMU5oTEI0K24wL29CYXc2d0dBdTlNbGEwZXU1d2VuK2g4cGF4Qk9QeCtuc0ZpOURTUmE1QThOT3RSUzYvUgorTzZncDJsWlBxVklXS1dEREZnUDZtN3RwN0lENlFTdGM0dm13dUlUM09vd0tYRytzbGxDbnJnbHVlM1lLZTZSCjlBa3NQQ2kxNlRBeFRlS0FtQkNmTVFPK3JaOEZzSklacDhSazB2Tm42TVROK083QXYwRldtaHNrRE1VcGd4TzUKOG1rbE9aeEs5aFR0ZW1nVU0wbWdpb2hGcUVYbm53Zi9kMVdlUVl5VklmWVMrekNIbzRwUU5xVnA1a3JaZVVpQwozUEdiNktrPQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+      Service:
+        Name:        gatekeeper-webhook-service
+        Namespace:   gatekeeper-system
+        Path:        /v1/admitlabel
+        Port:        443
+    Failure Policy:  Fail
+    Match Policy:    Exact
+    Name:            check-ignore-label.gatekeeper.sh
+    Namespace Selector:
+      Match Expressions:
+        Key:       kubernetes.io/metadata.name
+        Operator:  NotIn
+        Values:
+          gatekeeper-system
+    Object Selector:
+    Rules:
+      API Groups:
+
+      API Versions:
+        ,*
+      Operations:
+        CREATE
+        UPDATE
+      Resources:
+        namespaces
+      Scope:          *
+    Side Effects:     None
+    Timeout Seconds:  3
+  Events:             <none>
+  #+end_src
+
 - Get and list the MutatingWebhookConfigurations:
   #+BEGIN_SRC shell
   kubectl get mutatingwebhookconfigurations.admissionregistration.k8s.io -n gatekeeper-system
   kubectl describe mutatingwebhookconfigurations.admissionregistration.k8s.io gatekeeper-mutating-webhook-configuration -n gatekeeper-system
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                                        WEBHOOKS   AGE
+  gatekeeper-mutating-webhook-configuration   1          91s
+  Name:         gatekeeper-mutating-webhook-configuration
+  Namespace:    
+  Labels:       gatekeeper.sh/system=yes
+  Annotations:  <none>
+  API Version:  admissionregistration.k8s.io/v1
+  Kind:         MutatingWebhookConfiguration
+  Metadata:
+    Creation Timestamp:  2024-07-23T13:54:53Z
+    Generation:          2
+    Resource Version:    9498443
+    UID:                 3a8b3b4b-e5b4-4745-bc9a-a08ab1f5b52d
+  Webhooks:
+    Admission Review Versions:
+      v1
+      v1beta1
+    Client Config:
+      Ca Bundle:  LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURNVENDQWhtZ0F3SUJBZ0lCQURBTkJna3Foa2lHOXcwQkFRc0ZBREF0TVJNd0VRWURWUVFLRXdwbllYUmwKYTJWbGNHVnlNUll3RkFZRFZRUURFdzFuWVhSbGEyVmxjR1Z5TFdOaE1CNFhEVEkwTURjeU16RXlOVFExTkZvWApEVE0wTURjeU1URXpOVFExTkZvd0xURVRNQkVHQTFVRUNoTUtaMkYwWld0bFpYQmxjakVXTUJRR0ExVUVBeE1OCloyRjBaV3RsWlhCbGNpMWpZVENDQVNJd0RRWUpLb1pJaHZjTkFRRUJCUUFEZ2dFUEFEQ0NBUW9DZ2dFQkFMUXgKSW5KeTVoWnJOb3FDQ09GRnZtWlBIaWxLUzloWGYzRXhUNVNaV3JRVDRMSmdXTFJyeEpQekFUUGpwWVR3Yi91dApsU09TM0M3aGpSYWxTT2F1bktUSG9WQ0FGZ2E5bnQ2MFZTT2x0eXhLMmVzSGVTTnIyeFFhVC9oY3phTTZUYzdqCm9kSUR2ZWhEN0ROcUl2dmlvUmcvOG1MWVh6TXpWNEt4alpad0pPR3ZWYjY5QThtSXNIdDA3VHBLM3ZsUG5mZ0cKOWVtQmtJc1pvcGR6S0hxSkhibWJFRXErdFlUTDdxZU5XbjNYRVJtMndNNkRuZHNnUFQzRzAvSktlVWI4aG83TgpMYlk4enRHOTlxOHRHbXRaK1ZZRFZWTG5QdFZoWC9qV0UrREwzYTArNWFETDlUNVhjbi8rZzhRQTJub0R6UkI2Ckt6cVZzOEpSWlV4cVl3QzdjQTBDQXdFQUFhTmNNRm93RGdZRFZSMFBBUUgvQkFRREFnS2tNQThHQTFVZEV3RUIKL3dRRk1BTUJBZjh3SFFZRFZSME9CQllFRkZXRkpReHNERFdXVlM2ZndKNnRsbkxocWJLM01CZ0dBMVVkRVFRUgpNQStDRFdkaGRHVnJaV1Z3WlhJdFkyRXdEUVlKS29aSWh2Y05BUUVMQlFBRGdnRUJBQURhQ254eVYvYytESkt3ClFMQWNmTlhkYUttMTc0NDh1dDBaeTNqT21zNzVnZUZwZDkyVG8zRUxoKyt6N2RYcmV5UXdyTlg1QWgyQVJ0OFkKZlZNMU5oTEI0K24wL29CYXc2d0dBdTlNbGEwZXU1d2VuK2g4cGF4Qk9QeCtuc0ZpOURTUmE1QThOT3RSUzYvUgorTzZncDJsWlBxVklXS1dEREZnUDZtN3RwN0lENlFTdGM0dm13dUlUM09vd0tYRytzbGxDbnJnbHVlM1lLZTZSCjlBa3NQQ2kxNlRBeFRlS0FtQkNmTVFPK3JaOEZzSklacDhSazB2Tm42TVROK083QXYwRldtaHNrRE1VcGd4TzUKOG1rbE9aeEs5aFR0ZW1nVU0wbWdpb2hGcUVYbm53Zi9kMVdlUVl5VklmWVMrekNIbzRwUU5xVnA1a3JaZVVpQwozUEdiNktrPQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+      Service:
+        Name:        gatekeeper-webhook-service
+        Namespace:   gatekeeper-system
+        Path:        /v1/mutate
+        Port:        443
+    Failure Policy:  Ignore
+    Match Policy:    Exact
+    Name:            mutation.gatekeeper.sh
+    Namespace Selector:
+      Match Expressions:
+        Key:       admission.gatekeeper.sh/ignore
+        Operator:  DoesNotExist
+        Key:       kubernetes.io/metadata.name
+        Operator:  NotIn
+        Values:
+          gatekeeper-system
+    Object Selector:
+    Reinvocation Policy:  Never
+    Rules:
+      API Groups:
+        ,*
+      API Versions:
+        ,*
+      Operations:
+        CREATE
+        UPDATE
+      Resources:
+        ,*
+      Scope:          *
+    Side Effects:     None
+    Timeout Seconds:  1
+  Events:             <none>
+  #+end_src
   
 - Get and list the PodDisruptionBudgets:
   #+BEGIN_SRC shell
   kubectl get poddisruptionbudgets.policy -n gatekeeper-system
   kubectl describe poddisruptionbudgets.policy gatekeeper-controller-manager -n gatekeeper-system
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                            MIN AVAILABLE   MAX UNAVAILABLE   ALLOWED DISRUPTIONS   AGE
+  gatekeeper-controller-manager   1               N/A               2                     97s
+  Name:           gatekeeper-controller-manager
+  Namespace:      gatekeeper-system
+  Min available:  1
+  Selector:       control-plane=controller-manager,gatekeeper.sh/operation=webhook,gatekeeper.sh/system=yes
+  Status:
+      Allowed disruptions:  2
+      Current:              3
+      Desired:              1
+      Total:                3
+  Events:                   <none>
+  #+end_src
 
 #+BEGIN_QUOTE
 Creating and managing OPA policies is out of scope for this document.
@@ -5211,5 +5857,36 @@ Creating and managing OPA policies is out of scope for this document.
   #+BEGIN_SRC shell
   kubectl delete -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.16.3/deploy/gatekeeper.yaml
   #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  namespace "gatekeeper-system" deleted
+  resourcequota "gatekeeper-critical-pods" deleted
+  customresourcedefinition.apiextensions.k8s.io "assign.mutations.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "assignimage.mutations.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "assignmetadata.mutations.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "configs.config.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "constraintpodstatuses.status.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "constrainttemplatepodstatuses.status.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "constrainttemplates.templates.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "expansiontemplate.expansion.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "expansiontemplatepodstatuses.status.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "modifyset.mutations.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "mutatorpodstatuses.status.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "providers.externaldata.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "syncsets.syncset.gatekeeper.sh" deleted
+  serviceaccount "gatekeeper-admin" deleted
+  role.rbac.authorization.k8s.io "gatekeeper-manager-role" deleted
+  clusterrole.rbac.authorization.k8s.io "gatekeeper-manager-role" deleted
+  rolebinding.rbac.authorization.k8s.io "gatekeeper-manager-rolebinding" deleted
+  clusterrolebinding.rbac.authorization.k8s.io "gatekeeper-manager-rolebinding" deleted
+  secret "gatekeeper-webhook-server-cert" deleted
+  service "gatekeeper-webhook-service" deleted
+  deployment.apps "gatekeeper-audit" deleted
+  deployment.apps "gatekeeper-controller-manager" deleted
+  poddisruptionbudget.policy "gatekeeper-controller-manager" deleted
+  mutatingwebhookconfiguration.admissionregistration.k8s.io "gatekeeper-mutating-webhook-configuration" deleted
+  validatingwebhookconfiguration.admissionregistration.k8s.io "gatekeeper-validating-webhook-configuration" deleted
+  #+end_src
 
 
