@@ -106,17 +106,6 @@ def preprocess_data(__data: list[dict],
     return res, total_features
 
 
-class AuditLoss(losses.Loss):
-    def __init__(self, name="audit_loss", **kwargs):
-        super().__init__(name=name, **kwargs)
-
-    def call(self, y_true, y_pred):
-        loss = 0
-        for i in range(pm.WINDOW_LENGTH):
-            loss += losses.categorical_crossentropy(y_true[:, i], y_pred[:, i])
-        return loss
-
-
 def generate_model(X_shape: int, y_shape: int | tuple) -> models.Model:
     model = models.Sequential([
         layers.Input(shape=(pm.WINDOW_LENGTH, X_shape)),
@@ -136,11 +125,9 @@ def generate_model(X_shape: int, y_shape: int | tuple) -> models.Model:
         keras_metrics.CategoricalAccuracy(name='categorical_accuracy')
     ]
 
-    loss = AuditLoss()
-
     model.compile(
         optimizer=Adam(learning_rate=pm.INITIAL_LEARNING_RATE),
-        loss=loss,
+        loss=losses.CategoricalFocalCrossentropy(),
         metrics=mt
     )
 
@@ -712,8 +699,11 @@ if __name__ == '__main__':
 
     if pm.KERAS_BACKEND == "tensorflow":
         strategy = tf.distribute.MirroredStrategy()
-        log.info(f"Number of devices mirroring: {strategy.num_replicas_in_sync}")
-        with strategy.scope():
+        if strategy.num_replicas_in_sync > 1:
+            with strategy.scope():
+                log.info(f"Number of devices mirroring: {strategy.num_replicas_in_sync}")
+                main(__args)
+        else:
             main(__args)
     else:
         main(__args)
