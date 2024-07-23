@@ -9,7 +9,7 @@ model=$(find . -type d -name $1 | grep -v validation | sort | tail -n 1 | cut -f
 
 cat $model/main.log | egrep 'f1' | while read -r line; do
     f1=$(echo "$line" | sed "s/.*'f1': \([0-9.]*\).*/\1/")
-    jq --argjson f1 "$f1" --argjson i "$idx" '. + [{"mode": "win100focal", "f1": $f1, "i": $i}]' "$json" > tmp.json
+    jq --arg mode "$2" --argjson f1 "$f1" --argjson i "$idx" '. + [{"mode": $mode, "f1": $f1, "i": $i}]' "$json" > tmp.json
     mv tmp.json "$json"
     idx=$((idx+1))
 done
