@@ -12,3 +12,11 @@ class AuditLoss(losses.Loss):
         for i in range(pm.WINDOW_LENGTH):
             loss += losses.categorical_crossentropy(y_true[:, i], y_pred[:, i])
         return loss
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "name": self.name,
+            **self.kwargs
+        })
+        return config
