@@ -666,7 +666,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='model')
-    parser.add_argument('-f', '--file', type=str, help='Path to the files, one or many', nargs='+')
+    parser.add_argument('-f', '--file', type=str, help='Path to the files, one or many', nargs='+', required=True)
     parser.add_argument('-m', '--model', type=str,
                         help='Path to the model file; if provided, will do inference instead of training')
     parser.add_argument('-s', '--stats-mode', nargs='?', const='stats_only', default=None,
