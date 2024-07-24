@@ -616,6 +616,7 @@ def main(args):
                     save_model(result, pm.OUT_FOLDER + f'/attempt_{i}', model_basename=f'model_{i}.keras')
 
         else:
+            log.info("Starting model training.")
             result = model_training(data)
 
             log.info('Model generated.')
@@ -656,8 +657,9 @@ def main(args):
             for line in data:
                 f.write(json.dumps(line) + '\n')
 
-        with open(pm.OUT_FOLDER + '/inference.json', 'w') as f:
-            json.dump(result, f)
+        if not args.stats_mode:
+            with open(pm.OUT_FOLDER + '/inference.json', 'w') as f:
+                json.dump(result, f)
 
         if result['error_statistics']['total'] > 0:
             from model_visualize import plot_error_statistics
@@ -670,7 +672,7 @@ if __name__ == '__main__':
     parser.add_argument('-m', '--model', type=str,
                         help='Path to the model file; if provided, will do inference instead of training')
     parser.add_argument('-s', '--stats-mode', nargs='?', const='stats_only', default=None,
-                        help='Repeat process multiple times for statistics. Use "-s save" to save models.')
+                        help="When used for training, repeats the process multiple times and -s saves models.\nWhen used for inference, blocks the saving of original log lines.")
     parser.add_argument('-y', '--hyperparam-tuning', type=str,
                         help='Use hyperparameter tuning instead of training')
     parser.add_argument('-l', '--log-level', type=str, help='Log level', default='INFO')
