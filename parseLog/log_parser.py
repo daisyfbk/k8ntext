@@ -264,22 +264,7 @@ def label_whitelisted_log_line(whitelisted_lines):
         if patch_proposal is None:
             patch_proposal = LABEL_UNKNOWN
 
-        # Try finding the next non-get/watch log line
-        # within a reasonable 20 lines
-        next_proposal = None
-        next_proposal_info = ""
-        if line["verb"] in ['get', 'watch', 'list']:
-            for i in range(1, min(20, len(whitelisted_lines) - x)):
-                next_line = get_informative_dict(whitelisted_lines[x + i])
-                if 'cplabel' in next_line and next_line['cplabel']:
-                    continue
-                if next_line['verb'] not in ['get', 'watch', 'list']:
-                    next_proposal = label_proposer.propose_label(whitelisted_lines[x + i])
-                    next_proposal_info += f" after {i} lines, "
-                    next_proposal_info += f"{{'verb': '{next_line['verb']}', 'resource': '{next_line['resource']}'}}"
-                    break
-
-        next_watch = None
+        next_watch = LABEL_UNKNOWN
         next_watch_info = ""
         for i in range(1, min(20, len(whitelisted_lines) - x)):
             next_line = get_informative_dict(whitelisted_lines[x + i])
@@ -289,7 +274,7 @@ def label_whitelisted_log_line(whitelisted_lines):
                 next_watch_info += f"{{'verb': '{next_line['verb']}', 'resource': '{next_line['resource']}'}}"
                 break
 
-        next_create = None
+        next_create = LABEL_UNKNOWN
         next_create_info = ""
         for i in range(1, min(20, len(whitelisted_lines) - x)):
             next_line = get_informative_dict(whitelisted_lines[x + i])
@@ -299,7 +284,7 @@ def label_whitelisted_log_line(whitelisted_lines):
                 next_create_info += f"{{'verb': '{next_line['verb']}', 'resource': '{next_line['resource']}'}}"
                 break
 
-        next_patch = None
+        next_patch = LABEL_UNKNOWN
         next_patch_info = ""
         for i in range(1, min(20, len(whitelisted_lines) - x)):
             next_line = get_informative_dict(whitelisted_lines[x + i])
@@ -309,7 +294,7 @@ def label_whitelisted_log_line(whitelisted_lines):
                 next_patch_info += f"{{'verb': '{next_line['verb']}', 'resource': '{next_line['resource']}'}}"
                 break
 
-        next_delete = None
+        next_delete = LABEL_UNKNOWN
         next_delete_info = ""
         for i in range(1, min(20, len(whitelisted_lines) - x)):
             next_line = get_informative_dict(whitelisted_lines[x + i])
@@ -319,7 +304,7 @@ def label_whitelisted_log_line(whitelisted_lines):
                 next_delete_info += f"{{'verb': '{next_line['verb']}', 'resource': '{next_line['resource']}'}}"
                 break
 
-        next_noncp_action = None
+        next_noncp_action = LABEL_UNKNOWN
         next_noncp_action_info = ""
         for i in range(1, min(40, len(whitelisted_lines) - x)):
             if 'cplabel' in whitelisted_lines[x + i] and whitelisted_lines[x + i]['cplabel']:
@@ -360,6 +345,7 @@ def label_whitelisted_log_line(whitelisted_lines):
         print()
 
         print("Progress: ", x + 1, "/", len(whitelisted_lines))
+        print("Last 5 labels: ", [x['label'] for x in whitelisted_lines[x - min(5, x):x]])
         print()
 
         print("Labels: ")
