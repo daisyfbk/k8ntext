@@ -13,12 +13,15 @@ def load_labels():
     __labels = {}
     __available_verbs = {}
     __namespaced_labels = {}
+    __seen_apigroups = set()
+
     with open(LABELS_FILE, 'r') as f:
         reader = csv.reader(f)
         for row in reader:
             if row[0].startswith('#'):
                 continue
             apigroup, version, uri, __id, sub_id, *rest = row
+            __seen_apigroups.add(apigroup)
 
             namespaced, *rest = rest
             if namespaced == 'true':
@@ -40,7 +43,7 @@ def load_labels():
             __available_verbs[(apigroup, version, uri)] = local_available_verbs
             __labels[(apigroup, version, uri)] = (int(__id), int(sub_id))
 
-    return __labels, __available_verbs, __namespaced_labels
+    return __labels, __available_verbs, __namespaced_labels, __seen_apigroups
 
 
 def load_verbs():
@@ -55,8 +58,21 @@ def load_verbs():
     return __verbs
 
 
-labels, available_verbs, namespaced_labels = load_labels()
+labels, available_verbs, namespaced_labels, seen_apigroups = load_labels()
 verbs = load_verbs()
+
+EXTERNAL_CRD = {
+    "apiGroup": "unknown.fbk.eu",
+    "apiVersion": "noversion",
+    "resource": "externalcrd",
+    "no_namespace": (666, 0),
+    "namespaced": (667, 0),
+}
+
+
+def label_is_crd(label: int) -> bool:
+    label_id = (label & 0b1111111111000000000000) >> 12
+    return label_id in (EXTERNAL_CRD["no_namespace"][0], EXTERNAL_CRD["namespaced"][0])
 
 
 def generate_label(verb: str, objectRef: dict) -> int:
@@ -66,6 +82,11 @@ def generate_label(verb: str, objectRef: dict) -> int:
 
     if "subresource" in objectRef and objectRef["subresource"]:
         resource = resource + "/" + objectRef["subresource"]
+
+    if apiGroup not in seen_apigroups:
+        apiGroup = EXTERNAL_CRD["apiGroup"]
+        apiVersion = EXTERNAL_CRD["apiVersion"]
+        resource = EXTERNAL_CRD["resource"]
 
     label = labels[(apiGroup, apiVersion, resource)]
     verb_label = verbs[verb]
@@ -285,7 +306,7 @@ def propose_label(j: dict) -> int:
         # print("Label: ", label)
         # print("Binary: ", format(label, '020b'))
     except KeyError as e:
-        print("KeyError: ", e)
+        # print("KeyError: ", e)
         return LABEL_UNKNOWN
 
     return label
