@@ -5,15 +5,16 @@ import subprocess
 import sys
 
 from common import LABEL_UNKNOWN, exists_subkey
-from label_proposer import propose_label
+from label_proposer import propose_label, label_is_crd
 from log_parser import get_informative_dict
 from support.log import tqdm
 
 parser = argparse.ArgumentParser(description='Label control plane logs')
 parser.add_argument('-f', '--file', type=str, help='Input file', required=True)
-parser.add_argument('-r', '--relabel', action='store_true', help='Re-label all')
+parser.add_argument('-r', '--relabel', type=str, help='Relabel all lines', nargs='?')
 
 args = parser.parse_args()
+relabel = args.relabel is not None
 
 if not os.path.exists(args.file):
     print("Input file does not exist")
@@ -29,7 +30,7 @@ with open(args.file) as f:
     lines = f.readlines()
     for line in tqdm(lines):
         o = json.loads(line)
-        if args.relabel:
+        if relabel:
             unlabelled.append(line)
         else:
             if 'label' in o and o['label'] != LABEL_UNKNOWN:
@@ -57,10 +58,23 @@ with open(temp_file, 'w') as f:
             # if o['requestURI'] in ('/api','/api/v1','/apis'):
             proposal = propose_label(o)
 
+        # generic someone updating/watching leases
+        #elif "system:serviceaccounts" in o['user']['groups'] \
+        #        and o['objectRef']['resource'] == 'storageclasses' \
+        #        and o['verb'] in ('watch',) \
+        #        and ('namespace' not in o['objectRef'] or o['objectRef']['namespace'] is None):
+        #    proposal = propose_label(o)
+        elif "system:serviceaccounts" in o['user']['groups'] \
+                and o['objectRef']['resource'] == 'leases' \
+                and o['verb'] in ('get', 'update', 'patch', 'watch') \
+                and o['objectRef']['namespace'] == 'kube-system':
+            # Service account renewing leases
+            proposal = 119232
+        
         # Kube-Scheduler
         elif o['user']['username'] == 'system:kube-scheduler' \
                 and o['objectRef']['resource'] == 'leases' \
-                and o['verb'] in ('get', 'update', 'patch') \
+                and o['verb'] in ('get', 'update', 'patch', 'watch') \
                 and o['objectRef']['namespace'] == 'kube-system':
             # Scheduler renewing leases
             proposal = 119232
@@ -171,14 +185,29 @@ with open(temp_file, 'w') as f:
             # mapped to token creation for service accounts
             proposal = 17808
 
+        elif "system:serviceaccounts" in o['user']['groups'] \
+                and o['verb'] in ('list', 'watch') \
+                and ('namespace' not in o['objectRef'] or o['objectRef']['namespace'] is None) \
+                and ('name' not in o['objectRef'] or o['objectRef']['name'] is None):
+            proposal = propose_label(o)
+
+        # automatically label all external CRD actions
+        tmp = propose_label(o)
+        if label_is_crd(tmp):
+            proposal = tmp
+
         if 'label' in o and proposal != o['label']:
             if proposal == LABEL_UNKNOWN:
                 f.write(json.dumps(o, separators=(',', ':')) + '\n')
                 continue
             print("\nOverwriting existing label. ", o['label'], " -> ", proposal)
             print(get_informative_dict(o))
-            print("Proceed? (y/n) ", end='')
-            user_response = input().lower()
+            if args.relabel is not None and args.relabel.lower() == 'force':            
+                print("Forcing relabel.")
+                user_response = 'y'
+            else:
+                print("Proceed? (y/n) ", end='')
+                user_response = input().lower()
             if user_response != 'y':
                 proposal = o['label']
 
