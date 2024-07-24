@@ -1,4 +1,5 @@
 import datetime
+from label_proposer import load_verbs
 
 
 def parse_user_agent(user_agent: str) -> dict:
@@ -10,8 +11,11 @@ def parse_user_agent(user_agent: str) -> dict:
     elif len(splits) == 2:
         tool, platform = splits
         meta = None
-    else:
+    elif len(splits) == 3:
         tool, platform, meta = splits
+    else:
+        tool, platform, *_ = splits
+        meta = None
 
     tool, version = tool.split('/', 1)
 
@@ -53,7 +57,7 @@ FEATURES = [
     'user.groups[0]',
     'user.groups[1]',
     'user.groups[2]',
-    'user.username',
+    # 'user.username',
     'userAgent.extra',
     'userAgent.tool',
     'verb',
@@ -102,11 +106,14 @@ FEATURES = [
     # "user.extra.authentication.kubernetes.io/pod-uid[0]",
 ]
 
+___global_verb_map = load_verbs()
+
 FEATURE_PREPROCESSING = {
     # "requestReceivedTimestamp": lambda x: int(datetime.datetime.fromisoformat(x[:-1]).timestamp()),
     "stageTimestamp": lambda x: int(datetime.datetime.fromisoformat(x[:-1]).timestamp()),
     "userAgent": lambda x: parse_user_agent(x),
-    # "objectRef.namespace": lambda x: 1 if x is not None and x != '' else 0,
-    # "responseObject.metadata.namespace": lambda x: 1 if x is not None and x != '' else 0,
-    # "responseObject.involvedObject.namespace": lambda x: 1 if x is not None and x != '' else 0,
+    "verb": lambda x: ___global_verb_map[x],
+    "objectRef.namespace": lambda x: 1 if x is not None and x != '' else 0,
+    "responseObject.metadata.namespace": lambda x: 1 if x is not None and x != '' else 0,
+    "responseObject.involvedObject.namespace": lambda x: 1 if x is not None and x != '' else 0,
 }
