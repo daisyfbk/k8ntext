@@ -16,7 +16,6 @@ def exists_subkey(__object, *keys):
 
     return exists
 
-
 def flatten_object(_object: dict) -> dict:
     keys = _object.keys()
     queue = []

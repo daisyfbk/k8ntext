@@ -5,6 +5,7 @@ import logging as log
 import os
 from concurrent.futures import ProcessPoolExecutor
 from typing import Any
+import collections
 
 import joblib
 import numpy as np
@@ -25,68 +26,88 @@ from model_tuner import tuner_search
 from support.log import initialize_log, activate_stdout_logging, silence_stdout_logging, tqdm
 
 
+def dump_features_statistics(flattened_data: list[dict[any, dict]]) -> dict:
+    # Generate the feature list
+    mapped_data: dict[any, set] = {}
+    for d in flattened_data:
+        for k in d:    
+            if k not in mapped_data:
+                mapped_data[k] = set()
+            mapped_data[k].add(d[k])
+    with open(pm.OUT_FOLDER + '/features.json', 'w') as f:
+        json.dump({k: list(v) for k, v in mapped_data.items()}, f, indent=4)
+
+
+    # Group by feature in mapped_data
+    stats = {}
+    for k in mapped_data.keys():
+        try:
+            stats[k] = {
+                "feature": k,
+                "top20": collections.Counter(mapped_data[k]).most_common(10),
+                "count": len(mapped_data[k])
+            }
+        except TypeError:
+            stats[k] = {
+                "top20": None
+            }
+    with open(pm.OUT_FOLDER + '/features_stats.json', 'w') as f:
+        json.dump(sorted([stats[i] for i in stats], key=lambda x: x["count"])
+            , f, indent=2)
+        
+    return stats 
+
+
 def preprocess_data(__data: list[dict],
-                    features: list[str] = None) -> tuple[list[dict], list[str]]:
+                    features: list[str] | None = None) -> tuple[list[dict], list[str]]:
     # Sort by requestReceivedTimestamp
     __data.sort(key=lambda x: x['requestReceivedTimestamp'])
 
     # from random import shuffle
     # shuffle(__data)
 
-    # Flatten the features
-    flattened_data = []
-    for d in __data:
-        flattened_data.append(flatten_object(d))
-
-    # Perform feature preprocessing if necessary
-    for d in flattened_data:
-        for f, p in model_features.FEATURE_PREPROCESSING.items():
-            if f in d:
-                d[f] = p(d[f])
-
-    # Extract features
-    extracted_data = []
-    for d in flattened_data:
-        o = {}
-        for f in model_features.FEATURES:
-            try:
-                o[f] = d[f]
-            except KeyError:
-                o[f] = None
-
-        if pm.LABEL_FEATURE in d:
-            o["label"] = d[pm.LABEL_FEATURE]
-        extracted_data.append(o)
-
-    # Add missing features and remove excluded features
     if features is None:
+        # Use all features provided as default
         total_features = model_features.FEATURES
     else:
         # Use the provided feature list
         total_features = features
 
+    # Flatten the features
+    flattened_data_init = []
+    for d in __data:
+        flattened_data_init.append(flatten_object(d))
+
+    # Perform feature preprocessing if necessary
+    for d in flattened_data_init:
+        for f, p in model_features.FEATURE_PREPROCESSING.items():
+            if f in d:
+                d[f] = p(d[f])
+
+    flattened_data = []
+    for d in flattened_data_init:
+        flattened_data.append(flatten_object(d))
+    del flattened_data_init
+
     total_features.sort()
 
-    # Generate the feature list
-    #            if k not in mapped_data:
-    #                mapped_data[k] = []
-    #            mapped_data[k].append(d[k])
-    #    with open(pm.OUT_FOLDER + '/features.json', 'w') as f:
-    #        json.dump(mapped_data, f)
-    #    # Group by feature in mapped_data
-    #    stats = {}
-    #    for k in mapped_data.keys():
-    #        try:
-    #            stats[k] = {
-    #                "top20": collections.Counter(mapped_data[k]).most_common(10)
-    #            }
-    #        except TypeError:
-    #            stats[k] = {
-    #                "top20": None
-    #            }
-    #    with open(pm.OUT_FOLDER + '/features_stats.json', 'w') as f:
-    #        json.dump(stats, f, indent=2)
-    #    exit(1)
+    # Extract features
+    extracted_data = []
+    for d in flattened_data:
+        o = {}
+        for f in total_features:
+            if f not in d:
+                o[f] = None
+                continue
+            try:
+                o[f] = d[f]
+            except Exception:
+                log.exception(f"Failed to handle {f}")
+                o[f] = None
+
+        if pm.LABEL_FEATURE in d:
+            o["label"] = d[pm.LABEL_FEATURE]
+        extracted_data.append(o)
 
     # Remove excluded features
     res = []
