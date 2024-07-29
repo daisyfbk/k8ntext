@@ -556,10 +556,10 @@ def model_inference(model: models.Model,
     # log.info(f"Error statistics: {error_statistics}")
 
     return {
-        "predicted_sequence": [int(x) for x in predicted_sequence],
-        "original_sequence": [d[pm.LABEL_FEATURE] if pm.LABEL_FEATURE in d else None for d in data],
         "accuracy": ok / cpcount,
         "error_statistics": error_statistics,
+        "predicted_sequence": [int(x) for x in predicted_sequence],
+        "original_sequence": [d[pm.LABEL_FEATURE] if pm.LABEL_FEATURE in d else None for d in data],
         "sequence_weights": sequence_weights
     }
 
