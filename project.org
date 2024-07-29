@@ -123,7 +123,7 @@ graph that can be used to understand the relationships between the events.
 - [X] A model that efficiently parses category 2 logs
 - [X] Results of the model and hyperparameter study
 - [X] First prototype of the visualizer
-*** TODO Weeks 11-12 (July 17 - July 30)
+*** DONE Weeks 11-12 (July 17 - July 30)
 - (V) Focus on: improving the visualizer 
   - The visualizer should provide a way to easily
     understand the interactions, possibly
@@ -135,11 +135,11 @@ graph that can be used to understand the relationships between the events.
 - Start making /use cases/ to understand how the system
   could be used and what features users would like to see
 **** Results
-- [ ] A model that efficiently parses category 3 and 4 logs
-- [ ] Further graphs and reports on the model capabilities,
+- [X] A model that efficiently parses category 3 and 4 logs
+- [X] Further graphs and reports on the model capabilities,
       accuracy, and efficiency
-- [ ] An improved version of the visualizer
-*** WAIT Weeks 12-16 (July 30 - August 26)
+- [X] An improved version of the visualizer
+*** SCHE Weeks 12-16 (July 30 - August 26)
 - Further work on motivation and use cases
   - Need to convince both companies and academia that
     the system is useful and can be used in a real-world
@@ -153,10 +153,8 @@ graph that can be used to understand the relationships between the events.
     made strongly justified and documented
   - The visualizer should be able to show all the events
     in a meaningful way
-    - Strong focus on the temporal dimension
-      - Assume an incident happened at time X, what happened
-        in timespan $[X - 1h, X + 1h]$?
-      - Is it possible to "replay" the events that led to the incident?
+    - Focus on filtering, understanding at high level
+    - Focus on viewing over large time periods too
 - Did we meet the list of milestones we set up?
   - Yes :: Perfect, we can move on to the next phase
   - No :: Take a time machine and go back to the previous

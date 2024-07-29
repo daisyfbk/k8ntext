@@ -7,6 +7,22 @@
 #+SETUPFILE: latex.setup
 
 * AIs
+** TODO Address complaints found in last meeting
+- CRDs as they are risk inflating our numbers since they are a sink
+  that could increase our accuracy. This needs to be properly justified
+  in the paper.
+- Graphs must be able to
+  - be seen by colorblind people
+  - zoomed in, out and able to be understandable from large times (heatmaps?)
+  - filtered and moved before being generated
+- Our research is not opportunistic: we take all the logs and ingest them
+  without any meaningful intelligence. What if we could use natural language
+  to express what we want to see and then automatically reconfigure auditing
+  to do so?
+- User Stories are urgent. As a product, I need users to be able to understand
+  at a glance what is happening in the cluster and act accordingly.
+- Research wise, I need to focus on what my research is enabling users to
+  do something new, that was not able to do before
 ** DONE SoA research on log clustering, graph representation, and mapping
 *** DONE Inspect SoA for what other people did in the field
 - We did some SoA research to understand if other works performed
@@ -54,18 +70,17 @@ be labeled depending on the behavior.
 *** DONE Take notes of weird behaviours
 Have a look at [[#behaviour-analysis][behaviour analysis]] for a detailed list of
 weird behaviours that we have found in the logs.
-*** SCHE Collect datasets
+*** WAIT Collect datasets
 **** DONE Category 1
 - Very basic API objects, e.g. namespaces, pods
 **** DONE Category 2
 - Deployments and similar
-**** SCHE Category 3
-DEADLINE: <2024-07-17>
-**** TODO Category 4
-DEADLINE: <2024-07-23>
-- Storage
-**** TODO Category 5+
-- CRDs, Webhooks, remaining things
+**** DONE Category 3
+- Networking
+**** DONE Category 4
+- Storage, CRDs
+**** WAIT Category 5+
+- All remaining things
 ** SCHE Implementation of an ML model for learning behaviours
 *** DONE Label definition
 To ease in the labeling and recognition of the data, we have
@@ -144,6 +159,11 @@ The data is then ready to be used for training a model.
   - P.S. all these metrics have been calculated with the
     worst possible odds in our favour, e.g., precision and
     recall with macro averaging.
+**** DONE Bi-LSTM
+- To further improve model capabilities, I switched to a double
+  Bi-LSTM model. The rest of the architecture was left more
+  or less the same, although some Dropout and Batch Regularization
+  layers were added.
 *** SCHE Improve the model
 - Work has been done on adapting the model to the new Cat2 data
 - Exploratory research on WINDOW_SIZE (40 -> 60), training splits,
@@ -154,6 +174,8 @@ The data is then ready to be used for training a model.
   to a tensor.
 - Further work is needed with refining features and encodings. A
   Keras Tuner was used to help with this.
+- Final optimization work is focused on reducing as much as possible
+  the errors and finding a suitable metric to replace the F1 score.
 ** SCHE Implement the final visualizer
 - The visualizer takes the output of the model and aggregates
   actions depending on the label, user, namespace, and so on.
@@ -182,6 +204,7 @@ behind the project. This section is WIP.
 :PROPERTIES:
 :CUSTOM_ID: motivation
 :END:
+** Previous notes
 - Signature-based detection is not enough. To demonstrate so, we can
   use the example of Falco. Glossing over the nightmare that is
   installing it, Falco comes with a pre-set of rules that are fairly basic.
