@@ -529,7 +529,7 @@ def model_inference(model: models.Model,
                         r = "had it in the options"
                         error_statistics["errors"]["predicted many, in it"].append(i)
                         error_statistics["indecisions"][i] = (original, predicted, sequence_weight_local)
-                        log.info(
+                        log.debug(
                             f"Indecision in sequence {i}: predicted {[predicted]}, original {original}, seq {sequence_weight_local}")
                     else:
                         r = "missed it"
