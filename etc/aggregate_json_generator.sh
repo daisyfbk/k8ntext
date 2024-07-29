@@ -7,9 +7,14 @@ jq -n '[]' > "$json"
 
 model=$(find . -type d -name $1 | grep -v validation | sort | tail -n 1 | cut -f 2 -d '/')
 
-cat $model/main.log | egrep 'f1' | while read -r line; do
-    f1=$(echo "$line" | sed "s/.*'f1': \([0-9.]*\).*/\1/")
-    jq --arg mode "$2" --argjson f1 "$f1" --argjson i "$idx" '. + [{"mode": $mode, "f1": $f1, "i": $i}]' "$json" > tmp.json
+
+# cat $model/main.log | egrep 'f1' | while read -r line; do
+#    f1=$(echo "$line" | sed "s/.*'f1': \([0-9.]*\).*/\1/")
+
+# cat loss.json | jq '.[1].val_loss'
+cat $model/loss.json | jq -c '.[].val_loss[-1]' | while read -r line; do
+    loss=$(echo "$line")
+    jq --arg mode "$2" --argjson loss "$loss" --argjson i "$idx" '. + [{"mode": $mode, "loss": $loss, "i": $i}]' "$json" > tmp.json
     mv tmp.json "$json"
     idx=$((idx+1))
 done
@@ -22,3 +27,6 @@ for i in $model-validation/*; do
     jq --argjson error_statistics "$error_statistics" --argjson attempt "$attempt" '.[$attempt].error_statistics = $error_statistics' "$json" > tmp.json
     mv tmp.json "$json"
 done
+
+name=$(echo $1 | sed -E 's/(\*|\/|\-)//g')
+mv "$json" "results-$name.json"
