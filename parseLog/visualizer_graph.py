@@ -4,6 +4,7 @@ import re
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import matplotlib.dates as mdates
 import numpy as np
 import networkx as nx
 
@@ -192,6 +193,8 @@ class AuditGraph:
                          box.width, box.height * 0.93])
         plt.legend(handles=handles, loc='upper center', bbox_to_anchor=(0.5, -0.05),
                    fancybox=True, shadow=True, ncol=4)
+
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
 
         # Remove some spines
         ax.spines[["top", "right"]].set_visible(False)
