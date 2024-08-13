@@ -257,7 +257,11 @@ class Node:
         if len(self.attributes) == 1:
             return self.attributes.get('username').split(":")[-1]
         else:
-            return re.sub("/", "/\n", get_resources_string(self.attributes))
+            rs = get_resources_string(self.attributes)
+            if rs.startswith('events'):
+                rs = re.sub("\.[0-9a-f]+$", "", rs)
+            l = re.sub("/", "/\n", rs)
+            return l
 
     def __hash__(self):
         encoded = json.dumps(self.attributes, sort_keys=True)
