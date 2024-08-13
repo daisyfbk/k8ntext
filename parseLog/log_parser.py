@@ -175,6 +175,7 @@ def get_informative_dict(json_data):
     objectref_name = json_data.get('objectRef').get('name')
     objectref_namespace = json_data.get('objectRef').get('namespace')
     request_received_timestamp = json_data.get('requestReceivedTimestamp')
+    stage_timestamp = json_data.get('stageTimestamp')
 
     res = {
         'username': user_username,
@@ -185,6 +186,7 @@ def get_informative_dict(json_data):
         'name': objectref_name,
         'requestURI': request_uri,
         'requestReceivedTimestamp': request_received_timestamp,
+        'stageTimestamp': stage_timestamp
     }
 
     # ownerReference
@@ -197,6 +199,10 @@ def get_informative_dict(json_data):
         if 'uid' in involved_object:
             del involved_object['uid']
         res['involvedObject'] = involved_object
+
+    if exists_subkey(json_data, 'responseObject', 'spec', 'claimRef'):
+        claim_ref = json_data.get('responseObject').get('spec').get('claimRef')
+        res['claimRef'] = claim_ref
 
     if exists_subkey(json_data, 'responseObject', 'reason'):
         reason = json_data.get('responseObject').get('reason')
