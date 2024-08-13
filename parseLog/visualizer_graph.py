@@ -204,7 +204,7 @@ class AuditGraph:
 
             for user_action in self.users_actions.get(user):
                 # populate arrays for create points
-                timestamp = self.actions_dict.get(user_action).get('requestReceivedTimestamp')
+                timestamp = self.actions_dict.get(user_action).get('stageTimestamp')
                 date_timestamp = datetime.datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%fZ")
                 x.append(date_timestamp)
                 y.append(users_count)
