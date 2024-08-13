@@ -63,7 +63,7 @@ class AuditGraph:
         if event.inaxes == ax:
             cont, ind = sc.contains(event)
             if cont:
-                plt.figure(figsize=(12, 6))
+                fig2, ax2 = plt.subplots(figsize=(12, 6))
 
                 action = self.actions_dict.get(actions[ind["ind"][0]])
 
@@ -105,15 +105,49 @@ class AuditGraph:
                 node_color_map = {'user': '#EE3377', 'resource': '#33BBEE'}
 
                 # Generate plot
-                nx.draw(G, pos, labels=nodes_labels, node_size=400, font_size=10, width=2, edge_color='#BBBBBB',
+                nx.draw(G, pos, labels=nodes_labels, node_size=400, font_size=10, width=2, edge_color='#dddddd',
                         node_color=[node_color_map[node[1]['type']] for node in G.nodes(data=True)],
                         connectionstyle=[f"arc3,rad={0.3 * e[2]}" for e in G.edges(keys=True)])
 
-                nx.draw_networkx_edge_labels(G, pos,
-                                             edge_labels=nx.get_edge_attributes(G, 'label'),
-                                             connectionstyle=[f"arc3,rad={0.3 * e[2]}" for e in G.edges(keys=True)])
-
                 plt.axis('off')
+
+                def hover_inner_graph(event, __ax):
+                    if event.inaxes == __ax:
+                        for node in G.nodes():
+                            if is_mouse_over_node(event, node):
+                                show_edges(node, __ax)
+                                return
+                        clear_edges(__ax)
+
+                def is_mouse_over_node(event, node):
+                    x, y = pos[node]
+                    return (event.xdata - x) ** 2 + (event.ydata - y) ** 2 < 0.01
+
+                def show_edges(node, __ax):
+                    __ax.clear()
+                    nx.draw(G, pos, labels=nodes_labels, node_size=400, font_size=10, width=2, edge_color='#dddddd',
+                        node_color=[node_color_map[node[1]['type']] for node in G.nodes(data=True)],
+                        connectionstyle=[f"arc3,rad={0.3 * e[2]}" for e in G.edges(keys=True)], ax=__ax)
+   
+                    # Get edges for both outgoing and incoming edges
+                    edges = [e for e in G.edges(keys=True) if e[0] == node or e[1] == node]
+                    nx.draw_networkx_edges(G, pos, edgelist=edges, edge_color='black', ax=__ax,
+                        connectionstyle=[f"arc3,rad={0.3 * e[2]}" for e in edges])
+                    # Get edge labels for both outgoing and incoming edges
+                    edge_labels = {(e[0], e[1], e[2]): G[e[0]][e[1]][e[2]]['label'] for e in edges}
+                    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, ax=__ax,
+                        connectionstyle=[f"arc3,rad={0.3 * e[2]}" for e in edges])
+                    
+                    plt.draw()
+
+                def clear_edges(__ax):
+                    __ax.clear()
+                    nx.draw(G, pos, labels=nodes_labels, node_size=400, font_size=10, width=2, edge_color='#dddddd',
+                        node_color=[node_color_map[node[1]['type']] for node in G.nodes(data=True)],
+                        connectionstyle=[f"arc3,rad={0.3 * e[2]}" for e in G.edges(keys=True)])
+                    plt.draw()
+
+                fig2.canvas.mpl_connect('motion_notify_event', lambda event: hover_inner_graph(event, ax2))
 
                 # Show plot
                 plt.show(block=False)
