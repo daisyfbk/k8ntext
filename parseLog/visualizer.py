@@ -167,6 +167,24 @@ def get_associate_action_uuid(candidate_actions, log_line):
             if log_line.get('namespace') == action_val.get('name'):
                 return action_val.get(UUID)
 
+    if log_line.get('resource') == 'persistentvolumeclaims' and \
+            log_line.get('decoded_label').get('uri') == "statefulsets":
+        # try to match the name of the statefulset with the name of the pvc
+        pvc_prefix, ss, *_ = log_line.get('name').split("-")
+        for key, action_val in candidate_actions.items():
+            if action_val.get('name') == ss and \
+                    action_val.get('resource') == 'statefulsets':
+                return action_val.get(UUID)
+
+    if log_line.get('resource') == 'persistentvolumes' and \
+            log_line.get('decoded_label').get('uri') == "statefulsets":
+        pvc = log_line.get('claimRef').get('name')
+        pvc_prefix, ss, *_ = pvc.split("-")
+        for key, action_val in candidate_actions.items():
+            if action_val.get('name') == ss and \
+                    action_val.get('resource') == 'statefulsets':
+                return action_val.get(UUID)
+
     return "1010"
 
 
