@@ -186,7 +186,8 @@ def assign_uuid_to_lines(actions_dict, dict_divided_by_label):
             log_line[UUID] = uuid_value
 
 
-def main():
+
+def main(args):
     actions_dict, dict_divided_by_label = get_actions_and_labels_dicts()
 
     # print_actions_dict_to_csv(actions_dict)
@@ -194,12 +195,13 @@ def main():
     assign_uuid_to_lines(actions_dict, dict_divided_by_label)
 
     # visualize log without uuid
-    # for key, values in dict_divided_by_label.items():
-    #     for value2 in values:
-    #         uuid_value = value2.get(UUID)
-    #         value2.pop('UUID', None)
-    #         if uuid_value == '1010':
-    #             print(colored(str(key) + str(value2), 'light_yellow', 'on_magenta'))
+    if args.dump:
+        for key, values in dict_divided_by_label.items():
+            for value2 in values:
+                uuid_value = value2.get(UUID)
+                value2.get('UUID', None)
+                if uuid_value == '1010':
+                    print(colored(str(key) + str(value2), 'light_yellow', 'on_magenta'))
 
     audit_graph = AuditGraph(actions_dict, dict_divided_by_label)
     audit_graph.plot_graph()
@@ -211,9 +213,10 @@ if __name__ == "__main__":
         description='This program visualizes labelled logs.')
 
     parser.add_argument('-f', required=True, help='The log input file')
+    parser.add_argument('-d', '--dump', action='store_true', help='Dump the unclassified logs to the terminal', default=False)
     parsed_args = parser.parse_args()
 
-    input_filename = parsed_args.f;
+    input_filename = parsed_args.f
     print(input_filename)
 
-    main()
+    main(parsed_args)
