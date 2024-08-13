@@ -8,6 +8,7 @@ ssh/cluster-setup
 .direnv
 out/
 debug.py
+models
 
 ## Core latex/pdflatex auxiliary files:
 
