@@ -10,7 +10,7 @@ import collections
 import joblib
 import numpy as np
 import sklearn.preprocessing as preprocessing
-from keras import callbacks, losses, metrics as keras_metrics, models, layers
+from keras import callbacks, losses, metrics as keras_metrics, models, layers, regularizers
 from keras.api.optimizers import Adam
 from keras.api.utils import to_categorical
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
@@ -129,9 +129,11 @@ def preprocess_data(__data: list[dict],
 def generate_model(X_shape: int, y_shape: int | tuple) -> models.Model:
     model = models.Sequential([
         layers.Input(shape=(pm.WINDOW_LENGTH, X_shape)),
-        layers.Bidirectional(layers.LSTM(X_shape * 4, return_sequences=True, name='lstm_1'), name='bidirectional_1'),
+        layers.Bidirectional(layers.LSTM(X_shape * 2, return_sequences=True, name='lstm_1',
+                                         kernel_regularizer=regularizers.l2(0.01)), name='bidirectional_1'),
         layers.BatchNormalization(name='batch_norm_1'),
-        layers.Bidirectional(layers.LSTM(X_shape * 3, return_sequences=True, name='lstm_2'), name='bidirectional_2'),
+        layers.Bidirectional(layers.LSTM(X_shape * 2, return_sequences=True, name='lstm_2',
+                                         kernel_regularizer=regularizers.l2(0.01)), name='bidirectional_2'),
         layers.Dropout(0.4, name='dropout_1'),
         layers.TimeDistributed(layers.Dense(y_shape[0] * y_shape[1], activation='relu', name='dense'),
                                name='time_distributed'),
@@ -143,7 +145,10 @@ def generate_model(X_shape: int, y_shape: int | tuple) -> models.Model:
     mt = [
         keras_metrics.Precision(name='precision'),
         keras_metrics.Recall(name='recall'),
-        keras_metrics.CategoricalAccuracy(name='categorical_accuracy')
+        keras_metrics.CategoricalAccuracy(name='categorical_accuracy'),
+        # keras_metrics.FalseNegatives(),
+        # keras_metrics.FalsePositives(),
+        # keras_metrics.MeanAbsoluteError(),
     ]
 
     model.compile(

@@ -23,6 +23,10 @@ def plot_loss(losses: list) -> None:
             if key[-2] == "_":
                 loss[key[:-2]] = loss.pop(key)
 
+    if any('val_loss' not in loss for loss in losses):
+        log.error('No validation loss found, skipping plotting losses')
+        return
+    
     max_length = max(max(len(loss['loss']), len(loss['val_loss'])) for loss in losses)
 
     all_losses = []
@@ -132,6 +136,7 @@ def plot_loss(losses: list) -> None:
     plt.title('Average Model Metrics with Standard Deviation')
     plt.xlabel('Epoch')
     plt.ylabel('Value')
+    plt.ylim(0.9, 1.0001)
     plt.yscale('log')
     plt.legend()
     plt.savefig(pm.OUT_FOLDER + '/metrics.png')
