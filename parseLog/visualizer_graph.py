@@ -56,7 +56,7 @@ class AuditGraph:
             "deletecollection": "#CC79A7",
             "get": "#F0E442",
             "list": "#E69F00",
-            "watch": "#000000"
+            "watch": "#333333"
         }
 
     def on_click(self, event, ax, sc, actions):
