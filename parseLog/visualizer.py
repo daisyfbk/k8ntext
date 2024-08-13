@@ -34,7 +34,7 @@ def get_actions_and_labels_dicts():
 
             label = json_data.get('label')
 
-            if not json_data.get('cplabel') and label != -1:
+            if label != -1:
                 informative_dict = get_informative_dict(json_data)
                 informative_dict.pop('requestURI', None)
                 informative_dict.pop('requestReceivedTimestamp', None)
@@ -48,6 +48,8 @@ def get_actions_and_labels_dicts():
 
                 # the following code is used to extract the individual actions performed
                 decoded = decode_label(label)
+                informative_dict['decoded_label'] = decoded
+                informative_dict['label'] = label
                 decoded_resource, decoded_subresource, *_ = decoded.get('uri').split("/") + [None]  # trick to get None if the subresource is not present
                 decoded_verb = decoded.get('verb')
 
