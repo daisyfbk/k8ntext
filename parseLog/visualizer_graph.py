@@ -48,6 +48,14 @@ class AuditGraph:
                     self.dict_divided_by_uuid[uuid] = []
                 self.dict_divided_by_uuid.get(uuid).append(log_line)
 
+        # To create dict_divided_by_uuid dictionary we iterate dict_divided_by_label dictionary. If no log line has
+        # been assigned to an action, the id of that action will not be present. This causes visualization problem.
+        # Thus, add actions missing uuid.
+        for log_line in self.actions_dict.values():
+            uuid = log_line.get('UUID')
+            if uuid not in self.dict_divided_by_uuid:
+                self.dict_divided_by_uuid[uuid] = [log_line]
+
         self.verbs_color = {
             "create": "#009E73",
             "patch": "#56B4E9",
