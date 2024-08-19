@@ -58,6 +58,17 @@ with open(temp_file, 'w') as f:
             # if o['requestURI'] in ('/api','/api/v1','/apis'):
             proposal = propose_label(o)
 
+        if 'groups' not in o['user']:
+            o['user']['groups'] = []
+        if 'username' not in o['user']:
+            o['user']['username'] = None
+        if 'resource' not in o['objectRef']:
+            o['objectRef']['resource'] = None
+        if 'subresource' not in o['objectRef']:
+            o['objectRef']['subresource'] = None
+        if 'namespace' not in o['objectRef']:
+            o['objectRef']['namespace'] = None
+
         # generic someone updating/watching leases
         #elif "system:serviceaccounts" in o['user']['groups'] \
         #        and o['objectRef']['resource'] == 'storageclasses' \
