@@ -47,6 +47,20 @@ def parse_user_agent(user_agent: str) -> dict:
     }
 
 
+def parse_user_agent_wrapper(user_agent: str) -> dict:
+    try:
+        return parse_user_agent(user_agent)
+    except Exception :
+        return {
+            "tool": None,
+            "version": None,
+            "platform": None,
+            "arch": None,
+            "h": None,
+            "extra": None
+        }
+
+
 FEATURES = [
     'objectRef',
     'objectRef.apiGroup',
@@ -118,7 +132,7 @@ ___global_verb_map = load_verbs()
 FEATURE_PREPROCESSING = {
     # "requestReceivedTimestamp": lambda x: int(datetime.datetime.fromisoformat(x[:-1]).timestamp()),
     "stageTimestamp": lambda x: int(datetime.datetime.fromisoformat(x[:-1]).timestamp()),
-    "userAgent": lambda x: parse_user_agent(x),
+    "userAgent": lambda x: parse_user_agent_wrapper(x),
     "verb": lambda x: ___global_verb_map[x],
     "objectRef.namespace": lambda x: 1 if x is not None and x != '' else 0,
     "responseObject.metadata.namespace": lambda x: 1 if x is not None and x != '' else 0,
