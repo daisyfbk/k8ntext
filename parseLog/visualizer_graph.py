@@ -48,6 +48,14 @@ class AuditGraph:
                     self.dict_divided_by_uuid[uuid] = []
                 self.dict_divided_by_uuid.get(uuid).append(log_line)
 
+        # To create dict_divided_by_uuid dictionary we iterate dict_divided_by_label dictionary. If no log line has
+        # been assigned to an action, the id of that action will not be present. This causes visualization problem.
+        # Thus, add actions missing uuid.
+        for log_line in self.actions_dict.values():
+            uuid = log_line.get('UUID')
+            if uuid not in self.dict_divided_by_uuid:
+                self.dict_divided_by_uuid[uuid] = [log_line]
+
         self.verbs_color = {
             "create": "#009E73",
             "patch": "#56B4E9",
@@ -56,14 +64,14 @@ class AuditGraph:
             "deletecollection": "#CC79A7",
             "get": "#F0E442",
             "list": "#E69F00",
-            "watch": "#000000"
+            "watch": "#333333"
         }
 
     def on_click(self, event, ax, sc, actions):
         if event.inaxes == ax:
             cont, ind = sc.contains(event)
             if cont:
-                plt.figure(figsize=(12, 6))
+                fig2, ax2 = plt.subplots(figsize=(12, 6))
 
                 action = self.actions_dict.get(actions[ind["ind"][0]])
 
@@ -105,15 +113,52 @@ class AuditGraph:
                 node_color_map = {'user': '#EE3377', 'resource': '#33BBEE'}
 
                 # Generate plot
-                nx.draw(G, pos, labels=nodes_labels, node_size=400, font_size=10, width=2, edge_color='#BBBBBB',
+                nx.draw(G, pos, labels=nodes_labels, node_size=400, font_size=10, width=2, edge_color='#dddddd',
                         node_color=[node_color_map[node[1]['type']] for node in G.nodes(data=True)],
                         connectionstyle=[f"arc3,rad={0.3 * e[2]}" for e in G.edges(keys=True)])
 
-                nx.draw_networkx_edge_labels(G, pos,
-                                             edge_labels=nx.get_edge_attributes(G, 'label'),
-                                             connectionstyle=[f"arc3,rad={0.3 * e[2]}" for e in G.edges(keys=True)])
-
                 plt.axis('off')
+                hovered_edges_to_remove = False
+
+                def hover_inner_graph(event2):
+                    nonlocal hovered_edges_to_remove
+
+                    if event2.inaxes == ax2:
+                        for node in G.nodes():
+                            if is_mouse_over_node(event2, node):
+                                add_labelled_edges(node)
+                                hovered_edges_to_remove = True
+                                return
+                        if hovered_edges_to_remove:
+                            remove_labelled_edges()
+
+                def is_mouse_over_node(event2, node):
+                    x, y = pos[node]
+                    return (event2.xdata - x) ** 2 + (event2.ydata - y) ** 2 < 0.01
+
+                def add_labelled_edges(node):
+                    # Get edges for both outgoing and incoming edges
+                    edges = [e for e in G.edges(keys=True) if e[0] == node or e[1] == node]
+                    nx.draw_networkx_edges(G, pos, edgelist=edges, edge_color='black', ax=ax2,
+                                           connectionstyle=[f"arc3,rad={0.3 * e[2]}" for e in edges])
+                    # Get edge labels for both outgoing and incoming edges
+                    edge_labels = {(e[0], e[1], e[2]): G[e[0]][e[1]][e[2]]['label'] for e in edges}
+                    nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, ax=ax2,
+                                                 connectionstyle=[f"arc3,rad={0.3 * e[2]}" for e in edges])
+
+                    plt.draw()
+
+                def remove_labelled_edges():
+                    ax2.clear()
+                    nx.draw(G, pos, labels=nodes_labels, node_size=400, font_size=10, width=2, edge_color='#dddddd',
+                            node_color=[node_color_map[node[1]['type']] for node in G.nodes(data=True)],
+                            connectionstyle=[f"arc3,rad={0.3 * e[2]}" for e in G.edges(keys=True)])
+                    nonlocal hovered_edges_to_remove
+                    hovered_edges_to_remove = False
+                    plt.title(title)
+                    plt.draw()
+
+                fig2.canvas.mpl_connect('motion_notify_event', lambda event2: hover_inner_graph(event2))
 
                 # Show plot
                 plt.show(block=False)
@@ -170,7 +215,7 @@ class AuditGraph:
 
             for user_action in self.users_actions.get(user):
                 # populate arrays for create points
-                timestamp = self.actions_dict.get(user_action).get('requestReceivedTimestamp')
+                timestamp = self.actions_dict.get(user_action).get('stageTimestamp')
                 date_timestamp = datetime.datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%fZ")
                 x.append(date_timestamp)
                 y.append(users_count)
@@ -223,7 +268,11 @@ class Node:
         if len(self.attributes) == 1:
             return self.attributes.get('username').split(":")[-1]
         else:
-            return re.sub("/", "/\n", get_resources_string(self.attributes))
+            rs = get_resources_string(self.attributes)
+            if rs.startswith('events'):
+                rs = re.sub("\.[0-9a-f]+$", "", rs)
+            l = re.sub("/", "/\n", rs)
+            return l
 
     def __hash__(self):
         encoded = json.dumps(self.attributes, sort_keys=True)

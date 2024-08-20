@@ -6,6 +6,7 @@ from label_proposer import decode_label
 from log_parser import get_informative_dict
 from visualizer_graph import AuditGraph
 from termcolor import colored
+from common import LABEL_UNKNOWN, LABEL_IGNORE
 
 ACTION_KEY_SEPARATOR = "%"
 UUID = "UUID"
@@ -34,7 +35,8 @@ def get_actions_and_labels_dicts():
 
             label = json_data.get('label')
 
-            if not json_data.get('cplabel') and label != -1:
+            #  not json_data.get('cplabel') and
+            if label != LABEL_UNKNOWN and label != LABEL_IGNORE:
                 informative_dict = get_informative_dict(json_data)
                 informative_dict.pop('requestURI', None)
                 informative_dict.pop('requestReceivedTimestamp', None)
@@ -126,7 +128,7 @@ def get_associate_action_uuid(candidate_actions, log_line):
     # else:
     # Todo up to here -----------------------
     for key, action_val in candidate_actions.items():
-        if log_line.get('name') == action_val.get('name'):
+        if log_line.get('name') == action_val.get('name') and log_line.get('name') is not None:
             return action_val.get(UUID)
 
         value_by_owner_reference = get_value_by_owner_reference(log_line, action_val)
@@ -167,6 +169,33 @@ def get_associate_action_uuid(candidate_actions, log_line):
             if log_line.get('namespace') == action_val.get('name'):
                 return action_val.get(UUID)
 
+    if log_line.get('resource') == 'persistentvolumeclaims' and log_line.get('verb') != "list" and \
+            log_line.get('name') is not None:
+        # try to match the name of the statefulset with the name of the pvc
+        pvc_prefix, ss, *_ = log_line.get('name').split("-")
+        for key, action_val in candidate_actions.items():
+            if action_val.get('name') == ss and \
+                    action_val.get('resource') == 'statefulsets':
+                return action_val.get(UUID)
+
+    if log_line.get('resource') == 'persistentvolumes' and log_line.get('verb') != "list" and \
+            log_line.get('claimRef') is not None:
+        pv = log_line.get('claimRef').get('name')
+        pv_prefix, ss, *_ = pv.split("-")
+        for key, action_val in candidate_actions.items():
+            if action_val.get('name') == pv:
+                return action_val.get(UUID)
+            if action_val.get('name') == ss and \
+                    action_val.get('resource') == 'statefulsets':
+                return action_val.get(UUID)
+
+    if log_line.get('resource') == 'events' and log_line.get('involvedObject') is not None:
+        involved_name = log_line.get('involvedObject').get('name')
+        prefix, resource_name, *_ = involved_name.split("-")
+        for key, action_val in candidate_actions.items():
+            if action_val.get('name') == resource_name:
+                return action_val.get(UUID)
+
     return "1010"
 
 
@@ -186,7 +215,7 @@ def assign_uuid_to_lines(actions_dict, dict_divided_by_label):
             log_line[UUID] = uuid_value
 
 
-def main():
+def main(args):
     actions_dict, dict_divided_by_label = get_actions_and_labels_dicts()
 
     # print_actions_dict_to_csv(actions_dict)
@@ -194,15 +223,17 @@ def main():
     assign_uuid_to_lines(actions_dict, dict_divided_by_label)
 
     # visualize log without uuid
-    # for key, values in dict_divided_by_label.items():
-    #     for value2 in values:
-    #         uuid_value = value2.get(UUID)
-    #         value2.pop('UUID', None)
-    #         if uuid_value == '1010':
-    #             print(colored(str(key) + str(value2), 'light_yellow', 'on_magenta'))
+    if args.dump:
+        for key, values in dict_divided_by_label.items():
+            for value2 in values:
+                uuid_value = value2.get(UUID)
+                value2.get('UUID', None)
+                if uuid_value == '1010':
+                    print(colored(str(key) + str(value2), 'light_yellow', 'on_magenta'))
 
-    audit_graph = AuditGraph(actions_dict, dict_divided_by_label)
-    audit_graph.plot_graph()
+    if args.plot:
+        audit_graph = AuditGraph(actions_dict, dict_divided_by_label)
+        audit_graph.plot_graph()
 
 
 if __name__ == "__main__":
@@ -211,9 +242,11 @@ if __name__ == "__main__":
         description='This program visualizes labelled logs.')
 
     parser.add_argument('-f', required=True, help='The log input file')
+    parser.add_argument('-d', '--dump', action='store_true', help='Dump the unclassified logs to the terminal', default=False)
+    parser.add_argument('-p', '--plot', action='store_true', help='Plot graph', default=False)
     parsed_args = parser.parse_args()
 
-    input_filename = parsed_args.f;
+    input_filename = parsed_args.f
     print(input_filename)
 
-    main()
+    main(parsed_args)
