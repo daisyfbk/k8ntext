@@ -15,11 +15,11 @@ from keras.api.optimizers import Adam
 from keras.api.utils import to_categorical
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.metrics import confusion_matrix
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, KFold
 
 import model_features
 import parameters as pm
-from common import flatten_object, LABEL_UNKNOWN
+from common import flatten_object, LABEL_UNKNOWN, LABEL_IGNORE
 from label_proposer import brute_force_label_space, decode_label
 from model_encoder import AuditEncoder, RisingEncoder
 from model_tuner import tuner_search
@@ -158,6 +158,43 @@ def generate_model(X_shape: int, y_shape: int | tuple) -> models.Model:
     return model
 
 
+def get_model_callbacks(monitor: str = 'val_loss',
+                        backup_models: bool = False,
+                        verbose_logging: bool = False,
+                        ) -> list:
+    cb = [
+        callbacks.EarlyStopping(monitor=monitor,
+                                patience=pm.EARLY_STOPPING_PATIENCE,
+                                restore_best_weights=True,
+                                verbose=1),
+        callbacks.ReduceLROnPlateau(monitor=monitor,
+                                    factor=pm.REDUCE_LR_FACTOR,
+                                    patience=pm.REDUCE_LR_PATIENCE,
+                                    verbose=1),
+    ]
+
+
+    if backup_models:
+        log.warning(f"Backup models enabled, saving to {pm.OUT_FOLDER + '/backup'}. Make"
+                    f" sure you are not saving multiple models in the same run.")
+        cb += [
+            callbacks.BackupAndRestore(backup_dir=pm.OUT_FOLDER + '/backup'),
+            callbacks.ModelCheckpoint(filepath=pm.OUT_FOLDER + '/model-checkpoint.keras', save_best_only=True)
+        ]
+
+    if verbose_logging:
+        cb += [
+            callbacks.LambdaCallback(
+                on_train_begin=lambda logs: log.info(f"Training started: {logs}"),
+                on_train_end=lambda logs: log.info(f"Training ended: {logs}"),
+                on_epoch_end=lambda epoch, logs: log.info(f"Epoch {epoch}: {logs}"),
+            )
+        ]
+
+    return cb
+
+
+
 def encode_data(flattened_data: list[dict],
                 total_features: list[str],
                 include_y: bool = True,
@@ -271,28 +308,7 @@ def model_training(data: list[dict],
         training_data['y'],
         test_size=pm.TEST_TRAIN_SPLIT)
 
-    cb = [
-        callbacks.EarlyStopping(monitor='val_loss',
-                                patience=pm.EARLY_STOPPING_PATIENCE,
-                                restore_best_weights=True,
-                                verbose=1),
-        callbacks.ReduceLROnPlateau(monitor='val_loss',
-                                    factor=pm.REDUCE_LR_FACTOR,
-                                    patience=pm.REDUCE_LR_PATIENCE,
-                                    verbose=1),
-    ]
-
-    if not statistical_mode:
-        cb += [
-            callbacks.BackupAndRestore(backup_dir=pm.OUT_FOLDER + '/backup'),
-            callbacks.ModelCheckpoint(filepath=pm.OUT_FOLDER + '/model-checkpoint.keras', save_best_only=True),
-            # log metrics
-            callbacks.LambdaCallback(
-                on_train_begin=lambda logs: log.info(f"Training started: {logs}"),
-                on_train_end=lambda logs: log.info(f"Training ended: {logs}"),
-                on_epoch_end=lambda epoch, logs: log.info(f"Epoch {epoch}: {logs}"),
-            )
-        ]
+    cb = get_model_callbacks(monitor='val_loss', backup_models=True, verbose_logging=True)
 
     silence_stdout_logging()
     model.summary(print_fn=log.info, expand_nested=True, show_trainable=True)
@@ -323,6 +339,63 @@ def model_training(data: list[dict],
         "metrics": metrics,
         "history": history
     }
+
+
+def kfold_training(data: list[dict]) -> dict:
+    flattened_data, total_features = preprocess_data(data)
+
+    training_data = encode_data(flattened_data, total_features)
+    xenc = training_data['x_encoders']
+    yle = training_data['y_encoder']
+    X_shape = training_data['X_shape']
+    y_shape = training_data['y_shape']
+    X = training_data['X']
+    y = training_data['y']
+
+    kf = KFold(n_splits=pm.STATISTICS_ATTEMPTS, shuffle=False)
+
+    res = {}
+    for i, (train_index, test_index) in enumerate(kf.split(X)):
+        log.info(f"Starting training fold {i + 1}...")
+        log.info(f"Test indices: {test_index[0]} to {test_index[-1]}")
+
+        x_train, x_test = X[train_index], X[test_index]
+        y_train, _      = y[train_index], y[test_index]
+
+        model = generate_model(X_shape, y_shape)
+
+        cb = get_model_callbacks(monitor='loss')
+
+        silence_stdout_logging()
+        model.summary(print_fn=log.info, expand_nested=True, show_trainable=True)
+        model.summary(expand_nested=True, show_trainable=True)
+
+        history = model.fit(x_train, y_train, epochs=pm.MAX_EPOCHS, callbacks=cb, validation_split=0)
+
+        y_pred = model.predict(x_test)
+        activate_stdout_logging()
+
+        y_pred_sublabels = np.argmax(y_pred, axis=-1)
+
+        print("Decoding labels...")
+        y_pred_decoded = decode_labels(y_pred_sublabels, yle)
+
+        data_test = [data[i] for i in test_index]
+
+        maj = calculate_majorities(data_test, y_pred_decoded)
+
+        log.info(f"Majority accuracy: {maj['accuracy']}")
+        log.info(f"Error statistics: {maj['error_statistics']}")
+
+        res[i] = {
+            'index': i,
+            'history': history,
+            'accuracy': maj['accuracy'],
+            'error_statistics': maj['error_statistics']
+        }
+
+        
+    return res
 
 
 def calculate_metrics(y_true, y_pred,
@@ -452,6 +525,11 @@ def model_inference(model: models.Model,
     y_pred_labels = np.argmax(y_pred, axis=-1)
     y_pred_decoded = decode_labels(y_pred_labels, yle)
 
+    return calculate_majorities(data, y_pred_decoded)
+
+
+def calculate_majorities(data: list[dict],
+                         y_pred_decoded: np.ndarray) -> dict:
     # Calculate majorities
     original_sequence_y_pred = {}
 
@@ -482,8 +560,7 @@ def model_inference(model: models.Model,
         most_weighted = max(weighted_labels, key=weighted_labels.get)
         predicted_sequence.append(int(most_weighted))
 
-    assert len(predicted_sequence) == len(
-        data), f"Predicted sequence length does not match data length: {len(predicted_sequence)} != {len(flattened_data)}"
+    assert len(predicted_sequence) == len(data), f"Predicted sequence length does not match data length: {len(predicted_sequence)} != {len(data)}"
 
     ok = 0
     cpcount = 0
@@ -504,8 +581,9 @@ def model_inference(model: models.Model,
         original = data[i][pm.LABEL_FEATURE]
         predicted = predicted_sequence[i]
 
-        if original in (None, LABEL_UNKNOWN):
+        if original in (None, LABEL_UNKNOWN, LABEL_IGNORE):
             continue
+
         cpcount += 1
         if original == predicted:
             ok += 1
@@ -556,7 +634,6 @@ def model_inference(model: models.Model,
     error_statistics["correct"] = ok
 
     log.info(f"Accuracy on labeled: {ok / cpcount} (errors: {cpcount - ok} / {cpcount})")
-    # log.info(f"Error statistics: {error_statistics}")
 
     return {
         "accuracy": ok / cpcount,
@@ -622,22 +699,27 @@ def main(args):
         metrics = []
 
         if args.stats_mode:
-            if args.stats_mode == 'save':
+            if 'save' in args.stats_mode:
                 save_models = True
                 log.info('Starting statistics mode with model saving.')
             else:
                 save_models = False
                 log.info('Starting statistics mode.')
 
-            for i in range(pm.STATISTICS_ATTEMPTS):
-                result = model_training(data, statistical_mode=True)
-                losses.append(result['history'])
-                metrics.append(result['metrics'])
-                log.info(f"Attempt {i + 1} done.")
+            if 'kfolds' in args.stats_mode:
+                log.info("Starting k-fold training.")
+                result = kfold_training(data)
+                exit(1)
+            else:
+                for i in range(pm.STATISTICS_ATTEMPTS):
+                    result = model_training(data, statistical_mode=True)
+                    losses.append(result['history'])
+                    metrics.append(result['metrics'])
+                    log.info(f"Attempt {i + 1} done.")
 
-                if save_models:
-                    os.makedirs(pm.OUT_FOLDER + f'/attempt_{i}', exist_ok=True)
-                    save_model(result, pm.OUT_FOLDER + f'/attempt_{i}', model_basename=f'model_{i}.keras')
+                    if save_models:
+                        os.makedirs(pm.OUT_FOLDER + f'/attempt_{i}', exist_ok=True)
+                        save_model(result, pm.OUT_FOLDER + f'/attempt_{i}', model_basename=f'model_{i}.keras')
 
         else:
             log.info("Starting model training.")
@@ -681,7 +763,7 @@ def main(args):
             for line in data:
                 f.write(json.dumps(line) + '\n')
 
-        if not args.stats_mode:
+        if 'save' in args.stats_mode: 
             with open(pm.OUT_FOLDER + '/inference.json', 'w') as f:
                 json.dump(result, f)
 
@@ -691,12 +773,16 @@ def main(args):
 
 
 if __name__ == '__main__':
+    stats_mode_help = "Turns on statistics mode and accepts a comma-separated list of options: " \
+                        "save: saves the models generated during the process, else only statistics are saved. " \
+                        "kfolds: uses k-fold cross-validation instead of random splits. "
+
     parser = argparse.ArgumentParser(prog='model')
     parser.add_argument('-f', '--file', type=str, help='Path to the files, one or many', nargs='+', required=True)
     parser.add_argument('-m', '--model', type=str,
                         help='Path to the model file; if provided, will do inference instead of training')
     parser.add_argument('-s', '--stats-mode', nargs='?', const='stats_only', default=None,
-                        help="When used for training, repeats the process multiple times and -s saves models.\nWhen used for inference, blocks the saving of original log lines.")
+                        help=stats_mode_help)
     parser.add_argument('-y', '--hyperparam-tuning', type=str,
                         help='Use hyperparameter tuning instead of training')
     parser.add_argument('-l', '--log-level', type=str, help='Log level', default='INFO')
