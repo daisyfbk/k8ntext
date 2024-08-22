@@ -10,12 +10,13 @@ from common import LABEL_UNKNOWN, LABEL_IGNORE
 
 ACTION_KEY_SEPARATOR = "%"
 UUID = "UUID"
+DEFAULT_LABEL_KEY = "label"
 
 
 # This function returns two dictionary:
 # 1) actions_dict: the dictionary that contains the single actions performed with their corresponding informative_dict
 # 2) dict_divided_by_label: a dictionary that contains all the informative_dict grouped by label
-def get_actions_and_labels_dicts():
+def get_actions_and_labels_dicts(label_key=DEFAULT_LABEL_KEY):
     verbs_dict = {}
     with open('verbs.csv', 'r') as file:
         csv_reader = csv.DictReader(file)
@@ -32,10 +33,11 @@ def get_actions_and_labels_dicts():
             line_index += 1
             # each line is a json, load it
             json_data = json.loads(line)
+            if label_key not in json_data:
+                raise ValueError(f"Label key '{label_key}' not found in json data")
 
-            label = json_data.get('label')
+            label = json_data.get(label_key)
 
-            #  not json_data.get('cplabel') and
             if label != LABEL_UNKNOWN and label != LABEL_IGNORE:
                 informative_dict = get_informative_dict(json_data)
                 informative_dict.pop('requestURI', None)
@@ -191,10 +193,13 @@ def get_associate_action_uuid(candidate_actions, log_line):
 
     if log_line.get('resource') == 'events' and log_line.get('involvedObject') is not None:
         involved_name = log_line.get('involvedObject').get('name')
-        prefix, resource_name, *_ = involved_name.split("-")
-        for key, action_val in candidate_actions.items():
-            if action_val.get('name') == resource_name:
-                return action_val.get(UUID)
+        try:
+            prefix, resource_name, *_ = involved_name.split("-")
+            for key, action_val in candidate_actions.items():
+                if action_val.get('name') == resource_name:
+                    return action_val.get(UUID)
+        except ValueError:
+            pass
 
     return "1010"
 
@@ -216,7 +221,7 @@ def assign_uuid_to_lines(actions_dict, dict_divided_by_label):
 
 
 def main(args):
-    actions_dict, dict_divided_by_label = get_actions_and_labels_dicts()
+    actions_dict, dict_divided_by_label = get_actions_and_labels_dicts(args.key)
 
     # print_actions_dict_to_csv(actions_dict)
 
@@ -244,6 +249,7 @@ if __name__ == "__main__":
     parser.add_argument('-f', required=True, help='The log input file')
     parser.add_argument('-d', '--dump', action='store_true', help='Dump the unclassified logs to the terminal', default=False)
     parser.add_argument('-p', '--plot', action='store_true', help='Plot graph', default=False)
+    parser.add_argument('-k', '--key', help='The key to use as label', default=DEFAULT_LABEL_KEY)
     parsed_args = parser.parse_args()
 
     input_filename = parsed_args.f
