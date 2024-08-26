@@ -88,6 +88,8 @@ class AuditGraph:
                 last_usernode = None
                 user_layer = 0
 
+                edges_to_plot = {}
+
                 for log_line in log_lines:
                     user_node = Node({'username': log_line.get('username')})
                     if user_node != last_usernode and user_node is not None:
@@ -104,7 +106,18 @@ class AuditGraph:
 
                     G.add_node(user_node, type='user', subset=user_layer)
                     G.add_node(resource_node, type='resource', subset=resource_layer)
-                    G.add_edge(user_node, resource_node, label=log_line.get('verb'))
+                    edges_to_plot_key = user_node.get_label() + resource_node.get_label(False) + log_line.get('verb')
+                    if edges_to_plot_key not in edges_to_plot:
+                        edges_to_plot[edges_to_plot_key] = {'user_node': user_node, 'resource_node': resource_node,
+                                                            'verb': log_line.get('verb'), 'count': 0}
+                    edges_to_plot[edges_to_plot_key]['count'] += 1
+
+                for edge in edges_to_plot.values():
+                    if edge.get('count') > 1:
+                        new_label = " x" + str(edge.get('count')) + " " + edge.get('verb')
+                        G.add_edge(edge.get('user_node'), edge.get('resource_node'), label=new_label)
+                    else:
+                        G.add_edge(edge.get('user_node'), edge.get('resource_node'), label=edge.get('verb'))
 
                 pos = nx.pos = nx.multipartite_layout(G)
                 nodes_labels = {}
@@ -264,12 +277,12 @@ class Node:
     def print(self):
         return str(self.attributes)
 
-    def get_label(self):
+    def get_label(self, compact_events=True):
         if len(self.attributes) == 1:
             return self.attributes.get('username').split(":")[-1]
         else:
             rs = get_resources_string(self.attributes)
-            if rs.startswith('events'):
+            if rs.startswith('events') and compact_events:
                 rs = re.sub("\.[0-9a-f]+$", "", rs)
             l = re.sub("/", "/\n", rs)
             return l
