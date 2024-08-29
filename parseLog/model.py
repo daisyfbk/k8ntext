@@ -144,9 +144,6 @@ def generate_model(X_shape: int, y_shape: int | tuple) -> models.Model:
         keras_metrics.Precision(name='precision'),
         keras_metrics.Recall(name='recall'),
         keras_metrics.CategoricalAccuracy(name='categorical_accuracy'),
-        # keras_metrics.FalseNegatives(),
-        # keras_metrics.FalsePositives(),
-        # keras_metrics.MeanAbsoluteError(),
     ]
 
     model.compile(
@@ -194,7 +191,6 @@ def get_model_callbacks(monitor: str = 'val_loss',
     return cb
 
 
-
 def encode_data(flattened_data: list[dict],
                 total_features: list[str],
                 include_y: bool = True,
@@ -213,7 +209,7 @@ def encode_data(flattened_data: list[dict],
         x_before.append(list(d.values()))
 
     len_features = len(total_features)
-    assert len(x_before[0]) == len_features, "Number of features do not match."
+    assert len(x_before[0]) == len_features, f"Number of features do not match ({len(x_before[0])} != {len_features})"
     all_labels = brute_force_label_space(print_result=False)
     len_classes = len(all_labels)
 
@@ -243,17 +239,10 @@ def encode_data(flattened_data: list[dict],
         len_local_classes = len(set(y_before))
         log.info(f"Classes in the dataset: {len_local_classes}")
 
-        # Previous implementation
-        # yle = preprocessing.LabelEncoder()
-        # y_encoded = yle.fit_transform(y_before)
-        # y_onehot = to_categorical(y_encoded, num_classes=len_classes)
-
     # Create batches
     X = np.zeros((len(x_before) - pm.WINDOW_LENGTH + 1, pm.WINDOW_LENGTH, len_features))
     if include_y:
         y = np.zeros((len(x_before) - pm.WINDOW_LENGTH + 1, pm.WINDOW_LENGTH, len_labeltypes, len_subclasses))
-        # Previous implementation
-        # y = np.zeros((len(x_before) - pm.WINDOW_LENGTH + 1, pm.WINDOW_LENGTH, len_classes))
 
     for i in tqdm(range(pm.WINDOW_LENGTH, len(x_before) + 1)):
         X[i - pm.WINDOW_LENGTH] = x_before[i - pm.WINDOW_LENGTH:i]
@@ -551,6 +540,10 @@ def calculate_majorities(data: list[dict],
             weight = 1 - abs(j - pm.WINDOW_LENGTH / 2) / (pm.WINDOW_LENGTH / 2)
             original_sequence_y_pred[index].append((y_pred_decoded[i][j], weight))
 
+    # Drop sequences that do not have pm.WINDOW_LENGTH elements
+    original_sequence_y_pred = {k: v for k, v in original_sequence_y_pred.items() if len(v) == pm.WINDOW_LENGTH}
+    selected = sorted(list(original_sequence_y_pred.keys()))
+
     predicted_sequence = []
     sequence_weights = {}
 
@@ -569,10 +562,10 @@ def calculate_majorities(data: list[dict],
         predicted_sequence.append(int(most_weighted))
 
     if len(predicted_sequence) > len(data):
-        log.warning(f"Predicted sequence length does not match data length: {len(predicted_sequence)} != {len(data)}. Truncating to match.")
-        predicted_sequence = predicted_sequence[:len(data)]
+        raise ValueError(f"Predicted sequence length does not match data length: {len(predicted_sequence)} != {len(data)}. Cannot reshape.")
     elif len(predicted_sequence) < len(data):
-        raise RuntimeError(f"Shorter predicted sequence than data: {len(predicted_sequence)} != {len(data)}. Cannot continue.")
+        log.warning(f"Shorter predicted sequence than data: {len(predicted_sequence)} != {len(data)}. Reshaping to match.")
+        data = [data[i] for i in selected]
 
     ok = 0
     cpcount = 0
@@ -827,7 +820,7 @@ if __name__ == '__main__':
     initialize_log(log_level=__args.log_level)
 
     if pm.KERAS_BACKEND == 'tensorflow':
-        # os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+        os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
         import tensorflow as tf
 
         physical_devices = tf.config.list_physical_devices('GPU')
