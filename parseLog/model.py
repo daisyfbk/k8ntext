@@ -565,10 +565,9 @@ def calculate_majorities(data: list[dict],
         raise ValueError(f"Predicted sequence length does not match data length: {len(predicted_sequence)} != {len(data)}. Cannot reshape.")
     elif len(predicted_sequence) < len(data):
         log.warning(f"Shorter predicted sequence than data: {len(predicted_sequence)} != {len(data)}. Reshaping to match.")
-        data = [data[i] for i in selected]
 
-    ok = 0
-    cpcount = 0
+    correct = 0
+    accounted = 0
     error_statistics = {
         "total": 0,
         "correct": 0,
@@ -581,17 +580,22 @@ def calculate_majorities(data: list[dict],
     }
 
     for i in range(len(data)):
+        if i not in selected:
+            continue
+
         if pm.LABEL_FEATURE not in data[i]:
             continue
+
         original = data[i][pm.LABEL_FEATURE]
         predicted = predicted_sequence[i]
 
         if original in (None, LABEL_UNKNOWN, LABEL_IGNORE):
             continue
 
-        cpcount += 1
+        accounted += 1
+
         if original == predicted:
-            ok += 1
+            correct += 1
         else:
             # log.info(f"Error in sequence {i}: (embedded) {original} != {predicted} (predicted)")
             try:
@@ -635,13 +639,16 @@ def calculate_majorities(data: list[dict],
             except Exception:
                 log.exception(f"Failed to manage error message in sequence {i}")
 
-    error_statistics["total"] = cpcount
-    error_statistics["correct"] = ok
+    error_statistics["total"] = accounted
+    error_statistics["correct"] = correct
 
-    log.info(f"Accuracy on labeled: {ok / cpcount} (errors: {cpcount - ok} / {cpcount})")
+    log.info(f"Accuracy on labeled: {correct / accounted} (errors: {accounted - correct} / {accounted})")
 
     return {
-        "accuracy": ok / cpcount,
+        "accounted": accounted,
+        "correct": correct,
+        "total": len(data),
+        "accuracy": correct / accounted,
         "error_statistics": error_statistics,
         "predicted_sequence": [int(x) for x in predicted_sequence],
         "original_sequence": [d[pm.LABEL_FEATURE] if pm.LABEL_FEATURE in d else None for d in data],
