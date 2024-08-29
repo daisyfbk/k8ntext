@@ -183,7 +183,60 @@ The data is then ready to be used for training a model.
   to learn these templates and then match them in the logs. If no match
   is found, then an attempt could be made to generate a new template
   based on the most similar ones.
-
+* Queries
+- The queries that can be made allow flexibility and leverage
+  the way the data is stored to efficiently present data to users
+  using a defined set of requests.
+- Data is internally stored with the key =label % namespace % user=.
+  Since label in itself also embeds =apiGroup= (and its =version=), the
+  =resource=, =subresource=, and the =verb=, all of these fields can be
+  used to query with zero overhead the system.
+  - This allows, for example, to ask for:
+    - all actions made between T and T'
+    - all actions executed by user X on namespace Y
+    - all =create= requests made until time T''
+    - etc...
+- The cool thing is that such filtering essentially comes for free
+  as the clusters are created, so no overhead is imposed on the processing.
+- Anything that is not within these parameters could ideally be filtered
+  in two ways:
+  - before clustering the logs: for example, I want to filter all the actions
+    that were performed by =userAgent= X. However, if I filtered all the log
+    lines using this criteria, I would cut out potential context out of other
+    actions, and would be incorrect
+  - after clustering the logs: could be done, but requires an extra visit to
+    each of the clustered behaviours (which are potentially O(n)) and then
+    a visit to each log line present in each behaviour (also potentially O(n)).
+    This must be *added* to the computation process as the validity of the behaviour
+    is surely correct only after the lines have all been validated at least once [fn:2].
+- Thus, for the moment we can focus only on providing efficient queries on select keys
+  using the following basic operators:
+  - ~==~: checks if a key is exactly equal to a certain value, attempting to perform
+    type coercion if possible. For example, ~.key == mfranzil~.
+  - ~>~, ~<~, ~<=~, ~>=~: checks if a key is less/greater [and equal] than a certain number
+    performing type coercion and alphabetical and numerical comparison    
+    - Ranges can be expressed using the Pythonic syntax ~2 <= x <= 3~.
+  - =and=, =or=: logical operators that allow to combine multiple queries together.
+    - For example, ~.key == mfranzil and .label == 1~.
+  - =not=: negates a query, for example ~not .key == mfranzil~. Can be used in conjunction
+    with =and= and =or=.
+    - ~!=~ is also a shorthand for ~not a == 2~.
+  - ~exists()~: checks if a key has a value in the log line. It may happen that the namespace
+    or the user are not present in the log line, and this operator allows to check if they are
+    present. For example, ~exists(.namespace)~.
+  - =regex()=: allows to perform a regex match on a key: ~.key == regex(".*franzil")~
+  - Any Pythonic operator can be used, for example:
+    - =all(), any()=: allows to check if all or any of the values in a list of values
+      are present in a key.
+      - ~any([.key == 1, .key == 2])~ checks if the key is equal to either 1 or 2.
+      - ~all([.key == 1, .key == 2])~ checks if the key is equal to both 1 and 2 (obviously
+        this is impossible, but it's just an example).
+  - In the end, as long as the query when translated to Python is valid, it can be used.
+    
+[fn:2] Suppose for example that a behaviour spans 30 lines but the actual key action
+       is executed in the last line. The algorithm will collect all lines and cluster
+       them by label, then will attempt to separate the behaviours. Only after all the
+       lines have been seen and categorized we can 100% sure we can filter.
 * Paper structure
 ** Story
 - Problem: audit logs are hard to set up, use, and understand
