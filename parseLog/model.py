@@ -544,7 +544,7 @@ def calculate_majorities(data: list[dict],
     original_sequence_y_pred = {k: v for k, v in original_sequence_y_pred.items() if len(v) == pm.WINDOW_LENGTH}
     selected = sorted(list(original_sequence_y_pred.keys()))
 
-    predicted_sequence = []
+    predicted_sequence = {}
     sequence_weights = {}
 
     for k, v in original_sequence_y_pred.items():
@@ -559,7 +559,7 @@ def calculate_majorities(data: list[dict],
         # log.debug(f"Weights for {k}: {weighted_labels}")
 
         most_weighted = max(weighted_labels, key=weighted_labels.get)
-        predicted_sequence.append(int(most_weighted))
+        predicted_sequence[int(k)] = int(most_weighted)
 
     if len(predicted_sequence) > len(data):
         raise ValueError(f"Predicted sequence length does not match data length: {len(predicted_sequence)} != {len(data)}. Cannot reshape.")
@@ -650,7 +650,7 @@ def calculate_majorities(data: list[dict],
         "total": len(data),
         "accuracy": correct / accounted,
         "error_statistics": error_statistics,
-        "predicted_sequence": [int(x) for x in predicted_sequence],
+        "predicted_sequence": [int(x) for x in predicted_sequence.values()],
         "original_sequence": [d[pm.LABEL_FEATURE] if pm.LABEL_FEATURE in d else None for d in data],
         "sequence_weights": sequence_weights
     }
