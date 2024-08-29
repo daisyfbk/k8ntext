@@ -200,6 +200,7 @@ def encode_data(flattened_data: list[dict],
                 include_y: bool = True,
                 previous_xenc: list | None = None
                 ) -> dict:
+    log.info(f"Encoding a total of {len(flattened_data)} sequences.")
     x_before = []
     if include_y:
         y_before = []
@@ -357,10 +358,10 @@ def kfold_training(data: list[dict]) -> dict:
     res = {}
     for i, (train_index, test_index) in enumerate(kf.split(X)):
         log.info(f"Starting training fold {i + 1}...")
-        log.info(f"Test indices: {test_index[0]} to {test_index[-1]}")
+        log.info(f"Test indices: {test_index[0]} to {test_index[-1]} out of {len(X)}")
 
         x_train, x_test = X[train_index], X[test_index]
-        y_train, _      = y[train_index], y[test_index]
+        y_train, y_test = y[train_index], y[test_index]
 
         model = generate_model(X_shape, y_shape)
 
@@ -376,24 +377,31 @@ def kfold_training(data: list[dict]) -> dict:
         activate_stdout_logging()
 
         y_pred_sublabels = np.argmax(y_pred, axis=-1)
+        y_test_sublabels = np.argmax(y_test, axis=-1)
 
         print("Decoding labels...")
         y_pred_decoded = decode_labels(y_pred_sublabels, yle)
+        y_test_decoded = decode_labels(y_test_sublabels, yle)
 
         data_test = [data[i] for i in test_index]
 
         maj = calculate_majorities(data_test, y_pred_decoded)
 
-        log.info(f"Majority accuracy: {maj['accuracy']}")
-        log.info(f"Error statistics: {maj['error_statistics']}")
+        metrics = calculate_metrics(y_test_decoded,
+                                    y_pred_decoded,
+                                    include_per_class=True,
+                                    include_confusion_matrix=True)
 
         res[i] = {
             'index': i,
+            "model": model,
+            "y_encoders": yle,
+            "x_encoders": xenc,
+            "features": total_features,
+            "metrics": metrics,
             'history': history,
-            'accuracy': maj['accuracy'],
-            'error_statistics': maj['error_statistics']
+            'maj_result': maj
         }
-
         
     return res
 
@@ -560,7 +568,11 @@ def calculate_majorities(data: list[dict],
         most_weighted = max(weighted_labels, key=weighted_labels.get)
         predicted_sequence.append(int(most_weighted))
 
-    assert len(predicted_sequence) == len(data), f"Predicted sequence length does not match data length: {len(predicted_sequence)} != {len(data)}"
+    if len(predicted_sequence) > len(data):
+        log.warning(f"Predicted sequence length does not match data length: {len(predicted_sequence)} != {len(data)}. Truncating to match.")
+        predicted_sequence = predicted_sequence[:len(data)]
+    elif len(predicted_sequence) < len(data):
+        raise RuntimeError(f"Shorter predicted sequence than data: {len(predicted_sequence)} != {len(data)}. Cannot continue.")
 
     ok = 0
     cpcount = 0
@@ -709,7 +721,26 @@ def main(args):
             if 'kfolds' in args.stats_mode:
                 log.info("Starting k-fold training.")
                 result = kfold_training(data)
-                exit(1)
+
+                for i in range(len(result)):
+                    os.makedirs(pm.OUT_FOLDER + f'/attempt_{i}', exist_ok=True)
+
+                    losses.append(result[i]['history'])
+                    metrics.append(result[i]['metrics'])
+
+                    if 'save' in args.stats_mode: 
+                        save_model(result[i], pm.OUT_FOLDER + f'/attempt_{i}', model_basename=f'model_{i}.keras')
+                        
+                        y_pred = result['predicted_sequence']
+                        for log_line, label in zip(data, y_pred):
+                            log_line["predicted_label"] = label
+
+                        with open(pm.OUT_FOLDER + f'/attempt_{i}/labeled.json', 'w') as f:
+                            for line in data:
+                                f.write(json.dumps(line) + '\n')
+
+                    with open(pm.OUT_FOLDER + f'/attempt_{i}/inference.json', 'w') as f:
+                        json.dump(result[i]['maj_result'], f)
             else:
                 for i in range(pm.STATISTICS_ATTEMPTS):
                     result = model_training(data, statistical_mode=True)
@@ -736,6 +767,7 @@ def main(args):
         # Always save the loss and accuracy data
         with open(pm.OUT_FOLDER + '/loss.json', 'w') as f:
             json.dump([loss.history for loss in losses], f)
+
         with open(pm.OUT_FOLDER + '/metrics.json', 'w') as f:
             json.dump(metrics, f)
 
@@ -755,17 +787,17 @@ def main(args):
 
         result = model_inference(model, features, x_encoders, y_encoders, data)
 
-        y_pred = result['predicted_sequence']
-        for log_line, label in zip(data, y_pred):
-            log_line["predicted_label"] = label
-
-        with open(pm.OUT_FOLDER + '/labeled.json', 'w') as f:
-            for line in data:
-                f.write(json.dumps(line) + '\n')
-
         if 'save' in args.stats_mode: 
-            with open(pm.OUT_FOLDER + '/inference.json', 'w') as f:
-                json.dump(result, f)
+            y_pred = result['predicted_sequence']
+            for log_line, label in zip(data, y_pred):
+                log_line["predicted_label"] = label
+
+            with open(pm.OUT_FOLDER + '/labeled.json', 'w') as f:
+                for line in data:
+                    f.write(json.dumps(line) + '\n')
+
+        with open(pm.OUT_FOLDER + '/inference.json', 'w') as f:
+            json.dump(result, f)
 
         if result['error_statistics']['total'] > 0:
             from model_visualize import plot_error_statistics

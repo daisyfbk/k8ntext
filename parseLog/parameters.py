@@ -14,10 +14,7 @@ TUNER_EXECUTIONS_PER_TRIAL = int(os.getenv('TUNER_EXECUTIONS_PER_TRIAL', 5))
 # Top % of classes to show in confusion matrix
 LABEL_FEATURE = str(os.getenv('LABEL_FEATURE', 'label'))  # Name of the feature that contains the label
 OUT_FOLDER = os.getenv('OUT_FOLDER', 'out')
-
-KERAS_BACKEND = os.getenv('KERAS_BACKEND')
-if KERAS_BACKEND is None or KERAS_BACKEND == '':
-    raise ValueError('KERAS_BACKEND environment variable not set, must be set explicitly')
+KERAS_BACKEND = os.getenv('KERAS_BACKEND', 'tensorflow')
 
 # The following variables are used by model_visualize, change them as you change the model
 
