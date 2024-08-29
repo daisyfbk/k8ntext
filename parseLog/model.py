@@ -731,7 +731,7 @@ def main(args):
                     if 'save' in args.stats_mode: 
                         save_model(result[i], pm.OUT_FOLDER + f'/attempt_{i}', model_basename=f'model_{i}.keras')
                         
-                        y_pred = result['predicted_sequence']
+                        y_pred = result['maj_result']['predicted_sequence']
                         for log_line, label in zip(data, y_pred):
                             log_line["predicted_label"] = label
 
