@@ -8,6 +8,8 @@ import matplotlib.dates as mdates
 import numpy as np
 import networkx as nx
 
+from query_parser import QueryParser
+
 
 def get_resources_string(action):
     text = ""
@@ -24,7 +26,7 @@ def get_resources_string(action):
 
 class AuditGraph:
 
-    def __init__(self, actions_dict, dict_divided_by_label):
+    def __init__(self, actions_dict, dict_divided_by_label, query):
         # define all the dictionaries useful to the visualization part
         self.actions_dict = actions_dict
         self.dict_divided_by_label = dict_divided_by_label
@@ -66,6 +68,8 @@ class AuditGraph:
             "list": "#E69F00",
             "watch": "#333333"
         }
+
+        self.query = query
 
     def on_click(self, event, ax, sc, actions):
         if event.inaxes == ax:
@@ -215,32 +219,41 @@ class AuditGraph:
         # sort alphabetically and leave system: at the end
         users = sorted(self.users_actions.keys(), key=lambda z: (z.startswith('system:'), z))
 
-        users_count = len(users)
+        users_index = 0
         x, y, actions, dots_color = [], [], [], []
+
+        query_parser = QueryParser()
+        users_added_to_chart = []
 
         for user in users:
             line_color = "black"
             if user.startswith('system:'):
                 line_color = "silver"
 
-            # add a horizontal line for each user
-            ax.axhline(users_count, color=line_color, linewidth=2, zorder=0)
-
+            any_user_action_added = False
             for user_action in self.users_actions.get(user):
-                # populate arrays for create points
-                timestamp = self.actions_dict.get(user_action).get('stageTimestamp')
-                date_timestamp = datetime.datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%fZ")
-                x.append(date_timestamp)
-                y.append(users_count)
-                actions.append(user_action)
-                dots_color.append(self.verbs_color[self.actions_dict.get(user_action).get('verb')])
+                # plot if query is set and action match or if query is not set
+                if ((self.query and query_parser.match(self.actions_dict.get(user_action), self.query))
+                        or not self.query):
+                    # populate arrays for create points
+                    any_user_action_added = True
+                    timestamp = self.actions_dict.get(user_action).get('stageTimestamp')
+                    date_timestamp = datetime.datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%fZ")
+                    x.append(date_timestamp)
+                    y.append(users_index)
+                    actions.append(user_action)
+                    dots_color.append(self.verbs_color[self.actions_dict.get(user_action).get('verb')])
 
-            users_count -= 1
+            if any_user_action_added:
+                # add a horizontal line for each user
+                ax.axhline(users_index, color=line_color, linewidth=2, zorder=0)
+                users_index -= 1
+                users_added_to_chart.append(user)
 
         # draw points
         sc = plt.scatter(x, y, color=dots_color, marker='o', zorder=1)
 
-        plt.yticks(np.arange(len(users), 0, -1), self.create_user_labels(users), rotation=30)
+        plt.yticks(np.arange(0, users_index, -1), self.create_user_labels(users_added_to_chart), rotation=30)
 
         # makes legend
         handles = []
