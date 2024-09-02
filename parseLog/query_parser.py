@@ -1,5 +1,7 @@
 from lark import Lark, Transformer, v_args
 import re
+import datetime
+
 
 class QueryParser:
     # Define the grammar for the query
@@ -39,8 +41,8 @@ class QueryParser:
         %import common.WS
         %import common.ESCAPED_STRING -> STRING
 
-        // Define the DATE pattern as DD/MM/YYYY
-        DATE: /\\d{2}\\/\\d{2}\\/\\d{4}/
+        // Define the DATE pattern as YYYY-MM-DDTHH:MM:SS.sssZ
+        DATE: /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z/
 
         %ignore WS
     """
@@ -99,7 +101,8 @@ class QueryParser:
             return name
 
         def date(self, d):
-            return d
+            # Convert the date string to a datetime object
+            return f"datetime.strptime('{d}', '{self.date_format}')"
 
     def __init__(self):
         # Initialize the parser with the defined grammar and transformer
@@ -123,24 +126,25 @@ class QueryParser:
             return False
 
 
-# Example usage
-if __name__ == "__main__":
-    query_parser = QueryParser()
-
-    # List of dictionaries to match
-    data = [
-        {'username': 'pippo', 'date': '27/08/2024', 'name': 'paperino'},
-        {'username': 'pluto', 'date': '28/08/2024', 'name': 'daffy'},
-        {'username': 'clara', 'date': '29/08/2024', 'name': None}
-    ]
-
-    # Example query
-    # query = '(username == regexp(".*c.*") and exists(name)) or (username == pippo and 27/08/2024 <= date <= 29/08/2024)'
-    query = 'username == regexp(".*c.*") and not exists(name)'
-
-    # Check which dictionaries match the query
-    for item in data:
-        if query_parser.match(item, query):
-            print(f"Matched: {item}")
-        else:
-            print(f"Did not match: {item}")
+# # Example usage
+# if __name__ == "__main__":
+#     query_parser = QueryParser()
+#
+#     # List of dictionaries to match
+#     data = [
+#         {'username': 'pippo', 'date': '2023-08-30T12:34:56.123456Z', 'name': 'paperino'},
+#         {'username': 'pluto', 'date': '2023-08-29T12:34:56.123456Z', 'name': 'daffy'},
+#         {'username': 'clara', 'date': '2023-08-28T12:34:56.123456Z', 'name': None}
+#     ]
+#
+#     # Example query
+#     # query = '(username == regexp(".*c.*") and exists(name)) or (username == pippo and 27/08/2024 <= date <= 29/08/2024)'
+#     # query = 'username == regexp(".*c.*") and not exists(name)'
+#     query = 'username == clara and date > "2023-08-27T12:00:00.000000Z"'
+#
+#     # Check which dictionaries match the query
+#     for item in data:
+#         if query_parser.match(item, query):
+#             print(f"Matched: {item}")
+#         else:
+#             print(f"Did not match: {item}")
