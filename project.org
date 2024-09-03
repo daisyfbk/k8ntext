@@ -139,55 +139,17 @@ graph that can be used to understand the relationships between the events.
 - [X] Further graphs and reports on the model capabilities,
       accuracy, and efficiency
 - [X] An improved version of the visualizer
-*** SCHE Weeks 12-16 (July 30 - August 26)
-- Further work on motivation and use cases
-  - Need to convince both companies and academia that
-    the system is useful and can be used in a real-world
-    scenario
-  - Find situations in which the tool would be useful
-    and how it could be used
-- Work towards feature-completeness
-  - The system should be able to parse all the events
-    we set out to parse
-  - Each event should be thoroughly tested, the choices
-    made strongly justified and documented
-  - The visualizer should be able to show all the events
-    in a meaningful way
-    - Focus on filtering, understanding at high level
-    - Focus on viewing over large time periods too
-- Did we meet the list of milestones we set up?
-  - Yes :: Perfect, we can move on to the next phase
-  - No :: Take a time machine and go back to the previous
-            weeks to fix the issues
-*** WAIT Weeks 17-18 (August 27 - September 9)
-- (M+V) Starting the publication draft
-  - The document should generalize the work done,
-    making it suitable for not just Kubernetes logs
-    but for any kind of audit log (e.g. AWS, GCP)
-  - Still to be decided which type of publication
-    we are aiming for
-- (M+V) Final assessment of the system
-  - The system should be able to parse logs in a reasonable
-    amount of time, and the data structure should be
-    efficient in storing the data
-  - The system should be able to answer queries in a
-    reasonable amount of time
-  - The query system should be user-friendly, and the
-    results should be easily interpretable
-  - The system could have some kind of visualization
-    to help users understand the data
-- If something went wrong, this is the correct moment to
-  apply fixes and improvements to the system.
-**** Results
-- A first WIP of the publication, still in the early
-  stages of writing
-- A final assessment of the system
-- A visualization of the data structure
-- A final report on the project  
-*** WAIT Weeks 19-25 (September 10 - October 28)
-- Writing the publication
-- Finalizing the system
-- Closure work
+*** DONE Weeks 12-17 (July 30 - September 2)
+- (M) Definition of use cases, outlining the story
+  for the publication
+- (M) Investigative work on model, testing against other
+  datasets
+- (V) Completion work on visualizer
+- (V) Integration of query engine
+*** SCHE Weeks 18-25 (September 3 - October 28)
+- Publication writing after having decided the venue
+- Final assessment and data collection to put in publication
+- Preparation for future work
 **** Results
 - A publication
 - A final report on the project
