@@ -232,12 +232,17 @@ def main(args):
         for key, values in dict_divided_by_label.items():
             for value2 in values:
                 uuid_value = value2.get(UUID)
-                value2.get('UUID', None)
                 if uuid_value == '1010':
-                    print(colored(str(key) + str(value2), 'light_yellow', 'on_magenta'))
+                # if uuid_value == '1010' and value2.get('verb') != 'list' and value2.get('verb') != 'watch' \
+                #     and value2.get('verb') != 'get':
+                # if uuid_value == '1010' and value2.get('verb') == 'get':
+                    value2.pop('stageTimestamp', None)
+                    value2.pop('metadata/uid', None)
+                    value2.pop('UUID', None)
+                    print(colored(str(key) + " " + str(value2), 'light_yellow', 'on_magenta'))
 
     if args.plot:
-        audit_graph = AuditGraph(actions_dict, dict_divided_by_label)
+        audit_graph = AuditGraph(actions_dict, dict_divided_by_label, args.query)
         audit_graph.plot_graph()
 
 
@@ -250,6 +255,7 @@ if __name__ == "__main__":
     parser.add_argument('-d', '--dump', action='store_true', help='Dump the unclassified logs to the terminal', default=False)
     parser.add_argument('-p', '--plot', action='store_true', help='Plot graph', default=False)
     parser.add_argument('-k', '--key', help='The key to use as label', default=DEFAULT_LABEL_KEY)
+    parser.add_argument('-q', '--query', help='The query to filter results', default="")
     parsed_args = parser.parse_args()
 
     input_filename = parsed_args.f
