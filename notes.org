@@ -225,13 +225,6 @@ The data is then ready to be used for training a model.
     or the user are not present in the log line, and this operator allows to check if they are
     present. For example, ~exists(.namespace)~.
   - =regex()=: allows to perform a regex match on a key: ~.key == regex(".*franzil")~
-  - Any Pythonic operator can be used, for example:
-    - =all(), any()=: allows to check if all or any of the values in a list of values
-      are present in a key.
-      - ~any([.key == 1, .key == 2])~ checks if the key is equal to either 1 or 2.
-      - ~all([.key == 1, .key == 2])~ checks if the key is equal to both 1 and 2 (obviously
-        this is impossible, but it's just an example).
-  - In the end, as long as the query when translated to Python is valid, it can be used.
     
 [fn:2] Suppose for example that a behaviour spans 30 lines but the actual key action
        is executed in the last line. The algorithm will collect all lines and cluster
@@ -370,6 +363,72 @@ retrieved and analyzed.
   them is not easy unless someone knows the structure of the log
   by heart and is proficient in jq. 
 
+* Venues  
+** OSDI 2025
+- Co-located with USENIX ATC (July 7-9)
+- deadline CfP Dec 10
+- notification Mar 2025
+- 12 pages + any biblio/appendix
+- https://www.usenix.org/conference/osdi25/call-for-papers
+** SIGCOMM 2025
+- Too early for information
+** NOMS 2025
+- Jun 12-16 2025
+- Honolulu, Hawaii, U.S.A.
+- deadline CfP Sep 13
+- notification Dec 20
+- 8 pages + any biblio/appendix
+- https://noms2025.ieee-noms.org/call-technical-session-papers
+** ASIACCS 2025
+- Aug 25-29 2025
+- Hanoi, Vietnam
+- deadline CfP 20 Sep (1) 20 Jan (2)
+- early reject 25 Oct (1) 28 Feb (2)
+- notification 13 Dec (1) 19 Apr (2)
+- 12 pages + 10 biblio/appendix
+- https://asiaccs2025.hust.edu.vn/call-for-papers/
+** USENIX 2025
+- July 7-9 2025
+- Boston, MA, U.S.A.
+- deadline CfP Jan 14
+- notification Apr 2025
+- full: 12 pages, short: 6 pages, any biblio/appendix
+- https://www.usenix.org/conference/atc25/call-for-papers
+** FAIL ICC 2025
+- Jun 8-12 2025
+- Montreal, Canada
+- deadline CfP 11 Oct, last year extended 1 month
+- notification 17 Jan
+- 6 pages + 1 overcharged
+- https://icc2025.ieee-icc.org/authors/call-papers 
+** FAIL NSDI 2025
+:LOGBOOK:
+- State "FAIL"       from              [2024-09-03 Tue 10:10]
+:END:
+- Apr 28-30 2025
+- Philadelphia, PA, U.S.A.
+- deadline CfP 1 passed, 2nd: Sep 19
+- notification Dec 10
+- 12 pages + any biblio/appendix
+- https://www.usenix.org/conference/nsdi25/call-for-papers
+** FAIL SIGMETRICS 2025
+:LOGBOOK:
+- State "FAIL"       from              [2024-09-03 Tue 10:10]
+:END:
+- Jun 9-13 2025
+- Stony Brook, NY, U.S.A.
+- deadline CfP 9 Oct (2) Jan 22 (3)
+- notification 10 Dec (2) Mar 18 (3)
+- 20 pages + any biblio
+- https://www.sigmetrics.org/sigmetrics2025/call_for_papers.html
+** FAIL INFOCOM 2025 too late, in May but CfP ended now 
+** FAIL NDSS 2025 - too late
+** FAIL CCS 2024 is in October, too early for 2025
+** FAIL SuperComputing 2024 is in November
+** FAIL CoNext 2024 - too late, in December
+** FAIL GLOBECOM 2024 too late, in December
+** FAIL IEEE CNS 2024 too late, in October
+** FAIL ICSOC 2024 too late, in December
 * Quirks and design decisions
 :PROPERTIES:
 :CUSTOM_ID: behaviour-analysis
