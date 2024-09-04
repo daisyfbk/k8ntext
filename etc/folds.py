@@ -11,7 +11,7 @@ for feature_count in df['features'].unique():
     for background in df['background'].unique():
         df_filtered = df[(df['features'] == feature_count) & (df['background'] == background)]
         if background == 'nobg':
-            df_filtered.loc[:, 'fold'] = df_filtered['fold'] / (41124/(4000 + 41124))
+            df_filtered.loc[:, 'fold'] = df_filtered['fold'] / (18478/(4000 + 18478))
         plt.plot(df_filtered['fold'], df_filtered['accuracy'], label=f'{feature_count} features, {background} background')
 # Add labels and title
 plt.xlabel('Fold')
