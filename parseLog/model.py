@@ -813,7 +813,7 @@ if __name__ == '__main__':
     parser.add_argument('-f', '--file', type=str, help='Path to the files, one or many', nargs='+', required=True)
     parser.add_argument('-m', '--model', type=str,
                         help='Path to the model file; if provided, will do inference instead of training')
-    parser.add_argument('-s', '--stats-mode', nargs='?', const='stats_only', default=None,
+    parser.add_argument('-s', '--stats-mode', nargs='?', const='stats_only', default='',
                         help=stats_mode_help)
     parser.add_argument('-y', '--hyperparam-tuning', type=str,
                         help='Use hyperparameter tuning instead of training')
