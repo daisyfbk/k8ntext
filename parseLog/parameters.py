@@ -16,6 +16,11 @@ LABEL_FEATURE = str(os.getenv('LABEL_FEATURE', 'label'))  # Name of the feature 
 OUT_FOLDER = os.getenv('OUT_FOLDER', 'out')
 KERAS_BACKEND = os.getenv('KERAS_BACKEND', 'tensorflow')
 
+FILTER_FEATURES = os.getenv('FILTER_FEATURES', None)
+if FILTER_FEATURES is not None and FILTER_FEATURES != "":
+    FILTER_FEATURES = list(map(int, FILTER_FEATURES.split(',')))
+ # Selectively remove features (by index on model_features.py) 
+
 # The following variables are used by model_visualize, change them as you change the model
 
 COLLECTED_METRICS = [

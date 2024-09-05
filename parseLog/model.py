@@ -69,6 +69,9 @@ def preprocess_data(__data: list[dict],
     if features is None:
         # Use all features provided as default
         total_features = model_features.FEATURES
+        if pm.FILTER_FEATURES is not None:
+            # FILTER_FEATURES is a list of indexes to remove
+            total_features = [f for i, f in enumerate(total_features) if i not in pm.FILTER_FEATURES]
     else:
         # Use the provided feature list
         total_features = features
@@ -827,7 +830,6 @@ if __name__ == '__main__':
     initialize_log(log_level=__args.log_level)
 
     if pm.KERAS_BACKEND == 'tensorflow':
-        os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
         import tensorflow as tf
 
         physical_devices = tf.config.list_physical_devices('GPU')
