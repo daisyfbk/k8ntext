@@ -62,9 +62,9 @@ def parse_user_agent_wrapper(user_agent: str) -> dict:
 
 
 FEATURES = [
-    'objectRef',
-    'objectRef.apiGroup',
+    # 'objectRef',
     # 'objectRef.name',
+    'objectRef.apiGroup',
     'objectRef.namespace',
     'objectRef.resource',
     'objectRef.subresource',
