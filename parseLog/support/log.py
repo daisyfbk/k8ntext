@@ -45,9 +45,12 @@ def initialize_log(
 ) -> None:
     hostname = os.uname()[1]
     uid = dt.datetime.now().strftime("%Y%m%d_%H%M%S.%f_") + "_" + hostname
-
-    pm.OUT_FOLDER += f"/{uid}/"
-    formatter = f"[{uid}] - %(asctime)s - %(levelname)s - %(message)s"
+    if pm.CREATE_OUT_SUBFOLDERS:
+        pm.OUT_FOLDER += f"/{uid}/"
+        formatter = f"[{uid}] - %(asctime)s - %(levelname)s - %(message)s"
+    else:
+        pm.OUT_FOLDER += "/"
+        formatter = f"[audit] - %(asctime)s - %(levelname)s - %(message)s"
 
     os.makedirs(pm.OUT_FOLDER, exist_ok=True)
 
