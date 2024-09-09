@@ -14,6 +14,9 @@ TUNER_EXECUTIONS_PER_TRIAL = int(os.getenv('TUNER_EXECUTIONS_PER_TRIAL', 5))
 # Top % of classes to show in confusion matrix
 LABEL_FEATURE = str(os.getenv('LABEL_FEATURE', 'label'))  # Name of the feature that contains the label
 OUT_FOLDER = os.getenv('OUT_FOLDER', 'out')
+CREATE_OUT_SUBFOLDERS = os.getenv('CREATE_OUT_SUBFOLDERS', 1)
+CREATE_OUT_SUBFOLDERS = bool(int(CREATE_OUT_SUBFOLDERS) == 1)
+# Whether to create subfolders in out folder (1) or use it directly (0)
 KERAS_BACKEND = os.getenv('KERAS_BACKEND', 'tensorflow')
 
 FILTER_FEATURES = os.getenv('FILTER_FEATURES', None)
