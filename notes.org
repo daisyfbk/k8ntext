@@ -375,7 +375,29 @@ retrieved and analyzed.
   by heart and is proficient in jq. 
 
 * Venues  
+** EUROSYS 2025
+- March 30 - April 3, 2025
+- Rotterdam, The Netherlands
+- deadline CfP round 2 Oct 22
+- reviews Jan 7, responses Jan 9
+- 12 pages + any biblio, appendix in 12 pages
+- https://2025.eurosys.org/cfp.html
+** USENIX 2025
+- July 7-9 2025
+- Boston, MA, U.S.A.
+- deadline CfP Jan 14
+- notification Apr 2025
+- full: 12 pages, short: 6 pages, any biblio/appendix
+- https://www.usenix.org/conference/atc25/call-for-papers
+* Other venues
 ** OSDI 2025
+:LOGBOOK:
+- State "DELE"       from "DONE"       [2024-09-12 Thu 16:10]
+- State "DONE"       from "FAIL"       [2024-09-12 Thu 16:10]
+- State "FAIL"       from "DONE"       [2024-09-12 Thu 16:10]
+- State "DONE"       from "DELE"       [2024-09-12 Thu 16:10]
+- State "DELE"       from "WAIT"       [2024-09-12 Thu 16:10]
+:END:
 - Co-located with USENIX ATC (July 7-9)
 - deadline CfP Dec 10
 - notification Mar 2025
@@ -398,13 +420,6 @@ retrieved and analyzed.
 - notification 13 Dec (1) 19 Apr (2)
 - 12 pages + 10 biblio/appendix
 - https://asiaccs2025.hust.edu.vn/call-for-papers/
-** USENIX 2025
-- July 7-9 2025
-- Boston, MA, U.S.A.
-- deadline CfP Jan 14
-- notification Apr 2025
-- full: 12 pages, short: 6 pages, any biblio/appendix
-- https://www.usenix.org/conference/atc25/call-for-papers
 ** FAIL ICC 2025
 - Jun 8-12 2025
 - Montreal, Canada
@@ -511,3 +526,4 @@ retrieved and analyzed.
 - When old-style ServiceAccount tokens are used, instead of the new
   CSR style Users, the API server detects the /offending/ action and
   adds a label =kubernetes.io/legacy-token-last-used= to the Secret.
+  
