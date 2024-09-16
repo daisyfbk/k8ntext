@@ -223,7 +223,8 @@ def assign_uuid_to_lines(actions_dict, dict_divided_by_label):
 def main(args):
     actions_dict, dict_divided_by_label = get_actions_and_labels_dicts(args.key)
 
-    # print_actions_dict_to_csv(actions_dict)
+    if args.csv:
+        print_actions_dict_to_csv(actions_dict)
 
     assign_uuid_to_lines(actions_dict, dict_divided_by_label)
 
@@ -253,6 +254,7 @@ if __name__ == "__main__":
 
     parser.add_argument('-f', required=True, help='The log input file')
     parser.add_argument('-d', '--dump', action='store_true', help='Dump the unclassified logs to the terminal', default=False)
+    parser.add_argument('-c', '--csv', action='store_true', help='Dump all actions to a csv file', default=False)
     parser.add_argument('-p', '--plot', action='store_true', help='Plot graph', default=False)
     parser.add_argument('-k', '--key', help='The key to use as label', default=DEFAULT_LABEL_KEY)
     parser.add_argument('-q', '--query', help='The query to filter results', default="")
