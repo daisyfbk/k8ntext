@@ -158,7 +158,7 @@ def decode_label(label: int, as_string: bool = False) -> dict | str:
     verb_id = (label & 0b0000000000000001110000) >> 4
     alternate = (label & 0b0000000000000000001111)
 
-    if alternate:
+    if alternate > 0:
         alternate <<= 3
         label_sub_id |= alternate
         alternate = 0
