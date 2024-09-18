@@ -11,7 +11,6 @@ This document contains the project specification.
 *Last revision: see date in the top of the document*
 
 * Audit Project
-
 The scope of this project is to devise, implement, and evaluate a system that
 parses in real-time cloud audit logs, extracts relevant information, and
 generates a graph that captures the interactions between the events in the logs.
@@ -72,7 +71,7 @@ graph that can be used to understand the relationships between the events.
     
 ** Timeline and milestones
 (V) = Valentino, (M) = Matteo
-*** DONE Weeks 1-2 (May 7 - May 20)
+*** Weeks 1-2 (May 7 - May 20)
 - (M+V) Literature review 
   - (audit) log parsing and analysis
   - graph-based data structures
@@ -85,7 +84,7 @@ graph that can be used to understand the relationships between the events.
 - [X] A literature review (shared) document
 - [X] A shared cluster with K8s running to collect logs from
 - [X] Initial rough idea of events to focus on
-*** DONE Weeks 3-6 (May 21 - June 17)
+*** Weeks 3-6 (May 21 - June 17)
 - (M+V) Designing the system 
   - Choosing which data structure to use
   - Outlining a definitive priority list of events to parse
@@ -102,7 +101,7 @@ graph that can be used to understand the relationships between the events.
 - [X] The design of the system
 - [X] An ordered list of /milestones/ to reach, w.r.t. the capabilities
   of the system, along with the difficulties in doing so
-*** DONE Weeks 7-8 (June 18 - July 1)
+*** Weeks 7-8 (June 18 - July 1)
 - (M+V) Studying and implementing the model
   for category 1 logs
 - (V) Connect the parser to the data structure,
@@ -113,7 +112,7 @@ graph that can be used to understand the relationships between the events.
 - [X] A working prototype of the system, able to parse
   logs of category 1, that generates a graph that
   summarizes the interactions
-*** DONE Weeks 8-10 (July 2 - July 16)
+*** Weeks 8-10 (July 2 - July 16)
 - (M) Designing category 2 scenarios, creating logs
   and adapting the model to the new data
 - (M) Work on hyperparameter tuning, model improvement
@@ -123,7 +122,7 @@ graph that can be used to understand the relationships between the events.
 - [X] A model that efficiently parses category 2 logs
 - [X] Results of the model and hyperparameter study
 - [X] First prototype of the visualizer
-*** DONE Weeks 11-12 (July 17 - July 30)
+*** Weeks 11-12 (July 17 - July 30)
 - (V) Focus on: improving the visualizer 
   - The visualizer should provide a way to easily
     understand the interactions, possibly
@@ -139,14 +138,14 @@ graph that can be used to understand the relationships between the events.
 - [X] Further graphs and reports on the model capabilities,
       accuracy, and efficiency
 - [X] An improved version of the visualizer
-*** DONE Weeks 12-17 (July 30 - September 2)
+*** Weeks 12-17 (July 30 - September 2)
 - (M) Definition of use cases, outlining the story
   for the publication
 - (M) Investigative work on model, testing against other
   datasets
 - (V) Completion work on visualizer
 - (V) Integration of query engine
-*** SCHE Weeks 18-25 (September 3 - October 28)
+*** Weeks 18-24 (September 3 - October 22)
 - Publication writing after having decided the venue
 - Final assessment and data collection to put in publication
 - Preparation for future work
@@ -154,4 +153,3 @@ graph that can be used to understand the relationships between the events.
 - A publication
 - A final report on the project
 - A final version of the system
- 
