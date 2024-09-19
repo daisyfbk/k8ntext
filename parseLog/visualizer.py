@@ -16,7 +16,8 @@ DEFAULT_LABEL_KEY = "label"
 # This function returns two dictionary:
 # 1) actions_dict: the dictionary that contains the single actions performed with their corresponding informative_dict
 # 2) dict_divided_by_label: a dictionary that contains all the informative_dict grouped by label
-def get_actions_and_labels_dicts(label_key=DEFAULT_LABEL_KEY):
+def get_actions_and_labels_dicts(input_filename,
+                                 label_key=DEFAULT_LABEL_KEY):
     verbs_dict = {}
     with open('verbs.csv', 'r') as file:
         csv_reader = csv.DictReader(file)
@@ -52,6 +53,9 @@ def get_actions_and_labels_dicts(label_key=DEFAULT_LABEL_KEY):
 
                 # the following code is used to extract the individual actions performed
                 decoded = decode_label(label)
+                if 'uri' not in decoded:
+                    raise ValueError(f"Decoded label does not contain 'uri' key: {decoded}, {line}")
+                
                 decoded_resource, decoded_subresource, *_ = decoded.get('uri').split("/") + [None]  # trick to get None if the subresource is not present
                 decoded_verb = decoded.get('verb')
 
@@ -87,15 +91,21 @@ def get_actions_and_labels_dicts(label_key=DEFAULT_LABEL_KEY):
     return actions_dict, dict_divided_by_label
 
 
-def print_actions_dict_to_csv(actions_dict):
+def print_actions_dict_to_csv(actions_dict, input_filename):
     output_file_name = input_filename.split('/')[-1] + "_actions.csv"
+    
+    fieldnames = set()
+    for val in actions_dict.values():
+        fieldnames.update(val.keys())
+    
     with open(output_file_name, "w") as output_file:
-        w = csv.DictWriter(output_file, next(iter(actions_dict.values())))
+        w = csv.DictWriter(output_file, fieldnames)
+        
+        w.writeheader()
         for key, val in actions_dict.items():
             row = {}
             row.update(val)
             w.writerow(row)
-    pass
 
 
 def get_value_by_owner_reference(log_line, action_value):
@@ -221,9 +231,11 @@ def assign_uuid_to_lines(actions_dict, dict_divided_by_label):
 
 
 def main(args):
-    actions_dict, dict_divided_by_label = get_actions_and_labels_dicts(args.key)
+    actions_dict, dict_divided_by_label = \
+        get_actions_and_labels_dicts(args.file, args.key)
 
-    # print_actions_dict_to_csv(actions_dict)
+    if args.csv:
+        print_actions_dict_to_csv(actions_dict, args.file)
 
     assign_uuid_to_lines(actions_dict, dict_divided_by_label)
 
@@ -251,14 +263,12 @@ if __name__ == "__main__":
         prog='parseLog',
         description='This program visualizes labelled logs.')
 
-    parser.add_argument('-f', required=True, help='The log input file')
+    parser.add_argument('-f', '--file', required=True, help='The log input file')
     parser.add_argument('-d', '--dump', action='store_true', help='Dump the unclassified logs to the terminal', default=False)
+    parser.add_argument('-c', '--csv', action='store_true', help='Dump all actions to a csv file', default=False)
     parser.add_argument('-p', '--plot', action='store_true', help='Plot graph', default=False)
     parser.add_argument('-k', '--key', help='The key to use as label', default=DEFAULT_LABEL_KEY)
     parser.add_argument('-q', '--query', help='The query to filter results', default="")
     parsed_args = parser.parse_args()
-
-    input_filename = parsed_args.f
-    print(input_filename)
 
     main(parsed_args)
