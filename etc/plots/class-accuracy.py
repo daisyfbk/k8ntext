@@ -1,0 +1,76 @@
+# /Users/matte/Library/CloudStorage/OneDrive-FondazioneBrunoKessler/projects/audit/results/1_paper_tests/1_window_size/20240919_063020.311060__mfranzil-gpu/metrics.json
+# [{"core_metrics": {"accuracy": 0.9997721106890939, "precision": 0.9900970258015107, "recall": 0.9954811711555006, "f1": 0.9881803106793476}, "majority_accuracy": null, "per_class_metrics": {"accuracy": {"119232": 1.0, "102480": 1.0, "4176": 1.0, "65984": 0.999581764951903, "75200": 1.0, "147536": 1.0, "38080": 1.0, "90256": 1.0, "2727984": 1.0, "65952": 1.0, "180624": 0.9984326018808778, "86416": 1.0, "4400": 1.0, "12752": 1.0, "65936": 1.0, "86432": 1.0, "3695024": 1.0, "61632": 1.0, "41376": 1.0, "172112": 1.0, "17808": 1.0, "94640": 1.0, "82320": 1.0, "74128": 1.0, "98384": 1.0, "12688": 1.0, "3276944": 1.0, "4496": 
+
+import json
+
+with open('/Users/matte/Library/CloudStorage/OneDrive-FondazioneBrunoKessler/projects/audit/results/1_paper_tests/1_window_size/20240919_063020.311060__mfranzil-gpu/metrics.json') as f:
+    j = json.load(f)
+    per_class_metrics = []
+    for attempt in j:
+        per_class_metrics.append(attempt['per_class_metrics'])
+
+condensed = {}
+for attempt in per_class_metrics:
+    if set(attempt['accuracy'].keys()) != set(attempt['weight'].keys()):
+        raise ValueError('Keys do not match')
+    keys = attempt['accuracy'].keys()
+    for key in keys:
+        if key not in condensed:
+            condensed[key] = []
+        condensed[key].append({
+            "accuracy": attempt['accuracy'][key],
+            "weight": attempt['weight'][key],
+        })
+
+for key in condensed:
+    merged_obj = {
+        "accuracy": 0,
+        "weight": 0,
+    }
+
+    for attempt in condensed[key]:
+        merged_obj['accuracy'] += attempt['accuracy'] * attempt['weight']
+        merged_obj['weight'] += attempt['weight']
+
+    merged_obj['accuracy'] /= merged_obj['weight']
+    merged_obj['weight'] /= len(condensed[key])
+    condensed[key] = merged_obj
+
+# sort by weight
+condensed = {k: v for k, v in sorted(condensed.items(), key=lambda item: item[1]['accuracy'], reverse=True)}
+# print top 10 and bottom 10
+top_10 = list(condensed.keys())[:10]
+bottom_10 = list(condensed.keys())[-10:]
+print('Top 10')
+for key in top_10:
+    print(key, condensed[key])
+print('Bottom 10')
+for key in bottom_10:
+    print(key, condensed[key])
+
+# sort by accuracy
+condensed = {k: v for k, v in sorted(condensed.items(), key=lambda item: item[1]['accuracy'], reverse=True)}
+
+del condensed['-1']
+# plot weight against accuracy
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(7, 4), dpi=300)
+plt.rcParams.update({'font.size': 12})
+
+plt.grid(True, which='major', linestyle='--', linewidth=0.5, alpha=0.5)
+
+x = [condensed[key]['weight'] for key in condensed]
+y = [condensed[key]['accuracy'] for key in condensed]
+
+plt.scatter(x, y, s=15, c="blue", marker='o', label='Accuracy of the class')
+plt.xscale('log')
+plt.xlim(1, 1e5)
+
+plt.xlabel('Weight (# of samples)')
+plt.ylabel('Accuracy')
+plt.suptitle('Accuracy of each class against its weight')
+plt.tight_layout(rect=[0, 0, 1, 0.95])
+plt.savefig('class-accuracy.png')
+
+#print(condensed)
