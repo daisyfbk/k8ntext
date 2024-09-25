@@ -134,82 +134,80 @@ def get_value_by_owner_reference(log_line, action_value):
 
 # This function returns the uuid of the action to which it corresponds
 def get_associate_action_uuid(candidate_actions, log_line):
-    # Todo Remove comment -----------------------
-    # if len(candidate_actions) == 1:
-    #     return next(iter(candidate_actions.values())).get(UUID)
-    # else:
-    # Todo up to here -----------------------
-    for key, action_val in candidate_actions.items():
-        if log_line.get('name') == action_val.get('name') and log_line.get('name') is not None:
-            return action_val.get(UUID)
+    if len(candidate_actions) == 1:
+        return next(iter(candidate_actions.values())).get(UUID)
+    else:
+        for key, action_val in candidate_actions.items():
+            if log_line.get('name') == action_val.get('name') and log_line.get('name') is not None:
+                return action_val.get(UUID)
 
-        value_by_owner_reference = get_value_by_owner_reference(log_line, action_val)
-        if value_by_owner_reference is not None:
-            return value_by_owner_reference
+            value_by_owner_reference = get_value_by_owner_reference(log_line, action_val)
+            if value_by_owner_reference is not None:
+                return value_by_owner_reference
 
-    # ---
-    # hard-coded behaviours
-    # ---
-    if log_line.get('verb') == 'get' and log_line.get('resource') == "namespaces":
-        # actions are ordered by time. Consequently, here, we assume that when we encounter a log line that doesn't
-        # match any action we assign to it the first uuid we encounter. Then, the second and so on.
-        for key, action_values in candidate_actions.items():
-            if log_line.get('username') == action_values.get('username') and \
-                    log_line.get('namespace') == action_values.get('namespace') and \
-                    action_values.get('notMatchingNamespaceAlreadyAssigned') is None:
-                action_values['notMatchingNamespaceAlreadyAssigned'] = True  # add it in order to skip at next iteration
-                return action_values.get(UUID)
-
-    if log_line.get('resource') == "events":
-        for key, action_values in candidate_actions.items():
-            if log_line.get('involvedObject') is not None:
-                if log_line.get('involvedObject').get('name') == action_values.get('name'):
-                    return action_values.get(UUID)
-                if action_values.get('ownerReferences') is not None and \
-                        log_line.get('involvedObject').get('name') == action_values.get('ownerReferences')[0].get('name'):
+        # ---
+        # hard-coded behaviours
+        # ---
+        if log_line.get('verb') == 'get' and log_line.get('resource') == "namespaces":
+            # actions are ordered by time. Consequently, here, we assume that when we encounter a log line that doesn't
+            # match any action we assign to it the first uuid we encounter. Then, the second and so on.
+            for key, action_values in candidate_actions.items():
+                if log_line.get('username') == action_values.get('username') and \
+                        log_line.get('namespace') == action_values.get('namespace') and \
+                        action_values.get('notMatchingNamespaceAlreadyAssigned') is None:
+                    action_values['notMatchingNamespaceAlreadyAssigned'] = True  # add it in order to skip at next iteration
                     return action_values.get(UUID)
 
-    for key, action_val in candidate_actions.items():
-        if log_line.get('name') is not None and action_val.get('name') is not None:
-            if log_line.get('name').startswith(action_val.get('name')) or \
-                    action_val.get('name').startswith(log_line.get('name')):
-                return action_val.get(UUID)
+        if log_line.get('resource') == "events":
+            for key, action_values in candidate_actions.items():
+                if log_line.get('involvedObject') is not None:
+                    if log_line.get('involvedObject').get('name') == action_values.get('name'):
+                        return action_values.get(UUID)
+                    if action_values.get('ownerReferences') is not None and \
+                            log_line.get('involvedObject').get('name') == action_values.get('ownerReferences')[0].get('name'):
+                        return action_values.get(UUID)
 
-        # delete namespaces rule
-        if (action_val.get('verb') == 'delete' or action_val.get('verb') == 'create') and \
-                action_val.get('resource') == 'namespaces':
-            if log_line.get('namespace') == action_val.get('name'):
-                return action_val.get(UUID)
-
-    if log_line.get('resource') == 'persistentvolumeclaims' and log_line.get('verb') != "list" and \
-            log_line.get('name') is not None:
-        # try to match the name of the statefulset with the name of the pvc
-        pvc_prefix, ss, *_ = log_line.get('name').split("-")
         for key, action_val in candidate_actions.items():
-            if action_val.get('name') == ss and \
-                    action_val.get('resource') == 'statefulsets':
-                return action_val.get(UUID)
-
-    if log_line.get('resource') == 'persistentvolumes' and log_line.get('verb') != "list" and \
-            log_line.get('claimRef') is not None:
-        pv = log_line.get('claimRef').get('name')
-        pv_prefix, ss, *_ = pv.split("-")
-        for key, action_val in candidate_actions.items():
-            if action_val.get('name') == pv:
-                return action_val.get(UUID)
-            if action_val.get('name') == ss and \
-                    action_val.get('resource') == 'statefulsets':
-                return action_val.get(UUID)
-
-    if log_line.get('resource') == 'events' and log_line.get('involvedObject') is not None:
-        involved_name = log_line.get('involvedObject').get('name')
-        try:
-            prefix, resource_name, *_ = involved_name.split("-")
-            for key, action_val in candidate_actions.items():
-                if action_val.get('name') == resource_name:
+            if log_line.get('name') is not None and action_val.get('name') is not None:
+                if log_line.get('name').startswith(action_val.get('name')) or \
+                        action_val.get('name').startswith(log_line.get('name')):
                     return action_val.get(UUID)
-        except ValueError:
-            pass
+
+            # delete namespaces rule
+            if (action_val.get('verb') == 'delete' or action_val.get('verb') == 'create') and \
+                    action_val.get('resource') == 'namespaces':
+                if log_line.get('namespace') == action_val.get('name'):
+                    return action_val.get(UUID)
+
+        if log_line.get('resource') == 'persistentvolumeclaims' and log_line.get('verb') != "list" and \
+                log_line.get('name') is not None:
+            # try to match the name of the statefulset with the name of the pvc
+            pvc_prefix, ss, *_ = log_line.get('name').split("-")
+            for key, action_val in candidate_actions.items():
+                if action_val.get('name') == ss and \
+                        action_val.get('resource') == 'statefulsets':
+                    return action_val.get(UUID)
+
+        if log_line.get('resource') == 'persistentvolumes' and log_line.get('verb') != "list" and \
+                log_line.get('claimRef') is not None:
+            pv = log_line.get('claimRef').get('name')
+            pv_prefix, ss, *_ = pv.split("-")
+            for key, action_val in candidate_actions.items():
+                if action_val.get('name') == pv:
+                    return action_val.get(UUID)
+                if action_val.get('name') == ss and \
+                        action_val.get('resource') == 'statefulsets':
+                    return action_val.get(UUID)
+
+        if log_line.get('resource') == 'events' and log_line.get('involvedObject') is not None:
+            involved_name = log_line.get('involvedObject').get('name')
+            try:
+                prefix, resource_name, *_ = involved_name.split("-")
+                for key, action_val in candidate_actions.items():
+                    if action_val.get('name') == resource_name:
+                        return action_val.get(UUID)
+            except ValueError:
+                pass
 
     return "1010"
 
