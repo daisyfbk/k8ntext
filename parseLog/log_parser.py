@@ -22,17 +22,6 @@ config = configparser.ConfigParser()
 # Define sets of excluded resources.
 blacklisted_requestURIs = {"/readyz", "/livez", "/api", "/apis"}
 
-blacklisted_resources_liv2 = {"daemonsets", "deployments", "replicasets", "statefulsets", "cronjobs", "jobs"}
-blacklisted_resources_liv3 = {"persistentvolumeclaims", "persistentvolumes"}
-blacklisted_resources_liv4 = {"endpointslices", "ingressclasses", "ingresses", "services"}
-blacklisted_resources_liv7 = {"leases", "networkpolicies", "priorityclasses", "storageclasses", "csidrivers",
-                              "csinodes", "csistoragecapacities", "volumeattachments", "limitranges", "podtemplates"}
-blacklisted_resources_liv9 = {"mutatingwebhookconfigurations", "validatingwebhookconfigurations", "controllerrevisions",
-                              "runtimeclasses", "events"}
-blacklisted_resources_liv10 = {"customresourcedefinitions", "apiservices", "tokenreviews", "horizontalpodautoscalers",
-                               "flowschemas", "prioritylevelconfigurations", "poddisruptionbudgets"}
-blacklisted_resources_liv20 = {"bindings", "componentstatuses", "endpoints", "replicationcontrollers"}
-
 # Resources that we do not exclude a priori but according to the user who performs them
 blacklisted_resources_user_based = {"configmaps", "clusterroles", "namespaces", "serviceaccounts", "resourcequotas",
                                     "clusterrolebindings", "rolebindings", "secrets", "nodes", "pods", "roles"}
@@ -153,15 +142,6 @@ def take_a_decision_about_log_line(json_data):
                 user_username == "system:kube-controller-manager" and
                 (objectref_name == "generic-garbage-collector" or objectref_name == "resourcequota-controller")):
             return Decision.black_listed
-
-    #     if (config.getboolean('ignore_log','blacklisted_resources_liv2') and objectref_resource in blacklisted_resources_liv2) or \
-    #             (config.getboolean('ignore_log','blacklisted_resources_liv3') and objectref_resource in blacklisted_resources_liv3) or \
-    #             (config.getboolean('ignore_log','blacklisted_resources_liv4') and objectref_resource in blacklisted_resources_liv4) or \
-    #             (config.getboolean('ignore_log','blacklisted_resources_liv7') and objectref_resource in blacklisted_resources_liv7) or \
-    #             (config.getboolean('ignore_log','blacklisted_resources_liv9') and objectref_resource in blacklisted_resources_liv9) or \
-    #             (config.getboolean('ignore_log','blacklisted_resources_liv10') and objectref_resource in blacklisted_resources_liv10) or \
-    #             (config.getboolean('ignore_log','blacklisted_resources_liv20') and objectref_resource in blacklisted_resources_liv20):
-    #         return Decision.white_listed
 
     return Decision.white_listed
 
