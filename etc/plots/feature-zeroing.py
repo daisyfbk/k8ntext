@@ -20,17 +20,18 @@ find . -type d -name "*gpu" | while read folder; do cat $folder/main.log | cut -
 import json
 
 lines = []
-with open('/Users/matte/Library/CloudStorage/OneDrive-FondazioneBrunoKessler/projects/audit/results/1_paper_tests/4_feature_selection/metrics', 'r') as f:
+with open('/Users/matte/Codice/fbk/audit-impl/models/1_paper_tests/4_feature_selection/zeroing/metrics', 'r') as f:
     lines = f.readlines()
 
 runs = []
+RUNS = 20
 collected_features = set()
 
-for i in range(0, len(lines), 7):
+for i in range(0, len(lines), 2 + RUNS):
     run = {}
     llen = int(lines[i].split('s: ')[1].split(': ')[0])
     if llen < 38:
-        raise ValueError('Not enough features')
+        continue
     run['features'] = lines[i].split(': ')[2]\
         .replace("'", "")\
         .replace("[", "")\
@@ -46,13 +47,13 @@ for i in range(0, len(lines), 7):
         'recall': 0,
         'f1': 0
     }
-    for j in range(1, 6):
+    for j in range(1, 1 + RUNS):
         jj = json.loads(lines[i + j].replace('\n', ''))
         for key in jj.keys():
             run['metrics'][key] += jj[key]
 
     for key in run['metrics'].keys():
-        run['metrics'][key] /= 5
+        run['metrics'][key] /= RUNS
     
     runs.append(run)
 
@@ -101,13 +102,17 @@ for i in range(len(sorted_data)):
         if sorted_data[i][0].startswith(j):
             sorted_data[i] = (sorted_data[i][0].replace(j, convert[j]), sorted_data[i][1])
 
-# Keep first 5, last 5, put the average of the rest
-offset = 6
-sorted_data = sorted_data[:offset] + [('Average', np.mean([item[1] for item in sorted_data[offset:]]),)] + sorted_data[-offset:]
+all_features_run = runs[ddel[0]]
 
-# Add ellipses before and after "Average"
-sorted_data.insert(offset, ('...', 0))
-sorted_data.insert(offset + 2, (' ...', 0))
+# Keep first 5, last 5, put the average of the rest
+offset = 5
+sorted_data = sorted_data[:offset] + \
+    [(" ...", 0)] + \
+    [('All features', all_features_run['metrics']['precision'])] + \
+    [(" ... ", 0)] + \
+    [('Average', np.mean([item[1] for item in sorted_data[offset:]]),)] + \
+    [("... ", 0)] + \
+    sorted_data[-offset:]
 
 special_colors = {
     "Average": "green",
@@ -126,7 +131,7 @@ plt.rcParams.update({'font.size': 12})
 plt.barh(features, precisions, color=[special_colors.get(f, 'skyblue') for f in features])
 
 # reserve space on the left
-plt.subplots_adjust(left=0.7, right=0.99)
+plt.subplots_adjust(left=0.65, right=0.99)
 
 # Add labels and title
 plt.xlabel('F1 score')
@@ -134,9 +139,10 @@ plt.xlabel('F1 score')
 plt.suptitle('F1 score with Different Missing Features')
 
 
-# remove the ticks where the ellipses are but keep the labels
+# remove the ticks where the ellipses are but keep the labels and shift 45 degrees
 plt.tick_params(axis='y', which='both', left=False, right=False, labelleft=True)
-plt.xticks(np.arange(0.97, 1, 0.005))
+plt.xticks(np.arange(0.97, 1, 0.005), rotation=45)
+
 
 # shift title to the left
 plt.xlim(0.97, 1)
