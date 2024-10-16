@@ -79,7 +79,21 @@ import numpy as np
 runs = [r for r in runs if 4 < len(r['trials']) <= 10]
 
 # colourblind-friendly colours
-cmap = plt.get_cmap('tab10')
+
+palette = {
+    'blue': '#4477AA',
+    'cyan': '#66CCEE',
+    'green': '#228833',
+    'yellow': '#CCBB44',
+    'orange': '#EE7733',
+    'red': '#EE6677',
+    'purple': '#AA3377',
+    'grey': '#BBBBBB'
+}
+
+cmap = list(palette.values())
+  
+# cmap = plt.get_cmap('tab10')
 markers = ['o', 's',  'v', '>', 'P', '*', 'X']
 
 plt.figure(figsize=(7, 4), dpi=300)
@@ -88,10 +102,10 @@ for i in range(len(runs)):
     r = runs[i]
     x = np.linspace(0, 14818, len(r['trials']))
     y = r['trials']
-    plt.plot(x, y, marker=markers[i], color=cmap(i), linestyle='-', linewidth=1, markersize=5)
+    plt.plot(x, y, marker=markers[i], color=cmap[i], linestyle='-', linewidth=1, markersize=5)
 
 # put a 'provisional' watermark
-plt.text(0.5, 0.5, 'Provisional plot', horizontalalignment='center', verticalalignment='center', transform=plt.gca().transAxes, fontsize=20, alpha=0.5)
+# plt.text(0.5, 0.5, 'Provisional plot', horizontalalignment='center', verticalalignment='center', transform=plt.gca().transAxes, fontsize=20, alpha=0.5)
 
 plt.xlabel('Dataset split used for training')
 plt.ylabel('Accuracy (correct/total)')

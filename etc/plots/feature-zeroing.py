@@ -114,9 +114,22 @@ sorted_data = sorted_data[:offset] + \
     [("... ", 0)] + \
     sorted_data[-offset:]
 
+
+palette = {
+    'blue': '#4477AA',
+    'cyan': '#66CCEE',
+    'green': '#228833',
+    'yellow': '#CCBB44',
+    'orange': '#EE7733',
+    'red': '#EE6677',
+    'purple': '#AA3377',
+    'grey': '#BBBBBB'
+}
+
+
 special_colors = {
-    "Average": "green",
-    "All features": "red",
+    "Average": palette['green'],
+    "All features": palette['red']
 }
 
 # Extract sorted keys and values
@@ -128,7 +141,7 @@ plt.figure(figsize=(7, 4), dpi=300)
 
 plt.rcParams.update({'font.size': 12})
 
-plt.barh(features, precisions, color=[special_colors.get(f, 'skyblue') for f in features])
+plt.barh(features, precisions, color=[special_colors.get(f, palette['blue']) for f in features])
 
 # reserve space on the left
 plt.subplots_adjust(left=0.65, right=0.99)

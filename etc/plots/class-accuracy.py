@@ -3,6 +3,17 @@
 
 import json
 
+palette = {
+    'blue': '#4477AA',
+    'cyan': '#66CCEE',
+    'green': '#228833',
+    'yellow': '#CCBB44',
+    'orange': '#EE7733',
+    'red': '#EE6677',
+    'purple': '#AA3377',
+    'grey': '#BBBBBB'
+}
+
 with open('/Users/matte/Library/CloudStorage/OneDrive-FondazioneBrunoKessler/projects/audit/results/1_paper_tests/1_window_size/20240919_063020.311060__mfranzil-gpu/metrics.json') as f:
     j = json.load(f)
     per_class_metrics = []
@@ -63,7 +74,12 @@ plt.grid(True, which='major', linestyle='--', linewidth=0.5, alpha=0.5)
 x = [condensed[key]['weight'] for key in condensed]
 y = [condensed[key]['accuracy'] for key in condensed]
 
-plt.scatter(x, y, s=15, c="blue", marker='o', label='Accuracy of the class')
+for i in range(len(x)):
+    if x[i] > 3 * 10**3 or y[i] < 0.96:
+        plt.scatter(x[i], y[i], s=15, c=palette["red"], marker='o', label='Accuracy of the class' if i == 0 else "")
+    else:
+        plt.scatter(x[i], y[i], s=15, c=palette["blue"], marker='o', label='Accuracy of the class' if i == 0 else "")
+
 plt.xscale('log')
 plt.xlim(1, 1e5)
 
