@@ -97,6 +97,9 @@ cmap = list(palette.values())
 markers = ['o', 's',  'v', '>', 'P', '*', 'X']
 
 plt.figure(figsize=(7, 4), dpi=300)
+plt.rcParams.update({'font.size': 12})
+plt.grid(True, which='major', linestyle='--', linewidth=0.5, alpha=0.5)
+
 # print all runs rescaled to the same length
 for i in range(len(runs)):
     r = runs[i]
@@ -107,9 +110,9 @@ for i in range(len(runs)):
 # put a 'provisional' watermark
 # plt.text(0.5, 0.5, 'Provisional plot', horizontalalignment='center', verticalalignment='center', transform=plt.gca().transAxes, fontsize=20, alpha=0.5)
 
-plt.xlabel('Dataset split used for training')
+plt.xlabel('Position of the log line in the dataset')
 plt.ylabel('Accuracy (correct/total)')
 plt.title('K-fold cross validation accuracy')
 plt.legend([f"K={r['attempts']}" for r in runs])
-plt.tight_layout()
+plt.tight_layout(rect=[0, 0, 1, 0.95])
 plt.savefig('kfolds.png')
