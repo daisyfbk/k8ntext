@@ -48,7 +48,7 @@ for key in condensed:
     condensed[key] = merged_obj
 
 # sort by weight
-condensed = {k: v for k, v in sorted(condensed.items(), key=lambda item: item[1]['accuracy'], reverse=True)}
+condensed = {k: v for k, v in sorted(condensed.items(), key=lambda item: item[1]['accuracy']  * item[1]['weight']                                     , reverse=True)}
 # print top 10 and bottom 10
 top_10 = list(condensed.keys())[:10]
 bottom_10 = list(condensed.keys())[-10:]
