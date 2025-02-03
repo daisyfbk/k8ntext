@@ -110,13 +110,15 @@ def preprocess_data(__data: list[dict],
 
         if pm.LABEL_FEATURE in d:
             o["label"] = d[pm.LABEL_FEATURE]
+        if pm.LABEL_CP_FEATURE in d:
+            o["cplabel"] = d[pm.LABEL_CP_FEATURE]
         extracted_data.append(o)
 
     # Remove excluded features
     res = []
     for d in flattened_data:
         obj = {}
-        for f in total_features + [pm.LABEL_FEATURE]:
+        for f in total_features + [pm.LABEL_FEATURE, pm.LABEL_CP_FEATURE]:
             try:
                 obj[f] = d[f]
             except KeyError:
@@ -125,6 +127,8 @@ def preprocess_data(__data: list[dict],
 
     if pm.LABEL_FEATURE in total_features:
         total_features.remove(pm.LABEL_FEATURE)
+    if pm.LABEL_CP_FEATURE in total_features:
+        total_features.remove(pm.LABEL_CP_FEATURE)
 
     return res, total_features
 
@@ -237,6 +241,7 @@ def get_model_callbacks(monitor: str = 'val_loss',
 def encode_data(flattened_data: list[dict],
                 total_features: list[str],
                 include_y: bool = True,
+                model_version: int = 0,
                 previous_xenc: list | None = None
                 ) -> dict:
     log.info(f"Encoding a total of {len(flattened_data)} sequences.")
@@ -246,9 +251,18 @@ def encode_data(flattened_data: list[dict],
 
     for d in flattened_data:
         if include_y:
-            y_before.append(d.pop(pm.LABEL_FEATURE))
+            match model_version:
+                case 0:
+                    d.pop(pm.LABEL_CP_FEATURE)
+                    y_before.append(d.pop(pm.LABEL_FEATURE))
+                case 1:
+                    d.pop(pm.LABEL_FEATURE)
+                    y_before.append(d.pop(pm.LABEL_CP_FEATURE))
+                case _:
+                    raise ValueError(f"Unknown model version {model_version}")
         else:
             d.pop(pm.LABEL_FEATURE)
+            d.pop(pm.LABEL_CP_FEATURE)
         x_before.append(list(d.values()))
 
     len_features = len(total_features)
@@ -271,21 +285,41 @@ def encode_data(flattened_data: list[dict],
     log.info(f"Features: {len_features}: {total_features}")
 
     if include_y:
-        yle = AuditEncoder()
-        len_labeltypes = 5
-        len_subclasses = yle.length
-        y_encoded = yle.fit_transform(y_before)
-        y_onehot = to_categorical(y_encoded, num_classes=len_subclasses)
+        match model_version:
+            case 0:
+                yle = AuditEncoder()
+                len_labeltypes = 5
+                len_subclasses = yle.length
+                y_encoded = yle.fit_transform(y_before)
+                y_onehot = to_categorical(y_encoded, num_classes=len_subclasses)
 
-        log.info(f"Classes: {len_classes}, cast to a one-hot encoding of {len_labeltypes} x {len_subclasses}")
+                log.info(f"Classes: {len_classes}, cast to a one-hot encoding of {len_labeltypes} x {len_subclasses}")
 
-        len_local_classes = len(set(y_before))
-        log.info(f"Classes in the dataset: {len_local_classes}")
+                len_local_classes = len(set(y_before))
+                log.info(f"Classes in the dataset: {len_local_classes}")
+            case 1:
+                # Binary classification, pm.LABEL_FEATURE is either true (control-plane) or false (non-control-plane
+                yle = preprocessing.LabelEncoder()
+                y_encoded = yle.fit_transform(y_before)
+                y_onehot = to_categorical(y_encoded, num_classes=2)
+
+                log.info(f"Classes: {len_classes}, cast to a one-hot encoding of 2")
+
+                len_local_classes = len(set(y_before))
+                log.info(f"Classes in the dataset: {len_local_classes}")
+            case _:
+                raise ValueError(f"Unknown model version {model_version}")
 
     # Create batches
     X = np.zeros((len(x_before) - pm.WINDOW_LENGTH + 1, pm.WINDOW_LENGTH, len_features))
     if include_y:
-        y = np.zeros((len(x_before) - pm.WINDOW_LENGTH + 1, pm.WINDOW_LENGTH, len_labeltypes, len_subclasses))
+        match model_version:
+            case 0:
+                y = np.zeros((len(x_before) - pm.WINDOW_LENGTH + 1, pm.WINDOW_LENGTH, len_labeltypes, len_subclasses))
+                y_shape = (len_labeltypes, len_subclasses)
+            case 1:
+                y = np.zeros((len(x_before) - pm.WINDOW_LENGTH + 1, pm.WINDOW_LENGTH, 2))
+                y_shape = 2
 
     for i in tqdm(range(pm.WINDOW_LENGTH, len(x_before) + 1)):
         X[i - pm.WINDOW_LENGTH] = x_before[i - pm.WINDOW_LENGTH:i]
@@ -300,7 +334,7 @@ def encode_data(flattened_data: list[dict],
             "x_encoders": xenc,
             "y_encoder": yle,
             "X_shape": len_features,
-            "y_shape": (len_labeltypes, len_subclasses),
+            "y_shape": y_shape,
         }
     else:
         log.info(f"Resulting shapes: {X.shape}")
@@ -327,7 +361,7 @@ def model_training(data: list[dict],
                    statistical_mode: bool = False) -> dict:
     flattened_data, total_features = preprocess_data(data)
 
-    training_data = encode_data(flattened_data, total_features)
+    training_data = encode_data(flattened_data, total_features, model_version=pm.MODEL_VERSION)
     xenc = training_data['x_encoders']
     yle = training_data['y_encoder']
     X_shape = training_data['X_shape']
@@ -375,9 +409,12 @@ def model_training(data: list[dict],
 
 
 def kfold_training(data: list[dict]) -> dict:
+    if pm.MODEL_VERSION != 0:
+        raise ValueError("K-fold training is only supported for model version 0.")
+    
     flattened_data, total_features = preprocess_data(data)
 
-    training_data = encode_data(flattened_data, total_features)
+    training_data = encode_data(flattened_data, total_features, model_version=pm.MODEL_VERSION)
     xenc = training_data['x_encoders']
     yle = training_data['y_encoder']
     X_shape = training_data['X_shape']
@@ -419,7 +456,7 @@ def kfold_training(data: list[dict]) -> dict:
 
         maj = calculate_majorities(data_test, y_pred_decoded)
 
-        metrics = calculate_metrics(y_test_decoded,
+        metrics = calculate_class_metrics(y_test_decoded,
                                     y_pred_decoded,
                                     include_per_class=True,
                                     include_confusion_matrix=True)
@@ -438,7 +475,35 @@ def kfold_training(data: list[dict]) -> dict:
     return res
 
 
-def calculate_metrics(y_true, y_pred,
+def calculate_metrics_wrapper(y_true, y_pred,
+                              **kwargs) -> dict:
+    match pm.MODEL_VERSION:
+        case 0:
+            return calculate_class_metrics(y_true, y_pred, **kwargs)
+        case 1:
+            return calculate_binary_metrics(y_true, y_pred, **kwargs)
+
+
+def calculate_binary_metrics(y_true, y_pred, **kwargs) -> dict:
+    if y_true.shape != y_pred.shape:
+        raise ValueError("Shapes of y_true and y_pred do not match.")
+
+    accuracy = float(accuracy_score(y_true.flatten(), y_pred.flatten()))
+    precision = float(precision_score(y_true.flatten(), y_pred.flatten(), average='macro', zero_division=np.nan))
+    recall = float(recall_score(y_true.flatten(), y_pred.flatten(), average='macro', zero_division=np.nan))
+    f1 = float(f1_score(y_true.flatten(), y_pred.flatten(), average='macro', zero_division=np.nan))
+
+    return {
+        "core_metrics": {
+            "accuracy": accuracy,
+            "precision": precision,
+            "recall": recall,
+            "f1": f1
+        }
+    }
+
+
+def calculate_class_metrics(y_true, y_pred,
                       include_majority_accuracy=False,
                       include_per_class=False,
                       include_confusion_matrix=False) -> dict:
@@ -555,7 +620,7 @@ def model_inference(model: models.Model,
                     yle: preprocessing.LabelEncoder,
                     data: list[dict]) -> dict:
     flattened_data, total_features = preprocess_data(data, features)
-    training_data = encode_data(flattened_data, total_features, include_y=False, previous_xenc=x_encoders)
+    training_data = encode_data(flattened_data, total_features, include_y=False, previous_xenc=x_encoders, model_version=pm.MODEL_VERSION)
     X = training_data['X']
 
     log.info("Predicting labels...")

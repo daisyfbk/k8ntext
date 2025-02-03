@@ -13,6 +13,8 @@ TRAIN_VALID_SPLIT = float(os.getenv('TRAIN_VALID_SPLIT', 0.1))  # Percentage of 
 TUNER_EXECUTIONS_PER_TRIAL = int(os.getenv('TUNER_EXECUTIONS_PER_TRIAL', 5))
 # Top % of classes to show in confusion matrix
 LABEL_FEATURE = str(os.getenv('LABEL_FEATURE', 'label'))  # Name of the feature that contains the label
+LABEL_CP_FEATURE = str(os.getenv('LABEL_CP_FEATURE', 'cplabel'))  # Name of the feature that contains the label for control plane
+
 OUT_FOLDER = os.getenv('OUT_FOLDER', 'out')
 CREATE_OUT_SUBFOLDERS = os.getenv('CREATE_OUT_SUBFOLDERS', 1)
 CREATE_OUT_SUBFOLDERS = bool(int(CREATE_OUT_SUBFOLDERS) == 1)
