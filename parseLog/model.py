@@ -129,19 +129,14 @@ def preprocess_data(__data: list[dict],
     return res, total_features
 
 
-def generate_model(X_shape: int, y_shape: int | tuple) -> models.Model:
-    model = models.Sequential([
-        layers.Input(shape=(pm.WINDOW_LENGTH, X_shape)),
-        layers.Bidirectional(layers.LSTM(X_shape * 4, return_sequences=True, name='lstm_1'), name='bidirectional_1'),
-        layers.BatchNormalization(name='batch_norm_1'),
-        layers.Bidirectional(layers.LSTM(X_shape * 3, return_sequences=True, name='lstm_2'), name='bidirectional_2'),
-        layers.Dropout(0.4, name='dropout_1'),
-        layers.TimeDistributed(layers.Dense(y_shape[0] * y_shape[1], activation='relu', name='dense'),
-                               name='time_distributed'),
-        layers.BatchNormalization(name='batch_norm_2'),
-        layers.Reshape((pm.WINDOW_LENGTH, y_shape[0], y_shape[1]), name='reshape'),
-        layers.Activation('softmax', name='softmax')
-    ])
+def generate_model_wrapper(X_shape: int, y_shape: int | tuple, version: int = 1) -> models.Model:
+    match version:
+        case 0:
+            model = generate_multiclass_model(X_shape, y_shape)
+        case 1:
+            model = generate_binary_model(X_shape)
+        case _:
+            raise ValueError(f"Unknown model version {version}")
 
     mt = [
         keras_metrics.Precision(name='precision'),
@@ -156,6 +151,51 @@ def generate_model(X_shape: int, y_shape: int | tuple) -> models.Model:
     )
 
     return model
+
+def generate_multiclass_model(X_shape: int, y_shape: int | tuple) -> models.Model:
+    """
+    Version 0 of the model that is used for multi-class classification.
+    """
+    uncompiled_model = models.Sequential([
+        layers.Input(shape=(pm.WINDOW_LENGTH, X_shape)),
+        layers.Bidirectional(layers.LSTM(X_shape * 4, return_sequences=True, name='lstm_1'), name='bidirectional_1'),
+        layers.BatchNormalization(name='batch_norm_1'),
+        layers.Bidirectional(layers.LSTM(X_shape * 3, return_sequences=True, name='lstm_2'), name='bidirectional_2'),
+        layers.Dropout(0.4, name='dropout_1'),
+        layers.TimeDistributed(layers.Dense(y_shape[0] * y_shape[1], activation='relu', name='dense'),
+                               name='time_distributed'),
+        layers.BatchNormalization(name='batch_norm_2'),
+        layers.Reshape((pm.WINDOW_LENGTH, y_shape[0], y_shape[1]), name='reshape'),
+        layers.Activation('softmax', name='softmax')
+    ])
+
+    return uncompiled_model
+
+
+def generate_binary_model(X_shape: int) -> models.Model:
+    """
+    A version of the model that is used for binary classification.
+    Instead of classifying into multiple classes, this model classifies into two classes:
+    control-plane and non-control-plane.
+
+    All the other parameters are the same.
+    
+    This model has version ID 1.
+    """
+    uncompiled_model = models.Sequential([
+        layers.Input(shape=(pm.WINDOW_LENGTH, X_shape)),
+        layers.Bidirectional(layers.LSTM(X_shape * 4, return_sequences=True, name='lstm_1'), name='bidirectional_1'),
+        layers.BatchNormalization(name='batch_norm_1'),
+        layers.Bidirectional(layers.LSTM(X_shape * 3, return_sequences=True, name='lstm_2'), name='bidirectional_2'),
+        layers.Dropout(0.4, name='dropout_1'),
+        layers.TimeDistributed(layers.Dense(2, activation='relu', name='dense'),
+                               name='time_distributed'),
+        layers.BatchNormalization(name='batch_norm_2'),
+        layers.Reshape((pm.WINDOW_LENGTH, 2), name='reshape'),
+        layers.Activation('softmax', name='softmax')
+    ])
+
+    return uncompiled_model
 
 
 def get_model_callbacks(monitor: str = 'val_loss',
@@ -293,7 +333,7 @@ def model_training(data: list[dict],
     X_shape = training_data['X_shape']
     y_shape = training_data['y_shape']
 
-    model = generate_model(X_shape, y_shape)
+    model = generate_model_wrapper(X_shape, y_shape, pm.MODEL_VERSION)
 
     # x_train, x_test, y_train, y_test, i_train, i_test = train_test_split(X, y, indices, test_size=pm.TEST_TRAIN_SPLIT)
     x_train, x_test, y_train, y_test = train_test_split(
@@ -355,7 +395,7 @@ def kfold_training(data: list[dict]) -> dict:
         x_train, x_test = X[train_index], X[test_index]
         y_train, y_test = y[train_index], y[test_index]
 
-        model = generate_model(X_shape, y_shape)
+        model = generate_model_wrapper(X_shape, y_shape, pm.MODEL_VERSION)
 
         cb = get_model_callbacks(monitor='loss')
 
