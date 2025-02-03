@@ -391,7 +391,7 @@ def model_training(data: list[dict],
     y_pred_decoded = decode_labels(y_pred_sublabels, yle)
     y_test_decoded = decode_labels(y_test_sublabels, yle)
 
-    metrics = calculate_metrics(y_test_decoded,
+    metrics = calculate_metrics_wrapper(y_test_decoded,
                                 y_pred_decoded,
                                 include_per_class=True,
                                 include_confusion_matrix=True)
