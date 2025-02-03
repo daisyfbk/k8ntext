@@ -111,7 +111,7 @@ def preprocess_data(__data: list[dict],
         if pm.LABEL_FEATURE in d:
             o["label"] = d[pm.LABEL_FEATURE]
         if pm.LABEL_CP_FEATURE in d:
-            o["cplabel"] = d[pm.LABEL_CP_FEATURE]
+            o["cplabel"] = 1 if d[pm.LABEL_CP_FEATURE] else 0
         extracted_data.append(o)
 
     # Remove excluded features
@@ -384,12 +384,19 @@ def model_training(data: list[dict],
     y_pred = model.predict(x_test)
     activate_stdout_logging()
 
-    y_pred_sublabels = np.argmax(y_pred, axis=-1)
-    y_test_sublabels = np.argmax(y_test, axis=-1)
+    match pm.MODEL_VERSION:
+        case 0:
+            y_pred_sublabels = np.argmax(y_pred, axis=-1)
+            y_test_sublabels = np.argmax(y_test, axis=-1)
 
-    print("Decoding labels...")
-    y_pred_decoded = decode_labels(y_pred_sublabels, yle)
-    y_test_decoded = decode_labels(y_test_sublabels, yle)
+            print("Decoding labels...")
+            y_pred_decoded = decode_labels(y_pred_sublabels, yle)
+            y_test_decoded = decode_labels(y_test_sublabels, yle)
+        case 1:
+            # Binary classification
+            y_pred_decoded = np.argmax(y_pred, axis=-1)
+            y_test_decoded = np.argmax(y_test, axis=-1)
+    
 
     metrics = calculate_metrics_wrapper(y_test_decoded,
                                 y_pred_decoded,
