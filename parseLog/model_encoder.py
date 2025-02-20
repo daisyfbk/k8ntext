@@ -38,7 +38,10 @@ class RisingEncoder:
         return self.transform(strings)
 
     def inverse_transform(self, ids):
-        return [self.reverse_mapping.get(i, "UNKNOWN") for i in ids]
+        res = []
+        for i in ids:
+            res.append(self.reverse_mapping.get(i, "UNKNOWN"))
+        return res
 
     def get_config(self):
         return {
