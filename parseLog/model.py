@@ -625,7 +625,8 @@ def model_inference(model: models.Model,
                     features: list[str],
                     x_encoders: list[Any],
                     yle: preprocessing.LabelEncoder,
-                    data: list[dict]) -> dict:
+                    data: list[dict],
+                    model_version: int = 0) -> dict:
     flattened_data, total_features = preprocess_data(data, features)
     training_data = encode_data(flattened_data, total_features, include_y=False, previous_xenc=x_encoders, model_version=pm.MODEL_VERSION)
     X = training_data['X']
@@ -634,9 +635,14 @@ def model_inference(model: models.Model,
     y_pred = model.predict(X)
 
     log.info("Decoding labels...")
-    y_pred_labels = np.argmax(y_pred, axis=-1)
-    y_pred_decoded = decode_labels(y_pred_labels, yle)
-
+    if model_version == 1:
+        y_pred_decoded = np.argmax(y_pred, axis=-1)
+    elif model_version == 0:
+        y_pred_labels = np.argmax(y_pred, axis=-1)
+        y_pred_decoded = decode_labels(y_pred_labels, yle)
+    else:
+        raise ValueError(f"Unknown model version {model_version}")
+    
     return calculate_majorities(data, y_pred_decoded)
 
 
@@ -757,18 +763,28 @@ def calculate_majorities(data: list[dict],
     error_statistics["total"] = accounted
     error_statistics["correct"] = correct
 
-    log.info(f"Accuracy on labeled: {correct / accounted} (errors: {accounted - correct} / {accounted})")
+    if accounted == 0:
+        log.error("Provided dataset is not labeled, skipping error statistics")
 
-    return {
-        "accounted": accounted,
-        "correct": correct,
-        "total": len(data),
-        "accuracy": correct / accounted,
-        "error_statistics": error_statistics,
-        "predicted_sequence": [int(x) for x in predicted_sequence.values()],
-        "original_sequence": [d[pm.LABEL_FEATURE] if pm.LABEL_FEATURE in d else None for d in data],
-        "sequence_weights": sequence_weights
-    }
+        return {
+            "total": len(data),
+            "predicted_sequence": [int(x) for x in predicted_sequence.values()],
+            "sequence_weights": sequence_weights
+        }
+    
+    else:
+        log.info(f"Accuracy on labeled: {correct / accounted} (errors: {accounted - correct} / {accounted})")
+
+        return {
+            "accounted": accounted,
+            "correct": correct,
+            "total": len(data),
+            "accuracy": correct / accounted,
+            "error_statistics": error_statistics,
+            "predicted_sequence": [int(x) for x in predicted_sequence.values()],
+            "original_sequence": [d[pm.LABEL_FEATURE] if pm.LABEL_FEATURE in d else None for d in data],
+            "sequence_weights": sequence_weights
+        }
 
 
 def open_file(file: str) -> list:
@@ -906,7 +922,8 @@ def main(args):
         with open(args.model + '.features', 'r') as f:
             features = json.load(f)
 
-        result = model_inference(model, features, x_encoders, y_encoders, data)
+        result = model_inference(model, features, x_encoders, y_encoders, data,
+                                 model_version=pm.MODEL_VERSION)
 
         if 'save' in args.stats_mode: 
             y_pred = result['predicted_sequence']
@@ -920,7 +937,7 @@ def main(args):
         with open(pm.OUT_FOLDER + '/inference.json', 'w') as f:
             json.dump(result, f)
 
-        if result['error_statistics']['total'] > 0:
+        if 'error_statistics' in result and result['error_statistics']['total'] > 0:
             from model_visualize import plot_error_statistics
             plot_error_statistics(result['error_statistics'])
 
