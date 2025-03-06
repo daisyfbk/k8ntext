@@ -150,10 +150,18 @@ def get_informative_dict(json_data):
     request_uri = json_data.get('requestURI').split('?')[0]
     verb = json_data.get('verb')
     user_username = json_data.get('user').get('username')
-    objectref_resource = json_data.get('objectRef').get('resource')
-    objectref_subresource = json_data.get('objectRef').get('subresource')
-    objectref_name = json_data.get('objectRef').get('name')
-    objectref_namespace = json_data.get('objectRef').get('namespace')
+    if json_data.get('objectRef') is not None:
+        objectref_resource = json_data.get('objectRef').get('resource')
+        objectref_subresource = json_data.get('objectRef').get('subresource')
+        objectref_name = json_data.get('objectRef').get('name')
+        objectref_namespace = json_data.get('objectRef').get('namespace')
+    else:
+        print("Attempted to get objectRef from a log line without objectRef")
+        objectref_resource = None
+        objectref_subresource = None
+        objectref_name = None
+        objectref_namespace = None
+        
     request_received_timestamp = json_data.get('requestReceivedTimestamp')
     stage_timestamp = json_data.get('stageTimestamp')
 

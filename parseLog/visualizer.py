@@ -35,7 +35,8 @@ def get_actions_and_labels_dicts(input_filename,
             # each line is a json, load it
             json_data = json.loads(line)
             if label_key not in json_data:
-                raise ValueError(f"Label key '{label_key}' not found in json data")
+                print("At line", line_index, "label key not found in json data; ignoring line")
+                continue
 
             label = json_data.get(label_key)
 

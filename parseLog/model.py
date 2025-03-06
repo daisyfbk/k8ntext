@@ -816,10 +816,10 @@ def save_model(result: dict, base_path: str, model_basename: str = "model.keras"
 
     with open(base_path + '/' + model_basename + '.x_encoders', 'wb') as f:
         joblib.dump(result['x_encoders'], f)
-    x_encoders: RisingEncoder = result['x_encoders']
-    json_x_encoders = x_encoders.get_config()
-    with open(base_path + '/' + model_basename + '.x_encoders.json', 'w') as f:
-        json.dump(json_x_encoders, f)
+    # x_encoders: RisingEncoder = result['x_encoders']
+    # json_x_encoders = x_encoders.get_config()
+    # with open(base_path + '/' + model_basename + '.x_encoders.json', 'w') as f:
+    #     json.dump(json_x_encoders, f)
 
     with open(base_path + '/' + model_basename + '.y_encoders', 'wb') as f:
         joblib.dump(result['y_encoders'], f)
@@ -987,9 +987,9 @@ if __name__ == '__main__':
     for p in __param:
         log.info("" + p)
 
-    if __args.model and __args.stats_mode:
-        log.error('Cannot use stats mode with a model file.')
-        exit(1)
+    # if __args.model and __args.stats_mode:
+    #     log.error('Cannot use stats mode with a model file.')
+    #     exit(1)
 
     if pm.KERAS_BACKEND == "tensorflow" and \
             __args.mirroring and \
