@@ -21,7 +21,7 @@ CREATE_OUT_SUBFOLDERS = bool(int(CREATE_OUT_SUBFOLDERS) == 1)
 # Whether to create subfolders in out folder (1) or use it directly (0)
 KERAS_BACKEND = os.getenv('KERAS_BACKEND', 'tensorflow')
 # Version of the model to use
-MODEL_VERSION = os.getenv('MODEL_VERSION', 1)
+MODEL_VERSION = os.getenv('MODEL_VERSION', 0)
 
 FILTER_FEATURES = os.getenv('FILTER_FEATURES', None)
 if FILTER_FEATURES is not None and FILTER_FEATURES != "":
