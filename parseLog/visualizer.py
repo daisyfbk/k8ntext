@@ -229,12 +229,25 @@ def assign_uuid_to_lines(actions_dict, dict_divided_by_label):
             log_line[UUID] = uuid_value
 
 
+def dump_intermediate_results(actions_dict, dict_divided_by_label):
+    with open('actions_dict.json', 'w') as file:
+        file.write(json.dumps(actions_dict))
+        file.write("\n")
+        file.write(json.dumps(dict_divided_by_label))
+    with open('dict_divided_by_label.csv', 'w') as file:
+        csv_writer = csv.writer(file)
+        for key, value in actions_dict.items():
+            csv_writer.writerow([key, value])
+
 def main(args):
     actions_dict, dict_divided_by_label = \
         get_actions_and_labels_dicts(args.file, args.key)
 
     if args.csv:
         print_actions_dict_to_csv(actions_dict, args.file)
+
+    if args.intermediate:
+        dump_intermediate_results(actions_dict, dict_divided_by_label)
 
     assign_uuid_to_lines(actions_dict, dict_divided_by_label)
 
@@ -265,6 +278,7 @@ if __name__ == "__main__":
     parser.add_argument('-f', '--file', required=True, help='The log input file')
     parser.add_argument('-d', '--dump', action='store_true', help='Dump the unclassified logs to the terminal', default=False)
     parser.add_argument('-c', '--csv', action='store_true', help='Dump all actions to a csv file', default=False)
+    parser.add_argument('-i', '--intermediate', action='store_true', help='Dump intermediate results to a file', default=False)
     parser.add_argument('-p', '--plot', action='store_true', help='Plot graph', default=False)
     parser.add_argument('-k', '--key', help='The key to use as label', default=DEFAULT_LABEL_KEY)
     parser.add_argument('-q', '--query', help='The query to filter results', default="")
