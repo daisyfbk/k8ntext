@@ -46,6 +46,10 @@
 #find . -type d -name "*gpu" | sort | while read folder; do cat $folder/main.log | cut -f 6- -d "-" | grep STATISTICS | uniq; grep 'Accuracy on labeled' $folder/main.log; echo; done
 
 import json
+import matplotlib.pyplot as plt
+import numpy as np
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
 
 lines = []
 with open('/Users/matte/Library/CloudStorage/OneDrive-FondazioneBrunoKessler/projects/audit/results/1_paper_tests/3_kfold_tests/metrics', 'r') as f:
@@ -73,10 +77,147 @@ for i in range(len(lines)):
 #assert len(r['trials']) == r['attempts'], f"Expected {r['attempts']} trials, got {len(r['trials'])}"
 #runs.append(r)
 
-import matplotlib.pyplot as plt
-import numpy as np
-
 runs = [r for r in runs if 4 < len(r['trials']) <= 10]
+
+# Set up a larger figure for the horizontal barplot
+plt.figure(figsize=(10, 4), dpi=300)
+plt.rcParams.update({'font.size': 14})
+
+#colormap = mcolors.LinearSegmentedColormap.from_list("accuracy_cmap", ["#EE6677", "#EE6677", "#FFCC88", "#007da6"], N=100)
+colormap = mcolors.LinearSegmentedColormap.from_list("accuracy_cmap", 
+                                                     [
+                                                         (0.0, "#EE6677"),
+                                                         (0.5, "#EE6677"),
+                                                         (0.8, "#FFCC88"),
+                                                         (1.0, "#007da6")
+                                                     ], N=100)
+                                                     
+                                                     
+                                                #     ["#EE6677", "#EE6677", "#FFCC88", "#007da6"], N=100)
+# Calculate positions for each run
+num_runs = len(runs)
+bar_height = 0.7
+y_positions = np.arange(num_runs) * (bar_height + 0.3)
+
+# Plot each run as a horizontal bar with heatmap segments
+for i, r in enumerate(runs):
+    # Normalize data to [0, 1] range for colormap
+    accuracies = np.array(r['trials'])
+    
+    # Calculate segment widths (all equal)
+    segment_width = 1.0 / len(accuracies)
+    
+    # Plot each segment with color based on accuracy
+    for j, acc in enumerate(accuracies):
+        color = colormap(acc)  # Map accuracy to color
+        x_start = j * segment_width
+        plt.barh(
+            y_positions[i],
+            segment_width,
+            left=x_start,
+            height=bar_height,
+            color=color,
+            edgecolor='white',
+            linewidth=0.5
+        )
+        
+        # Add text label if bars are large enough
+        if len(accuracies) <= 10:  # Only add text for runs with fewer segments
+            plt.text(
+                x_start + segment_width/2,
+                y_positions[i],
+                f"{acc:.2f}",
+                ha='center',
+                va='center',
+                fontsize=11,
+                color='black' if 0.3 < acc < 0.8 else 'white'
+            )
+
+# Add colorbar
+sm = plt.cm.ScalarMappable(cmap=colormap, norm=plt.Normalize(0, 1))
+sm.set_array([])
+cbar = plt.colorbar(sm, ax=plt.gca())
+cbar.set_label('Accuracy')
+
+# Set y-tick labels to show K value for each run
+plt.yticks(y_positions, [f"K={r['attempts']}" for r in runs])
+
+# Add labels and title
+plt.xlabel('Fold position (normalized)')
+plt.ylabel('Number of folds')
+plt.title('K-fold Cross Validation Accuracy Comparison')
+
+# Remove frame from top and right
+plt.gca().spines['top'].set_visible(False)
+plt.gca().spines['right'].set_visible(False)
+
+# Adjust layout
+plt.tight_layout()
+plt.savefig('kfolds_heatmap.png')
+# plt.show()
+# Create a second version with absolute accuracy scale
+plt.figure(figsize=(10, 4), dpi=300)
+plt.rcParams.update({'font.size': 14})
+colormap = mcolors.LinearSegmentedColormap.from_list("accuracy_cmap", 
+                                                     [
+                                                         #(0.0, "#EE6677"),
+                                                         (0.0, "#FFCC88"),
+                                                         (1.0, "#007da6")
+                                                     ], N=100)
+                                                     
+                                                     
+                                                #     ["#EE6677", "#EE6677", "#FFCC88", "#007da6"], N=100)
+
+# Define min/max for consistent color scaling
+min_acc = min([min(r['trials']) for r in runs])
+max_acc = max([max(r['trials']) for r in runs])
+norm = mcolors.Normalize(vmin=min_acc, vmax=max_acc)
+
+for i, r in enumerate(runs):
+    accuracies = np.array(r['trials'])
+    segment_width = 1.0 / len(accuracies)
+    
+    for j, acc in enumerate(accuracies):
+        color = colormap(norm(acc))
+        x_start = j * segment_width
+        plt.barh(
+            y_positions[i],
+            segment_width,
+            left=x_start,
+            height=bar_height,
+            color=color,
+            edgecolor='white',
+            linewidth=0.5
+        )
+        
+        if len(accuracies) <= 10:
+            plt.text(
+                x_start + segment_width/2,
+                y_positions[i],
+                f"{acc:.2f}",
+                ha='center',
+                va='center',
+                fontsize=11,
+                color='black' if norm(acc) < 0.77 else 'white'
+            )
+
+# Add colorbar with actual range
+sm = plt.cm.ScalarMappable(cmap=colormap, norm=norm)
+sm.set_array([])
+cbar = plt.colorbar(sm, ax=plt.gca())
+cbar.set_label('Accuracy')
+
+plt.yticks(y_positions, [f"K={r['attempts']}" for r in runs])
+plt.xlabel('Fold position (normalized)')
+plt.ylabel('Number of folds')
+plt.title(f'K-fold Cross Validation Accuracy')
+plt.gca().spines['top'].set_visible(False)
+plt.gca().spines['right'].set_visible(False)
+plt.tight_layout()
+plt.savefig('kfolds_heatmap_absolute.png')
+
+exit(1)
+
 
 # colourblind-friendly colours
 
