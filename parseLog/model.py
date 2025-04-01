@@ -707,6 +707,9 @@ def calculate_majorities(data: list[dict],
         if pm.LABEL_FEATURE not in data[i]:
             continue
 
+        if i not in predicted_sequence.keys():
+            continue
+
         original = data[i][pm.LABEL_FEATURE]
         predicted = predicted_sequence[i]
 
@@ -763,12 +766,20 @@ def calculate_majorities(data: list[dict],
     error_statistics["total"] = accounted
     error_statistics["correct"] = correct
 
+    # Re-align the predicted sequence by adding NULLs in places that do not have a label
+    ret_predicted_sequence = []
+    for i in range(len(data)):
+        if i not in predicted_sequence.keys():
+            ret_predicted_sequence.append(None)
+        else:
+            ret_predicted_sequence.append(predicted_sequence[i])
+
     if accounted == 0:
         log.error("Provided dataset is not labeled, skipping error statistics")
 
         return {
             "total": len(data),
-            "predicted_sequence": [int(x) for x in predicted_sequence.values()],
+            "predicted_sequence": ret_predicted_sequence,
             "sequence_weights": sequence_weights
         }
     
@@ -781,7 +792,7 @@ def calculate_majorities(data: list[dict],
             "total": len(data),
             "accuracy": correct / accounted,
             "error_statistics": error_statistics,
-            "predicted_sequence": [int(x) for x in predicted_sequence.values()],
+            "predicted_sequence": ret_predicted_sequence,
             "original_sequence": [d[pm.LABEL_FEATURE] if pm.LABEL_FEATURE in d else None for d in data],
             "sequence_weights": sequence_weights
         }

@@ -217,7 +217,11 @@ class AuditGraph:
         plt.suptitle("K8S Audit Logs actions", fontweight='bold')
 
         # sort alphabetically and leave system: at the end
-        users = sorted(self.users_actions.keys(), key=lambda z: (z.startswith('system:'), z))
+        try:
+            users = sorted(self.users_actions.keys(), key=lambda z: (z.startswith('system:'), z))
+        except Exception:
+            # if there are no users
+            users = []
 
         users_index = 0
         x, y, actions, dots_color = [], [], [], []
