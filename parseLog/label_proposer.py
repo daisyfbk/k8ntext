@@ -173,6 +173,9 @@ def decode_label(label: int, as_string: bool = False) -> dict | str:
 
     verb = [k for k, v in verbs.items() if v == verb_id][0]
 
+    # print("Raw: ", label, "Label ID: ", label_id, "Sub ID: ", label_sub_id, "is_namespaced: ", is_namespaced, 
+    #       "is_single_object: ", is_single_object, "verb_id: ", verb_id, "verb: ", verb)
+
     if as_string:
         return f"{verb} {apigroup}/{version}/{uri} {'(ns)' if is_namespaced else ''} {'(single)' if is_single_object else '(list)'}".replace(
             "  ", " ")

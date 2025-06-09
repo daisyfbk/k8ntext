@@ -630,9 +630,14 @@ def model_inference(model: models.Model,
     flattened_data, total_features = preprocess_data(data, features)
     training_data = encode_data(flattened_data, total_features, include_y=False, previous_xenc=x_encoders, model_version=pm.MODEL_VERSION)
     X = training_data['X']
+    # Measure total time for prediction
+    import time
+    timer = time.time()
 
     log.info("Predicting labels...")
     y_pred = model.predict(X)
+
+    intermediate = time.time() - timer
 
     log.info("Decoding labels...")
     if model_version == 1:
@@ -642,6 +647,9 @@ def model_inference(model: models.Model,
         y_pred_decoded = decode_labels(y_pred_labels, yle)
     else:
         raise ValueError(f"Unknown model version {model_version}")
+    
+    timer = time.time() - timer
+    log.info(f"Total prediction time: {timer:.2f} seconds. Intermediate decoding time: {intermediate:.2f} seconds. Total sequences: {len(X)}. Average time per sequence: {timer / len(X):.4f} seconds. WINDOW_SIZE={pm.WINDOW_LENGTH}")
     
     return calculate_majorities(data, y_pred_decoded)
 
