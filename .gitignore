@@ -16,6 +16,7 @@ models
 *.aux
 *.lof
 *.log
+!audit-log/audit-log-dataset.log
 *.lot
 *.fls
 *.out
