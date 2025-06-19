@@ -52,7 +52,7 @@ import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 
 lines = []
-with open('/Users/matte/Library/CloudStorage/OneDrive-FondazioneBrunoKessler/projects/audit/results/1_paper_tests/3_kfold_tests/metrics', 'r') as f:
+with open('/Users/matte/Library/CloudStorage/OneDrive-FondazioneBrunoKessler/projects/k8ntext/results/1_paper_tests/3_kfold_tests/metrics', 'r') as f:
     lines = f.readlines()
 
 runs = []
@@ -83,17 +83,17 @@ runs = [r for r in runs if 4 < len(r['trials']) <= 10]
 plt.figure(figsize=(10, 4), dpi=300)
 plt.rcParams.update({'font.size': 14})
 
-#colormap = mcolors.LinearSegmentedColormap.from_list("accuracy_cmap", ["#EE6677", "#EE6677", "#FFCC88", "#007da6"], N=100)
+#colormap = mcolors.LinearSegmentedColormap.from_list("accuracy_cmap", ["#EE6677", "#EE6677", "#FFCC88", "#3070c8"], N=100)
 colormap = mcolors.LinearSegmentedColormap.from_list("accuracy_cmap", 
                                                      [
                                                          (0.0, "#EE6677"),
                                                          (0.5, "#EE6677"),
                                                          (0.8, "#FFCC88"),
-                                                         (1.0, "#007da6")
+                                                         (1.0, "#3070c8")
                                                      ], N=100)
                                                      
                                                      
-                                                #     ["#EE6677", "#EE6677", "#FFCC88", "#007da6"], N=100)
+                                                #     ["#EE6677", "#EE6677", "#FFCC88", "#3070c8"], N=100)
 # Calculate positions for each run
 num_runs = len(runs)
 bar_height = 0.7
@@ -161,12 +161,12 @@ plt.rcParams.update({'font.size': 14})
 colormap = mcolors.LinearSegmentedColormap.from_list("accuracy_cmap", 
                                                      [
                                                          #(0.0, "#EE6677"),
-                                                         (0.0, "#FFCC88"),
-                                                         (1.0, "#007da6")
+                                                         (0.0, "#FFFFFF"),
+                                                         (1.0, "#3070c8")
                                                      ], N=100)
                                                      
                                                      
-                                                #     ["#EE6677", "#EE6677", "#FFCC88", "#007da6"], N=100)
+                                                #     ["#EE6677", "#EE6677", "#FFCC88", "#3070c8"], N=100)
 
 # Define min/max for consistent color scaling
 min_acc = min([min(r['trials']) for r in runs])
@@ -222,7 +222,7 @@ exit(1)
 # colourblind-friendly colours
 
 palette = {
-    'blue': '#4477AA',
+    'blue': '#3070c8',
     'cyan': '#66CCEE',
     'green': '#228833',
     'yellow': '#CCBB44',
@@ -239,7 +239,7 @@ markers = ['o', 's',  'v', '>', 'P', '*', 'X']
 
 plt.figure(figsize=(7, 4), dpi=300)
 plt.rcParams.update({'font.size': 12})
-plt.grid(True, which='major', linestyle='--', linewidth=0.5, alpha=0.5)
+plt.grid(True, which='major', linestyle='--', linewidth=0.5, alpha=1)
 
 # print all runs rescaled to the same length
 for i in range(len(runs)):
