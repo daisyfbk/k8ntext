@@ -1,10 +1,10 @@
-# /Users/matte/Library/CloudStorage/OneDrive-FondazioneBrunoKessler/projects/audit/results/1_paper_tests/1_window_size/20240919_063020.311060__mfranzil-gpu/metrics.json
+# /Users/matte/Library/CloudStorage/OneDrive-FondazioneBrunoKessler/projects/k8ntext/results/1_paper_tests/1_window_size/20240919_063020.311060__mfranzil-gpu/metrics.json
 # [{"core_metrics": {"accuracy": 0.9997721106890939, "precision": 0.9900970258015107, "recall": 0.9954811711555006, "f1": 0.9881803106793476}, "majority_accuracy": null, "per_class_metrics": {"accuracy": {"119232": 1.0, "102480": 1.0, "4176": 1.0, "65984": 0.999581764951903, "75200": 1.0, "147536": 1.0, "38080": 1.0, "90256": 1.0, "2727984": 1.0, "65952": 1.0, "180624": 0.9984326018808778, "86416": 1.0, "4400": 1.0, "12752": 1.0, "65936": 1.0, "86432": 1.0, "3695024": 1.0, "61632": 1.0, "41376": 1.0, "172112": 1.0, "17808": 1.0, "94640": 1.0, "82320": 1.0, "74128": 1.0, "98384": 1.0, "12688": 1.0, "3276944": 1.0, "4496": 
 
 import json
 
 palette = {
-    'blue': '#4477AA',
+    'blue': '#3070c8',
     'cyan': '#66CCEE',
     'green': '#228833',
     'yellow': '#CCBB44',
@@ -14,7 +14,7 @@ palette = {
     'grey': '#BBBBBB'
 }
 
-with open('/Users/matte/Library/CloudStorage/OneDrive-FondazioneBrunoKessler/projects/audit/results/1_paper_tests/1_window_size/20240919_063020.311060__mfranzil-gpu/metrics.json') as f:
+with open('/Users/matte/Library/CloudStorage/OneDrive-FondazioneBrunoKessler/projects/k8ntext/results/1_paper_tests/1_window_size/20240919_063020.311060__mfranzil-gpu/metrics.json') as f:
     j = json.load(f)
     per_class_metrics = []
     for attempt in j:

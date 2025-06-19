@@ -34,7 +34,15 @@ for d in data:
     f1_matrix[tr_te_idx, tr_va_idx] = d["F1"]
 
 # luminance-based palette
-cmap = sns.color_palette("Blues", as_cmap=True)
+import matplotlib.colors as mcolors
+cmap = mcolors.LinearSegmentedColormap.from_list("accuracy_cmap", 
+                                                     [
+                                                         (0.0, "#FFFFFF"),
+                                                         (1.0, "#3070c8")
+                                                     ], N=100)
+                                                     
+                                                     
+                                                #     ["#EE6677", "#EE6677", "#FFCC88", "#3070c8"], N=100)
 plt.rcParams.update({'font.size': 12})
 # Create heatmap
 plt.figure(figsize=(10, 4))
