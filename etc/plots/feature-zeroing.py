@@ -20,7 +20,7 @@ find . -type d -name "*gpu" | while read folder; do cat $folder/main.log | cut -
 import json
 
 lines = []
-with open('/Users/matte/Codice/fbk/audit-impl/models/1_paper_tests/4_feature_selection/zeroing/metrics', 'r') as f:
+with open('/Users/matte/Codice/fbk/k8ntext-impl/models/1_paper_tests/4_feature_selection/zeroing/metrics', 'r') as f:
     lines = f.readlines()
 
 runs = []
@@ -116,7 +116,7 @@ sorted_data = sorted_data[:offset] + \
 
 
 palette = {
-    'blue': '#4477AA',
+    'blue': '#3070c8',
     'cyan': '#66CCEE',
     'green': '#228833',
     'yellow': '#CCBB44',
