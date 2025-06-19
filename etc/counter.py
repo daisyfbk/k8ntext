@@ -120,9 +120,11 @@ for label in averages:
 for __b in bins:
     print(__b)
     print(bins[__b]/sum(bins.values()))
+
+# Change color of the bars base
 # Horizontal bar plot
 plt.figure(figsize=(10, 4))
-plt.barh(list(bins.keys()), list(bins.values()))
+plt.barh(list(bins.keys()), list(bins.values()), color='#3070c8')
 plt.title("Number of logs clustered for each label")
 plt.ylabel("Average number of clustered logs")
 plt.xlabel("Number of labels")
