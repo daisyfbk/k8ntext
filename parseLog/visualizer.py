@@ -11,6 +11,7 @@ from common import LABEL_UNKNOWN, LABEL_IGNORE
 ACTION_KEY_SEPARATOR = "%"
 UUID = "UUID"
 DEFAULT_LABEL_KEY = "label"
+BASE_LABEL = "1010"
 
 
 # This function returns two dictionary:
@@ -58,40 +59,44 @@ def get_actions_and_labels_dicts(input_filename,
                 # the following code is used to extract the individual actions performed
                 decoded = decode_label(label)
                 if 'uri' not in decoded:
-                    raise ValueError(f"Decoded label does not contain 'uri' key: {decoded}, {line}")
-                
-                decoded_resource, decoded_subresource, *_ = decoded.get('uri').split("/") + [None]  # trick to get None if the subresource is not present
-                decoded_verb = decoded.get('verb')
+                    print(f"Decoded label does not contain 'uri' key: {decoded}, {line}")
+                    continue
+
+                # decoded_resource, decoded_subresource, *_ = decoded.get('uri').split("/") + [None]  # trick to get None if the subresource is not present
+                # decoded_verb = decoded.get('verb')
 
                 # useful to debug
                 # decoded_string = f"{label} -> {decoded['uri']} {decoded['verb']}"
                 # print(decoded_string, informative_dict)
 
-                if (informative_dict.get('resource') == decoded_resource and
-                        informative_dict.get('subresource') == decoded_subresource and
-                        verbs_dict.get(informative_dict.get('verb')) == verbs_dict.get(
-                            decoded_verb)):  # compare verbs number instead of verbs directly
+                # if (informative_dict.get('resource') == decoded_resource and
+                #     informative_dict.get('subresource') == decoded_subresource and
+                #     verbs_dict.get(informative_dict.get('verb')) == verbs_dict.get(decoded_verb)):
+                #     # compare verbs number instead of verbs directly
 
-                    action_key = str(label) + ACTION_KEY_SEPARATOR
-                    if informative_dict['namespace'] is None and informative_dict['name'] is None:
-                        # since namespace and name are both empty, use the username to create the key
-                        action_key += informative_dict['username']
+
+                action_key = str(label) + ACTION_KEY_SEPARATOR
+
+                if informative_dict['namespace'] is None and informative_dict['name'] is None:
+                    # since namespace and name are both empty, use the username to create the key
+                    action_key += informative_dict['username']
+                else:
+                    action_key += str(informative_dict['namespace']) + ACTION_KEY_SEPARATOR
+                    if informative_dict.get('ownerReferences') is not None:
+                        action_key += informative_dict.get('ownerReferences')[0].get('uid')
                     else:
-                        action_key += str(informative_dict['namespace']) + ACTION_KEY_SEPARATOR
-                        if informative_dict.get('ownerReferences') is not None:
-                            action_key += informative_dict.get('ownerReferences')[0].get('uid')
-                        else:
-                            action_key += str(informative_dict['name'])
+                        action_key += str(informative_dict['name'])
 
-                    if action_key not in actions_dict:
-                        actions_dict[action_key] = {}
+                if action_key not in actions_dict:
+                    actions_dict[action_key] = {}
 
-                    if not actions_dict.get(action_key):  # if action is empty
-                        action_detail = get_informative_dict(json_data)  # get new dict, not the same as before
-                        action_detail.pop('requestURI', None)
-                        action_detail[UUID] = str(uuid.uuid4())
-                        actions_dict[action_key] = action_detail
+                if not actions_dict.get(action_key):  # if action is empty
+                    action_detail = get_informative_dict(json_data)  # get new dict, not the same as before
+                    action_detail.pop('requestURI', None)
+                    action_detail[UUID] = str(uuid.uuid4())
+                    actions_dict[action_key] = action_detail
 
+                    
     return actions_dict, dict_divided_by_label
 
 
@@ -213,7 +218,7 @@ def get_associate_action_uuid(candidate_actions, log_line):
             except ValueError:
                 pass
 
-    return "1010"
+    return BASE_LABEL  # if no action is found, return the base label UUID
 
 
 # This functions, given a set of lines grouped by label, search foreach line the action to which it corresponds
@@ -259,10 +264,10 @@ def main(args):
         for key, values in dict_divided_by_label.items():
             for value2 in values:
                 uuid_value = value2.get(UUID)
-                if uuid_value == '1010':
-                # if uuid_value == '1010' and value2.get('verb') != 'list' and value2.get('verb') != 'watch' \
+                if uuid_value == BASE_LABEL:
+                # if uuid_value == BASE_LABEL and value2.get('verb') != 'list' and value2.get('verb') != 'watch' \
                 #     and value2.get('verb') != 'get':
-                # if uuid_value == '1010' and value2.get('verb') == 'get':
+                # if uuid_value == BASE_LABEL and value2.get('verb') == 'get':
                     value2.pop('stageTimestamp', None)
                     value2.pop('metadata/uid', None)
                     value2.pop('UUID', None)
