@@ -156,11 +156,7 @@ def get_informative_dict(json_data):
         objectref_name = json_data.get('objectRef').get('name')
         objectref_namespace = json_data.get('objectRef').get('namespace')
     else:
-        print("Attempted to get objectRef from a log line without objectRef")
-        objectref_resource = None
-        objectref_subresource = None
-        objectref_name = None
-        objectref_namespace = None
+        raise ValueError("Attempted to get objectRef from a log line without objectRef. Did you light-reduce the logs?")
         
     request_received_timestamp = json_data.get('requestReceivedTimestamp')
     stage_timestamp = json_data.get('stageTimestamp')
