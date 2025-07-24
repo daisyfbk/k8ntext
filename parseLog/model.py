@@ -411,7 +411,11 @@ def model_training(data: list[dict],
         "x_encoders": xenc,
         "features": total_features,
         "metrics": metrics,
-        "history": history
+        "history": history,
+        "x_train": x_train,
+        "x_test": x_test,
+        "y_train": y_train,
+        "y_test": y_test
     }
 
 
@@ -907,6 +911,27 @@ def main(args):
                     if save_models:
                         os.makedirs(pm.OUT_FOLDER + f'/attempt_{i}', exist_ok=True)
                         save_model(result, pm.OUT_FOLDER + f'/attempt_{i}', model_basename=f'model_{i}.keras')
+                        
+                    if args.trustee:
+                        log.info(f"Generating Trustee explanations for attempt {i + 1}...")
+                        from trustee import generate_trustee_explanation, save_trustee_explanation
+                        trustee_result = generate_trustee_explanation(
+                            model=result['model'],
+                            x_train=result['x_train'],
+                            y_train=result['y_train'],
+                            x_test=result['x_test'],
+                            y_test=result['y_test'],
+                            model_version=pm.MODEL_VERSION,
+                            num_iter=args.trustee_iter,
+                            num_stability_iter=args.trustee_stability_iter,
+                            samples_size=args.trustee_sample_size
+                        )
+                        
+                        if trustee_result:
+                            save_trustee_explanation(trustee_result, pm.OUT_FOLDER + f'/attempt_{i}')
+                            log.info(f"Trustee explanations for attempt {i + 1} saved successfully.")
+                        else:
+                            log.warning(f"Trustee explanation generation failed for attempt {i + 1}.")
 
         else:
             log.info("Starting model training.")
@@ -919,6 +944,27 @@ def main(args):
             metrics.append(result['metrics'])
 
             save_model(result, pm.OUT_FOLDER)
+
+            if args.trustee:
+                log.info("Generating Trustee explanations...")
+                from trustee import generate_trustee_explanation, save_trustee_explanation
+                trustee_result = generate_trustee_explanation(
+                    model=result['model'],
+                    x_train=result['x_train'],
+                    y_train=result['y_train'],
+                    x_test=result['x_test'],
+                    y_test=result['y_test'],
+                    model_version=pm.MODEL_VERSION,
+                    num_iter=args.trustee_iter,
+                    num_stability_iter=args.trustee_stability_iter,
+                    samples_size=args.trustee_sample_size
+                )
+                
+                if trustee_result:
+                    save_trustee_explanation(trustee_result, pm.OUT_FOLDER)
+                    log.info("Trustee explanations saved successfully.")
+                else:
+                    log.warning("Trustee explanation generation failed.")
 
         # Always save the loss and accuracy data
         with open(pm.OUT_FOLDER + '/loss.json', 'w') as f:
@@ -978,6 +1024,14 @@ if __name__ == '__main__':
     parser.add_argument('-G', '--gpu', type=int, help='GPU to use, ignored if only one or no GPU is available',
                         default=-1)
     parser.add_argument('--mirroring', action='store_true', help='Use mirrored strategy for multi-GPU training')
+    parser.add_argument('--trustee', action='store_true', 
+                        help='Generate model explanations using Trustee framework')
+    parser.add_argument('--trustee-iter', type=int, default=100,
+                        help='Number of iterations for Trustee explanation generation (default: 100)')
+    parser.add_argument('--trustee-stability-iter', type=int, default=20,
+                        help='Number of stability iterations for Trustee (default: 20)')
+    parser.add_argument('--trustee-sample-size', type=float, default=0.5,
+                        help='Sample size for Trustee explanation generation (default: 0.5)')
 
     __args = parser.parse_args()
 

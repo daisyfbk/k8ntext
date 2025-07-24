@@ -3,7 +3,7 @@ import os
 # Supply an .env file if you want to override these values
 STATISTICS_ATTEMPTS = int(os.getenv('STATISTICS_ATTEMPTS', 40))  # Number of attempts in stats mode
 WINDOW_LENGTH = int(os.getenv('WINDOW_LENGTH', 60))  # Sliding window length
-MAX_EPOCHS = int(os.getenv('MAX_EPOCHS', 160))  # Maximum number of epochs
+MAX_EPOCHS = int(os.getenv('MAX_EPOCHS', 35))  # Maximum number of epochs
 INITIAL_LEARNING_RATE = float(os.getenv('INITIAL_LEARNING_RATE', 0.004))  # Initial learning rate
 EARLY_STOPPING_PATIENCE = int(os.getenv('EARLY_STOPPING_PATIENCE', 8))  # Epochs before early stopping kicks in
 REDUCE_LR_FACTOR = float(os.getenv('REDUCE_LR_FACTOR', 0.1))  # Factor ReduceLRonPlateau reduces learning rate by
@@ -21,7 +21,7 @@ CREATE_OUT_SUBFOLDERS = bool(int(CREATE_OUT_SUBFOLDERS) == 1)
 # Whether to create subfolders in out folder (1) or use it directly (0)
 KERAS_BACKEND = os.getenv('KERAS_BACKEND', 'tensorflow')
 # Version of the model to use
-MODEL_VERSION = os.getenv('MODEL_VERSION', 0)
+MODEL_VERSION = int(os.getenv('MODEL_VERSION', 0))
 
 FILTER_FEATURES = os.getenv('FILTER_FEATURES', None)
 if FILTER_FEATURES is not None and FILTER_FEATURES != "":
