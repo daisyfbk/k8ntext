@@ -13,14 +13,19 @@ The following informative files are available:
 To get started with K8NTEXT, follow these steps:
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/daisyfbk/k8ntext.git
    ```
+
 2. Navigate to the project directory:
+
    ```bash
     cd k8ntext
     ```
+
 3. Install the required dependencies:
+
     ```bash
     pip install -r requirements.txt
     # If on macOS, use requirements-macos.txt instead
@@ -30,6 +35,34 @@ The dataset is in the `audit-log` directory. In order to use K8NTEXT, `cd` into 
 
 - by doing `python3 model.py -f (already split dataset)`, you will get the model along with some statistics in the `out` directory,
 - by doing `python3 model.py -m (model.keras path) -f (inference dataset)`, you will get the inference results in the `out` directory.
+
+### Model Explainability with Trustee
+
+K8NTEXT now supports model explainability using the [Trustee framework](https://trusteeml.github.io/). Trustee extracts decision tree explanations from black-box ML models, providing interpretable insights into model behavior.
+
+To generate model explanations:
+
+```bash
+python3 model.py -f (dataset) --trustee
+```
+
+Additional Trustee options:
+
+- `--trustee-iter`: Number of iterations for explanation generation (default: 50)
+- `--trustee-stability-iter`: Number of stability iterations (default: 10)  
+- `--trustee-sample-size`: Sample size for explanation generation (default: 0.3)
+
+Example with custom parameters:
+
+```bash
+python3 model.py -f dataset.json --trustee --trustee-iter 100 --trustee-stability-iter 20 --trustee-sample-size 0.5
+```
+
+The explanation results will be saved in the output directory as:
+
+- `trustee_decision_tree.txt`: Human-readable decision tree rules
+- `trustee_explanation.json`: Fidelity metrics and explanation accuracy
+- `trustee_predictions.json`: Detailed prediction comparisons
 
 To edit the parameters of the model, you can modify the `parameters.py` file. The features are in `model_features.py`.
 
