@@ -3,6 +3,7 @@ import functools
 import json
 import logging as log
 import os
+import time
 from concurrent.futures import ProcessPoolExecutor
 from typing import Any
 import collections
@@ -850,6 +851,53 @@ def save_model(result: dict, base_path: str, model_basename: str = "model.keras"
         json.dump(result['features'], f)
 
 
+def generate_trustee_for_inference(model, features, x_encoders, y_encoders, data, 
+                                   model_version=0, num_iter=100, num_stability_iter=20, 
+                                   samples_size=0.5):
+    """
+    Generate Trustee explanations for a pre-trained model using inference data.
+    
+    This function prepares the data in the same format as during training and 
+    creates train/test splits for Trustee explanation generation.
+    """
+    try:
+        # Preprocess the data using the same pipeline as during training
+        flattened_data, total_features = preprocess_data(data, features)
+        
+        # Encode the data using the saved encoders
+        encoded_data = encode_data(flattened_data, total_features, include_y=True, 
+                                   model_version=model_version, previous_xenc=x_encoders)
+        
+        X = encoded_data['X']
+        y = encoded_data['y']
+        
+        # Create train/test split for Trustee (similar to training)
+        x_train, x_test, y_train, y_test = train_test_split(
+            X, y, test_size=pm.TEST_TRAIN_SPLIT, random_state=42
+        )
+        
+        log.info(f"Prepared data for Trustee: X_train: {x_train.shape}, X_test: {x_test.shape}")
+        
+        # Generate Trustee explanations
+        from model_trustee import generate_trustee_explanation
+        return generate_trustee_explanation(
+            model=model,
+            x_train=x_train,
+            y_train=y_train,
+            x_test=x_test,
+            y_test=y_test,
+            feature_names=features,
+            model_version=model_version,
+            num_iter=num_iter,
+            num_stability_iter=num_stability_iter,
+            samples_size=samples_size
+        )
+        
+    except Exception as e:
+        log.error(f"Failed to generate Trustee explanations for pre-trained model: {str(e)}")
+        return None
+
+
 def main(args):
     if not args.file:
         log.error('Please provide a valid file.')
@@ -914,13 +962,14 @@ def main(args):
                         
                     if args.trustee:
                         log.info(f"Generating Trustee explanations for attempt {i + 1}...")
-                        from trustee import generate_trustee_explanation, save_trustee_explanation
+                        from model_trustee import generate_trustee_explanation, save_trustee_explanation
                         trustee_result = generate_trustee_explanation(
                             model=result['model'],
                             x_train=result['x_train'],
                             y_train=result['y_train'],
                             x_test=result['x_test'],
                             y_test=result['y_test'],
+                            feature_names=result['features'],
                             model_version=pm.MODEL_VERSION,
                             num_iter=args.trustee_iter,
                             num_stability_iter=args.trustee_stability_iter,
@@ -947,13 +996,14 @@ def main(args):
 
             if args.trustee:
                 log.info("Generating Trustee explanations...")
-                from trustee import generate_trustee_explanation, save_trustee_explanation
+                from model_trustee import generate_trustee_explanation, save_trustee_explanation
                 trustee_result = generate_trustee_explanation(
                     model=result['model'],
                     x_train=result['x_train'],
                     y_train=result['y_train'],
                     x_test=result['x_test'],
                     y_test=result['y_test'],
+                    feature_names=result['features'],
                     model_version=pm.MODEL_VERSION,
                     num_iter=args.trustee_iter,
                     num_stability_iter=args.trustee_stability_iter,
@@ -989,6 +1039,27 @@ def main(args):
 
         result = model_inference(model, features, x_encoders, y_encoders, data,
                                  model_version=pm.MODEL_VERSION)
+
+        if args.trustee:
+            log.info("Generating Trustee explanations for pre-trained model...")
+            trustee_result = generate_trustee_for_inference(
+                model=model,
+                features=features,
+                x_encoders=x_encoders,
+                y_encoders=y_encoders,
+                data=data,
+                model_version=pm.MODEL_VERSION,
+                num_iter=args.trustee_iter,
+                num_stability_iter=args.trustee_stability_iter,
+                samples_size=args.trustee_sample_size
+            )
+            
+            if trustee_result:
+                from model_trustee import save_trustee_explanation
+                save_trustee_explanation(trustee_result, pm.OUT_FOLDER)
+                log.info("Trustee explanations for pre-trained model saved successfully.")
+            else:
+                log.warning("Trustee explanation generation failed for pre-trained model.")
 
         if 'save' in args.stats_mode: 
             y_pred = result['predicted_sequence']
