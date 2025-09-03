@@ -46,11 +46,17 @@ To generate model explanations:
 python3 model.py -f (dataset) --trustee
 ```
 
+You can also generate explanations for a pre-trained model:
+
+```bash
+python3 model.py -m (model.keras path) -f (dataset) --trustee
+```
+
 Additional Trustee options:
 
-- `--trustee-iter`: Number of iterations for explanation generation (default: 50)
-- `--trustee-stability-iter`: Number of stability iterations (default: 10)  
-- `--trustee-sample-size`: Sample size for explanation generation (default: 0.3)
+- `--trustee-iter`: Number of iterations for explanation generation (default: 100)
+- `--trustee-stability-iter`: Number of stability iterations (default: 20)  
+- `--trustee-sample-size`: Sample size for explanation generation (default: 0.5)
 
 Example with custom parameters:
 
@@ -58,11 +64,20 @@ Example with custom parameters:
 python3 model.py -f dataset.json --trustee --trustee-iter 100 --trustee-stability-iter 20 --trustee-sample-size 0.5
 ```
 
+Example with pre-trained model and custom parameters:
+
+```bash
+python3 model.py -m out/model.keras -f dataset.json --trustee --trustee-iter 150 --trustee-stability-iter 25
+```
+
 The explanation results will be saved in the output directory as:
 
-- `trustee_decision_tree.txt`: Human-readable decision tree rules
-- `trustee_explanation.json`: Fidelity metrics and explanation accuracy
+- `trustee_decision_tree.txt`: Human-readable decision tree rules with actual feature names
+- `trustee_decision_tree.dot`: Graphical decision tree representation (can be converted to PNG/PDF with Graphviz)
+- `trustee_explanation.json`: Fidelity metrics, explanation accuracy, and feature information
 - `trustee_predictions.json`: Detailed prediction comparisons
+
+**Feature Naming**: Since K8NTEXT uses sequence models, features are flattened for Trustee analysis. Feature names in the decision tree follow the pattern `feature_name_t0`, `feature_name_t1`, etc., where `t0`, `t1` represent different time steps in the sequence window.
 
 To edit the parameters of the model, you can modify the `parameters.py` file. The features are in `model_features.py`.
 

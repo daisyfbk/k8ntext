@@ -12,6 +12,7 @@ def generate_trustee_explanation(model: models.Model,
                                 y_train: np.ndarray,
                                 x_test: np.ndarray,
                                 y_test: np.ndarray,
+                                feature_names: list = None,
                                 model_version: int = 0,
                                 num_iter: int = 50,
                                 num_stability_iter: int = 10,
@@ -25,6 +26,7 @@ def generate_trustee_explanation(model: models.Model,
         y_train: Training labels
         x_test: Test features  
         y_test: Test labels
+        feature_names: List of feature names for interpretable output
         model_version: Model version (0 for multiclass, 1 for binary)
         num_iter: Number of iterations for Trustee
         num_stability_iter: Number of stability iterations
@@ -58,9 +60,21 @@ def generate_trustee_explanation(model: models.Model,
         x_train_flat = x_train.reshape(x_train.shape[0], -1)
         x_test_flat = x_test.reshape(x_test.shape[0], -1)
         log.debug(f"Flattened X shapes - x_train_flat: {x_train_flat.shape}, x_test_flat: {x_test_flat.shape}")
+        
+        # Generate meaningful feature names for flattened sequence data
+        if feature_names is not None:
+            flattened_feature_names = []
+            timesteps = x_train.shape[1]  # Number of timesteps
+            for t in range(timesteps):
+                for feature_name in feature_names:
+                    flattened_feature_names.append(f"{feature_name}_t{t}")
+            log.debug(f"Generated {len(flattened_feature_names)} flattened feature names")
+        else:
+            flattened_feature_names = None
     else:
         x_train_flat = x_train
         x_test_flat = x_test
+        flattened_feature_names = feature_names
 
     # Handle different model versions
     if model_version == 0:  # Multiclass
@@ -224,7 +238,8 @@ def generate_trustee_explanation(model: models.Model,
             "explanation_report": explanation_report,
             "trustee_predictions": dt_y_pred.tolist(),
             "original_predictions": y_pred_original.tolist(),
-            "test_labels": y_test_flat.tolist()
+            "test_labels": y_test_flat.tolist(),
+            "feature_names": flattened_feature_names
         }
 
     except Exception as e:
@@ -250,11 +265,40 @@ def save_trustee_explanation(explanation_result: dict, base_path: str):
     if "decision_tree" in explanation_result:
         try:
             from sklearn.tree import export_text
-            tree_rules = export_text(explanation_result["decision_tree"])
+            feature_names = explanation_result.get("feature_names", None)
+            if feature_names:
+                tree_rules = export_text(explanation_result["decision_tree"], feature_names=feature_names)
+                log.info(f"Exported decision tree with {len(feature_names)} feature names")
+            else:
+                tree_rules = export_text(explanation_result["decision_tree"])
+                log.info("Exported decision tree without feature names")
+            
             with open(base_path + '/trustee_decision_tree.txt', 'w') as f:
                 f.write(tree_rules)
         except Exception as e:
             log.warning(f"Could not save decision tree as text: {str(e)}")
+
+    # Try to save decision tree as graphical representation
+    if "decision_tree" in explanation_result:
+        try:
+            from sklearn.tree import export_graphviz
+            feature_names = explanation_result.get("feature_names", None)
+            
+            dot_data = export_graphviz(
+                explanation_result["decision_tree"],
+                feature_names=feature_names,
+                filled=True,
+                rounded=True,
+                special_characters=True,
+                max_depth=10  # Limit depth for readability
+            )
+            
+            with open(base_path + '/trustee_decision_tree.dot', 'w') as f:
+                f.write(dot_data)
+            
+            log.info("Decision tree saved as DOT file (can be converted to PNG/PDF with Graphviz)")
+        except Exception as e:
+            log.debug(f"Could not save decision tree as DOT file: {str(e)}")
 
     # Save explanation metrics and results
     explanation_summary = {
@@ -262,10 +306,12 @@ def save_trustee_explanation(explanation_result: dict, base_path: str):
         "reward": explanation_result.get("reward", 0.0),
         "fidelity_report": explanation_result.get("fidelity_report", {}),
         "explanation_report": explanation_result.get("explanation_report", {}),
+        "feature_names": explanation_result.get("feature_names", []),
         "summary": {
             "fidelity_accuracy": explanation_result.get("fidelity_report", {}).get("accuracy", 0.0),
             "explanation_accuracy": explanation_result.get("explanation_report", {}).get("accuracy", 0.0),
-            "num_test_samples": len(explanation_result.get("test_labels", []))
+            "num_test_samples": len(explanation_result.get("test_labels", [])),
+            "num_features": len(explanation_result.get("feature_names", []))
         }
     }
 
