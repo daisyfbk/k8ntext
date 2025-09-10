@@ -54,7 +54,7 @@ def get_actions_and_labels_dicts(input_filename,
                 # add line dict_divided_by_label
                 if label not in dict_divided_by_label:
                     dict_divided_by_label[label] = []
-                dict_divided_by_label.get(label).append(informative_dict)
+                dict_divided_by_label[label].append(informative_dict)
 
                 # the following code is used to extract the individual actions performed
                 decoded = decode_label(label)
@@ -82,8 +82,9 @@ def get_actions_and_labels_dicts(input_filename,
                     action_key += informative_dict['username']
                 else:
                     action_key += str(informative_dict['namespace']) + ACTION_KEY_SEPARATOR
-                    if informative_dict.get('ownerReferences') is not None:
-                        action_key += informative_dict.get('ownerReferences')[0].get('uid')
+                    owner_refs = informative_dict.get('ownerReferences')
+                    if owner_refs is not None and isinstance(owner_refs, list) and len(owner_refs) > 0 and owner_refs[0] is not None:
+                        action_key += owner_refs[0].get('uid')
                     else:
                         action_key += str(informative_dict['name'])
 
@@ -223,6 +224,8 @@ def get_associate_action_uuid(candidate_actions, log_line):
 
 # This functions, given a set of lines grouped by label, search foreach line the action to which it corresponds
 def assign_uuid_to_lines(actions_dict, dict_divided_by_label):
+    b = 0   
+    problematic = {}
     for label, log_lines in dict_divided_by_label.items():
         possible_actions = {}
 
@@ -234,7 +237,13 @@ def assign_uuid_to_lines(actions_dict, dict_divided_by_label):
         # add the correct action uuid to each line
         for log_line in log_lines:
             uuid_value = get_associate_action_uuid(possible_actions, log_line)
+            if uuid_value == BASE_LABEL:
+                b += 1
+                problematic[label] = problematic.get(label, 0).__add__(1)
             log_line[UUID] = uuid_value
+
+    print(f"Found {b} unassigned lines out of {sum(len(v) for v in dict_divided_by_label.values())} total lines")
+    print(f"Problematic labels: {sorted(problematic.items(), key=lambda item: item[1], reverse=True)}")
 
 
 def dump_intermediate_results(actions_dict, dict_divided_by_label):
@@ -271,7 +280,28 @@ def main(args):
                     value2.pop('stageTimestamp', None)
                     value2.pop('metadata/uid', None)
                     value2.pop('UUID', None)
-                    print(colored(str(key) + " " + str(value2), 'light_yellow', 'on_magenta'))
+                    print(colored(str(key) + " " + str(value2), 'yellow', 'on_magenta'))
+
+    # Output full original log with UUIDs
+    if args.output_full_log_with_uuid:
+        # Build a mapping from (label, line_index) to UUID
+        label_lineidx_to_uuid = {}
+        for label, log_lines in dict_divided_by_label.items():
+            for log_line in log_lines:
+                label_lineidx_to_uuid[(label, log_line.get('line_index'))] = log_line.get(UUID)
+
+        output_file_name = args.file + "_with_uuid.json"
+        with open(args.file, 'r') as infile, open(output_file_name, 'w') as outfile:
+            line_index = 0
+            for line in infile:
+                line_index += 1
+                json_data = json.loads(line)
+                label = json_data.get(args.key, None)
+                uuid_value = label_lineidx_to_uuid.get((label, line_index))
+                if uuid_value:
+                    json_data[UUID] = uuid_value
+                outfile.write(json.dumps(json_data, separators=(',', ':')) + "\n")
+        print(f"Full log with UUIDs written to {output_file_name}")
 
     if args.plot:
         audit_graph = AuditGraph(actions_dict, dict_divided_by_label, args.query)
@@ -290,6 +320,7 @@ if __name__ == "__main__":
     parser.add_argument('-p', '--plot', action='store_true', help='Plot graph', default=False)
     parser.add_argument('-k', '--key', help='The key to use as label', default=DEFAULT_LABEL_KEY)
     parser.add_argument('-q', '--query', help='The query to filter results', default="")
+    parser.add_argument('--output-full-log-with-uuid', action='store_true', help='Output the full original log with assigned UUIDs', default=False)
     parsed_args = parser.parse_args()
 
     main(parsed_args)
