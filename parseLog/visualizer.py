@@ -2,6 +2,7 @@ import json
 import argparse
 import csv
 import uuid
+from datetime import datetime
 from label_proposer import decode_label
 from log_parser import get_informative_dict
 from visualizer_graph import AuditGraph
@@ -12,6 +13,11 @@ ACTION_KEY_SEPARATOR = "%"
 UUID = "UUID"
 DEFAULT_LABEL_KEY = "label"
 BASE_LABEL = "1010"
+
+# Cluster limits
+DEFAULT_CLUSTER_TIMEOUT_SECONDS = 300  # 5 minutes
+DEFAULT_CLUSTER_MAX_LINES = 1000
+TIMESTAMP_KEY = "requestReceivedTimestamp"
 
 
 # This function returns two dictionary:
@@ -223,9 +229,13 @@ def get_associate_action_uuid(candidate_actions, log_line):
 
 
 # This functions, given a set of lines grouped by label, search foreach line the action to which it corresponds
-def assign_uuid_to_lines(actions_dict, dict_divided_by_label):
+def assign_uuid_to_lines(actions_dict, dict_divided_by_label, cluster_timeout=DEFAULT_CLUSTER_TIMEOUT_SECONDS, cluster_max_lines=DEFAULT_CLUSTER_MAX_LINES):
     b = 0   
     problematic = {}
+    
+    # Track cluster information: {uuid: {first_timestamp, line_count, lines}}
+    cluster_info = {}
+    
     for label, log_lines in dict_divided_by_label.items():
         possible_actions = {}
 
@@ -237,12 +247,63 @@ def assign_uuid_to_lines(actions_dict, dict_divided_by_label):
         # add the correct action uuid to each line
         for log_line in log_lines:
             uuid_value = get_associate_action_uuid(possible_actions, log_line)
+            
             if uuid_value == BASE_LABEL:
                 b += 1
                 problematic[label] = problematic.get(label, 0).__add__(1)
-            log_line[UUID] = uuid_value
+                log_line[UUID] = uuid_value
+            else:
+                # Check if this cluster should be split due to size or timeout limits
+                timestamp = log_line.get('stageTimestamp') or log_line.get('requestReceivedTimestamp', '')
+                
+                if uuid_value not in cluster_info:
+                    cluster_info[uuid_value] = {
+                        'first_timestamp': timestamp,
+                        'line_count': 0,
+                        'lines': []
+                    }
+                
+                cluster = cluster_info[uuid_value]
+                
+                # Check if cluster exceeds limits
+                should_split = False
+                
+                # Check size limit
+                if cluster['line_count'] >= cluster_max_lines:
+                    should_split = True
+                    
+                # Check timeout limit  
+                if timestamp and cluster['first_timestamp']:
+                    try:
+                        first_time = datetime.fromisoformat(cluster['first_timestamp'].replace('Z', '+00:00'))
+                        current_time = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                        time_diff = (current_time - first_time).total_seconds()
+                        if time_diff > cluster_timeout:
+                            should_split = True
+                    except (ValueError, AttributeError):
+                        pass  # Ignore timestamp parsing errors
+                
+                if should_split:
+                    # Create new cluster for this line
+                    new_uuid = str(uuid.uuid4())
+                    # print(f"Splitting cluster {uuid_value} (size: {cluster['line_count']}, creating new: {new_uuid})")
+                    
+                    cluster_info[new_uuid] = {
+                        'first_timestamp': timestamp,
+                        'line_count': 1,
+                        'lines': [log_line]
+                    }
+                    log_line[UUID] = new_uuid
+                else:
+                    # Add to existing cluster
+                    cluster['line_count'] += 1
+                    cluster['lines'].append(log_line)
+                    log_line[UUID] = uuid_value
 
+    # Print cluster statistics
+    cluster_sizes = [info['line_count'] for info in cluster_info.values()]
     print(f"Found {b} unassigned lines out of {sum(len(v) for v in dict_divided_by_label.values())} total lines")
+    print(f"Created {len(cluster_info)} clusters")
     print(f"Problematic labels: {sorted(problematic.items(), key=lambda item: item[1], reverse=True)}")
 
 
@@ -266,7 +327,11 @@ def main(args):
     if args.intermediate:
         dump_intermediate_results(actions_dict, dict_divided_by_label)
 
-    assign_uuid_to_lines(actions_dict, dict_divided_by_label)
+    cluster_timeout = getattr(args, 'cluster_timeout', DEFAULT_CLUSTER_TIMEOUT_SECONDS)
+    cluster_max_lines = getattr(args, 'cluster_max_lines', DEFAULT_CLUSTER_MAX_LINES)
+    
+    print(f"Using cluster limits: max_lines={cluster_max_lines}, timeout={cluster_timeout}s")
+    assign_uuid_to_lines(actions_dict, dict_divided_by_label, cluster_timeout, cluster_max_lines)
 
     # visualize log without uuid
     if args.dump:
@@ -290,7 +355,7 @@ def main(args):
             for log_line in log_lines:
                 label_lineidx_to_uuid[(label, log_line.get('line_index'))] = log_line.get(UUID)
 
-        output_file_name = args.file + "_with_uuid.json"
+        output_file_name = "with_uuids.json"
         with open(args.file, 'r') as infile, open(output_file_name, 'w') as outfile:
             line_index = 0
             for line in infile:
@@ -321,6 +386,8 @@ if __name__ == "__main__":
     parser.add_argument('-k', '--key', help='The key to use as label', default=DEFAULT_LABEL_KEY)
     parser.add_argument('-q', '--query', help='The query to filter results', default="")
     parser.add_argument('--output-full-log-with-uuid', action='store_true', help='Output the full original log with assigned UUIDs', default=False)
+    parser.add_argument('--cluster-timeout', type=int, help='Maximum time in seconds before splitting a cluster', default=DEFAULT_CLUSTER_TIMEOUT_SECONDS)
+    parser.add_argument('--cluster-max-lines', type=int, help='Maximum number of lines in a cluster before splitting it', default=DEFAULT_CLUSTER_MAX_LINES)
     parsed_args = parser.parse_args()
 
     main(parsed_args)
