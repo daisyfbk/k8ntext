@@ -272,9 +272,9 @@ def propose_label(j: dict) -> int:
     uri = j['requestURI']
 
     try:
-        objectRef = j['objectRef']
+        objectRef: dict = j['objectRef']
     except KeyError:
-        objectRef = None
+        return LABEL_UNKNOWN
 
     verb = j['verb']
 
