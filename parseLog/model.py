@@ -60,12 +60,14 @@ def dump_features_statistics(flattened_data: list[dict[any, dict]]) -> dict:
 
 
 def preprocess_data(__data: list[dict],
-                    features: list[str] | None = None) -> tuple[list[dict], list[str]]:
+                    features: list[str] | None = None,
+                    randomize_data: bool = False) -> tuple[list[dict], list[str]]:
     # Sort by requestReceivedTimestamp
     __data.sort(key=lambda x: x['requestReceivedTimestamp'])
 
-    # from random import shuffle
-    # shuffle(__data)
+    if randomize_data:
+        from random import shuffle
+        shuffle(__data)
 
     if features is None:
         # Use all features provided as default
@@ -359,8 +361,9 @@ def decode_labels(y_labels, yle):
 
 
 def model_training(data: list[dict],
-                   statistical_mode: bool = False) -> dict:
-    flattened_data, total_features = preprocess_data(data)
+                   statistical_mode: bool = False,
+                   randomize_data: bool = False) -> dict:
+    flattened_data, total_features = preprocess_data(data, randomize_data=randomize_data)
 
     training_data = encode_data(flattened_data, total_features, model_version=pm.MODEL_VERSION)
     xenc = training_data['x_encoders']
@@ -420,11 +423,12 @@ def model_training(data: list[dict],
     }
 
 
-def kfold_training(data: list[dict]) -> dict:
+def kfold_training(data: list[dict],
+                   randomize_data: bool = False) -> dict:
     if pm.MODEL_VERSION != 0:
         raise ValueError("K-fold training is only supported for model version 0.")
     
-    flattened_data, total_features = preprocess_data(data)
+    flattened_data, total_features = preprocess_data(data, randomize_data=randomize_data)
 
     training_data = encode_data(flattened_data, total_features, model_version=pm.MODEL_VERSION)
     xenc = training_data['x_encoders']
@@ -632,7 +636,7 @@ def model_inference(model: models.Model,
                     yle: preprocessing.LabelEncoder,
                     data: list[dict],
                     model_version: int = 0) -> dict:
-    flattened_data, total_features = preprocess_data(data, features)
+    flattened_data, total_features = preprocess_data(data, features, randomize_data=False)
     training_data = encode_data(flattened_data, total_features, include_y=False, previous_xenc=x_encoders, model_version=pm.MODEL_VERSION)
     X = training_data['X']
     # Measure total time for prediction
@@ -951,7 +955,7 @@ def main(args):
                         json.dump(result[i]['maj_result'], f)
             else:
                 for i in range(pm.STATISTICS_ATTEMPTS):
-                    result = model_training(data, statistical_mode=True)
+                    result = model_training(data, statistical_mode=True, randomize_data=args.randomize)
                     losses.append(result['history'])
                     metrics.append(result['metrics'])
                     log.info(f"Attempt {i + 1} done.")
@@ -984,7 +988,7 @@ def main(args):
 
         else:
             log.info("Starting model training.")
-            result = model_training(data)
+            result = model_training(data, randomize_data=args.randomize)
 
             log.info('Model generated.')
 
@@ -1095,6 +1099,8 @@ if __name__ == '__main__':
     parser.add_argument('-G', '--gpu', type=int, help='GPU to use, ignored if only one or no GPU is available',
                         default=-1)
     parser.add_argument('--mirroring', action='store_true', help='Use mirrored strategy for multi-GPU training')
+    parser.add_argument('-r', '--randomize', action='store_true',
+                        help='Randomize the data before training (only in non-statistics mode)')
     parser.add_argument('--trustee', action='store_true', 
                         help='Generate model explanations using Trustee framework')
     parser.add_argument('--trustee-iter', type=int, default=100,
