@@ -2,7 +2,7 @@
 
 import json
 import sys
-from label_proposer import decode_label, propose_label
+from ..parseLog.label_proposer import decode_label, propose_label
 
 file = sys.argv[1]
 labels = {}
@@ -52,7 +52,7 @@ for label in labels:
         joined[label] = {
             "line": labels[label],
             "cluster": label_after_cluster[label],
-            "triggering": triggering[label]
+            "triggering": triggering[label] if label in triggering else 0
         }
 
 for label in labels:
@@ -63,8 +63,8 @@ for label in labels:
             "triggering": 1
         }
 
+print(joined[4496])
 # both on x and y axis 
-print(joined)
 averages = {}
 for label in joined:
     if decode_label(label)['apiGroup'] == 'unknown.fbk.eu':
@@ -96,26 +96,29 @@ plt.rcParams.update({'font.size': 12})
 
 
 bins = {
-    "[1, 5)": 0,
+    "1": 0,
+    "(1, 5)": 0,
     "[5, 10)": 0,
     "[10, 20)": 0,
     "[20, 50)": 0,
-    "[50, 100)": 0,
-    "[100, +Inf)": 0
+    "[50, +Inf)": 0,
 }
 for label in averages:
-    if averages[label] < 5:
-        bins["[1, 5)"] += 1
+    if averages [label] == 1:
+        bins["1"] += 1
+    elif averages[label] < 5:
+        bins["(1, 5)"] += 1
     elif averages[label] < 10:
         bins["[5, 10)"] += 1
     elif averages[label] < 20:
         bins["[10, 20)"] += 1
     elif averages[label] < 50:
         bins["[20, 50)"] += 1
-    elif averages[label] < 100:
-        bins["[50, 100)"] += 1
+    # elif averages[label] < 100:
+    #    bins["[50, 100)"] += 1
     else:
-        bins["[100, +Inf)"] += 1
+        bins["[50, +Inf)"] += 1
+    #    bins["[100, +Inf)"] += 1
  
 for __b in bins:
     print(__b)
