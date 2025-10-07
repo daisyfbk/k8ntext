@@ -13,6 +13,9 @@ ACTION_KEY_SEPARATOR = "%"
 UUID = "UUID"
 DEFAULT_LABEL_KEY = "label"
 BASE_LABEL = "1010"
+CONTROL_PLANE_UUID = [
+    str(i) for i in range(2000, 2030)
+]
 
 # Cluster limits
 DEFAULT_CLUSTER_TIMEOUT_SECONDS = 300  # 5 minutes
@@ -80,7 +83,6 @@ def get_actions_and_labels_dicts(input_filename,
                 #     verbs_dict.get(informative_dict.get('verb')) == verbs_dict.get(decoded_verb)):
                 #     # compare verbs number instead of verbs directly
 
-
                 action_key = str(label) + ACTION_KEY_SEPARATOR
 
                 if informative_dict['namespace'] is None and informative_dict['name'] is None:
@@ -102,7 +104,6 @@ def get_actions_and_labels_dicts(input_filename,
                     action_detail.pop('requestURI', None)
                     action_detail[UUID] = str(uuid.uuid4())
                     actions_dict[action_key] = action_detail
-
                     
     return actions_dict, dict_divided_by_label
 
@@ -225,13 +226,201 @@ def get_associate_action_uuid(candidate_actions, log_line):
             except ValueError:
                 pass
 
+        # Control plane actions
+        # ** API Server watching objects
+        # The API server monitors core components with a 10minute
+        # timeout. It remains unclear what the API server watches in other groups:
+        # we probably need to deploy more components to see what the API server
+        # watches.
+        # - Verb: =watch=
+        # - Users: =system:apiserver=
+        # - Objects: =configmaps=, =clusterroles=, =namespaces=, =serviceaccounts=,
+        #   =resourcequotas=, =clusterrolebindings=, =rolebindings=, =secrets=,
+        #   =nodes=, =pods=, =roles=
+        # - Namespaces: none, apart from =configmaps= in =kube-system=. Additionally,
+        #   if legacy service accounts areused, the API server also watches
+        #   =kube-apiserver-legacy-service-account-token-tracking=, a CM in =kube-system=.
+        #if log_line.get('verb') == 'watch' and log_line.get('username') == 'system:apiserver':
+        #    api_server_watched_objects = [
+        #        'configmaps', 'clusterroles', 'namespaces', 'serviceaccounts',
+        #        'resourcequotas', 'clusterrolebindings', 'rolebindings',
+        #        'secrets', 'nodes', 'pods', 'roles'
+        #    ]
+        #    if log_line.get('resource') in api_server_watched_objects:
+        #        return CONTROL_PLANE_UUID[0]
+        # ** =kube-controller-manager= watching objects
+        # The =kube-system= namespace watches objects, similar to the API server.
+        # However, ConfigMaps are watched over non-namespaced objects and also
+        # =certificateigningrequests= are watched.
+        # 
+        # I believe that the objects watched by the Kube Controller Manager are
+        # specific to what is deployed in the cluster. For example, if the
+        # cluster has a deployment, the Kube Controller Manager will watch
+        # also =deployments=.
+        # 
+        # - Verb: =watch=
+        # - Users: =system:kube-controller-manager=
+        # - Objects: same as the API server, plus =certificateigningrequests=
+        # - Namespaces: none
+        # if log_line.get('verb') == 'watch' and log_line.get('username') == 'system:kube-controller-manager':
+            # kcm_watched_objects = [
+                # 'configmaps', 'clusterroles', 'namespaces', 'serviceaccounts',
+                # 'resourcequotas', 'clusterrolebindings', 'rolebindings',
+                # 'secrets', 'nodes', 'pods', 'roles', 'certificateigningrequests'
+            # ]
+            # if log_line.get('resource') in kcm_watched_objects:
+                # return CONTROL_PLANE_UUID[1]
+        # # ** =kube-controller-manager= getting and creating tokens for GC and RQ controllers
+        # # The =kube-controller-manager= gets every less than an hour the serviceaccounts
+        # # =/api/v1/namespaces/kube-system/serviceaccounts/generic-garbage-collector= and
+        # # =/api/v1/namespaces/kube-system/serviceaccounts/resourcequota-controller=.
+        # # It then creates tokens for them, which expire in an hour.
+        # # *** 1
+        # # - Verb: =get=
+        # # - Users: =system:kube-controller-manager=, groups =system:authenticated=
+        # # - Objects: =/api/v1/namespaces/kube-system/serviceaccounts/generic-garbage-collector=
+        # if log_line.get('verb') == 'get' and log_line.get('username') == 'system:kube-controller-manager':
+            # if log_line.get('resource') == 'serviceaccounts' and \
+                    # log_line.get('namespace') == 'kube-system' and \
+                    # log_line.get('name') in ['generic-garbage-collector', 'resourcequota-controller']:
+                # return CONTROL_PLANE_UUID[2]
+        # # *** 2
+        # # - Verb: =get=
+        # # - Users: =system:kube-controller-manager=, groups =system:authenticated=
+        # # - Objects: =/api/v1/namespaces/kube-system/serviceaccounts/resourcequota-controller=
+        # if log_line.get('verb') == 'get' and log_line.get('username') == 'system:kube-controller-manager':
+            # if log_line.get('resource') == 'serviceaccounts' and \
+                    # log_line.get('namespace') == 'kube-system' and \
+                    # log_line.get('name') in ['generic-garbage-collector', 'resourcequota-controller']:
+                # return CONTROL_PLANE_UUID[3]
+        # # *** 3
+        # # - Verb: =create=
+        # # - Users: =system:kube-controller-manager=, groups =system:authenticated=
+        # # - Objects: =/api/v1/namespaces/kube-system/serviceaccounts/generic-garbage-collector/token=
+        # if log_line.get('verb') == 'create' and log_line.get('username') == 'system:kube-controller-manager':
+            # if log_line.get('resource') == 'serviceaccounts' and \
+                    # log_line.get('namespace') == 'kube-system' and \
+                    # log_line.get('name') in ['generic-garbage-collector', 'resourcequota-controller']:
+                # return CONTROL_PLANE_UUID[4]
+        # # *** 4
+        # # - Verb: =create=
+        # # - Users: =system:kube-controller-manager=, groups =system:authenticated=
+        # # - Objects: =/api/v1/namespaces/kube-system/serviceaccounts/resourcequota-controller/token=
+        # if log_line.get('verb') == 'create' and log_line.get('username') == 'system:kube-controller-manager':
+            # if log_line.get('resource') == 'serviceaccounts' and \
+                    # log_line.get('namespace') == 'kube-system' and \
+                    # log_line.get('name') in ['generic-garbage-collector', 'resourcequota-controller']:
+                # return CONTROL_PLANE_UUID[5]
+        # # ** Kube Scheduler watching objects
+        # # The Kube Scheduler watches pods, nodes, namespaces, always with
+        # # a 10-minute timeout.
+        # # - Verb: =watch=
+        # # - Users: =system:kube-scheduler=
+        # # - Objects: =pods=, =nodes=, =namespaces=
+        # # - Namespaces: none
+        # if log_line.get('verb') == 'watch' and log_line.get('username') == 'system:kube-scheduler':
+            # kube_scheduler_watched_objects = [
+                # 'pods', 'nodes', 'namespaces'
+            # ]
+            # if log_line.get('resource') in kube_scheduler_watched_objects:
+                # return CONTROL_PLANE_UUID[6]
+        # # *** Extension-apiserver-authentication
+        # # This object is also watched by the Kube Scheduler.
+        # # - Verb: =watch=
+        # # - Users: =system:kube-scheduler=
+        # # - Object: =configmaps/extension-apiserver-authentication=
+        # # - Namespaces: =kube-system=
+        # if log_line.get('verb') == 'watch' and log_line.get('username') == 'system:kube-scheduler':
+            # if log_line.get('resource') == 'configmaps' and \
+                    # log_line.get('namespace') == 'kube-system' and \
+                    # log_line.get('name') == 'extension-apiserver-authentication':
+                # return CONTROL_PLANE_UUID[7]
+        # # ** Nodes watching objects
+        # # Each node in the cluster watches pods (non-namespaced), nodes
+        # # (themselves), and some configmaps.
+        # # *** Pods
+        # # - Verb: =watch=
+        # # - Users: =system:node:.*=, groups =["system:nodes","system:authenticated"]=
+        # # - Objects: =pods=
+        # # - Namespaces: none
+        # if log_line.get('verb') == 'watch' and log_line.get('username', '').startswith('system:node:'):
+            # if log_line.get('resource') == 'pods':
+                # return CONTROL_PLANE_UUID[8]
+        # # *** Nodes
+        # # - Verb: =watch=
+        # # - Users: =system:node:.*=, groups =["system:nodes","system:authenticated"]=
+        # # - Objects: =nodes/{node-name}=
+        # # - Namespaces: none
+        # if log_line.get('verb') == 'watch' and log_line.get('username', '').startswith('system:node:'):
+            # if log_line.get('resource') == 'nodes':
+                # return CONTROL_PLANE_UUID[9]
+        # # *** ConfigMaps
+        # # Every node hosting some Pod of any namespace will be in charge of watching
+        # # the serviceaccounts of the Pods that are running.
+        # # 
+        # # The CMs being watched are =kube-flannel-cfg=, =kube-proxy=, =kube-root-ca.crt=,
+        # # and =coredns=. They of course depend on the components deployed in the cluster.
+        # # Let's keep this generic.
+        # # 
+        # # - Verb: =watch=
+        # # - Users: =system:node:.*=, groups =["system:nodes","system:authenticated"]=
+        # # - Objects: =configmaps/kube-system/configmaps/{serviceaccount}=
+        # # - Namespace: =kube-system=
+        # if log_line.get('verb') == 'watch' and log_line.get('username', '').startswith('system:node:'):
+            # if log_line.get('resource') == 'configmaps' and log_line.get('namespace') == 'kube-system':
+                # return CONTROL_PLANE_UUID[10]
+        # # ** Nodes creating tokens
+        # # *** Nodes creating tokens for SAs in the kube-system namespace
+        # # Since nodes watch the configmaps of the Pods they are running, as the
+        # # tokens of their service accounts expire, they will recreate them.
+        # # - Verb: =create=
+        # # - Users: =system:node:.*=, groups =["system:nodes","system:authenticated"]=
+        # # - Objects: =/api/v1/namespaces/kube-system/serviceaccounts/{serviceaccount}/token=
+        # if log_line.get('verb') == 'create' and log_line.get('username', '').startswith('system:node:'):
+            # if log_line.get('resource') == 'serviceaccounts' and log_line.get('namespace') == 'kube-system':
+                # return CONTROL_PLANE_UUID[11]
+        # # ** Nodes getting their own status
+        # # Nodes poll their own status every ten seconds.
+        # # - Verb: =get=
+        # # - Users: =system:node:.*=, groups =["system:nodes","system:authenticated"]=
+        # # - Objects: =/api/v1/nodes/{the same node}=
+        # if log_line.get('verb') == 'get' and log_line.get('username', '').startswith('system:node:'):
+            # if log_line.get('resource') == 'nodes':
+                # return CONTROL_PLANE_UUID[12]
+        # # ** Nodes patching their status to update conditions
+        # # Nodes update their status (e.g., MemoryPressure, DiskPressure, PIDPressure) by patching their own status
+        # # every five minutes.
+        # # - Verb: =patch=
+        # # - Users: =system:node:.*=, groups =["system:nodes","system:authenticated"]=
+        # # - Objects: =/api/v1/nodes/{the same node}=
+        # if log_line.get('verb') == 'patch' and log_line.get('username', '').startswith('system:node:'):
+            # if log_line.get('resource') == 'nodes':
+                # return CONTROL_PLANE_UUID[13]
+        # # ** CoreDNS watching namespaces 
+        # # - Verb: =watch=
+        # # - Users: =system:serviceaccount:kube-system:coredns=
+        # # - Objects: =namespaces=
+        # if log_line.get('verb') == 'watch' and log_line.get('username') == 'system:serviceaccount:kube-system:coredns':
+            # if log_line.get('resource') == 'namespaces':
+                # return CONTROL_PLANE_UUID[14]
+        # # ** Kube-proxy watching nodes
+        # # - Verb: =watch=
+        # # - Users: =system:serviceaccount:kube-system:kube-proxy=
+        # # - Objects: =nodes=
+        # if log_line.get('verb') == 'watch' and log_line.get('username') == 'system:serviceaccount:kube-system:kube-proxy':
+            # if log_line.get('resource') == 'nodes':
+                # return CONTROL_PLANE_UUID[15]
+
     return BASE_LABEL  # if no action is found, return the base label UUID
 
 
 # This functions, given a set of lines grouped by label, search foreach line the action to which it corresponds
 def assign_uuid_to_lines(actions_dict, dict_divided_by_label, cluster_timeout=DEFAULT_CLUSTER_TIMEOUT_SECONDS, cluster_max_lines=DEFAULT_CLUSTER_MAX_LINES):
     b = 0   
+    c = 0
     problematic = {}
+    cplabeled = {}
+    a4496 = set()
     
     # Track cluster information: {uuid: {first_timestamp, line_count, lines}}
     cluster_info = {}
@@ -252,6 +441,10 @@ def assign_uuid_to_lines(actions_dict, dict_divided_by_label, cluster_timeout=DE
                 b += 1
                 problematic[label] = problematic.get(label, 0).__add__(1)
                 log_line[UUID] = uuid_value
+            elif uuid_value in CONTROL_PLANE_UUID:
+                c += 1
+                cplabeled[label] = cplabeled.get(label, 0).__add__(1)
+                log_line[UUID] = uuid_value
             else:
                 # Check if this cluster should be split due to size or timeout limits
                 timestamp = log_line.get('stageTimestamp') or log_line.get('requestReceivedTimestamp', '')
@@ -264,7 +457,6 @@ def assign_uuid_to_lines(actions_dict, dict_divided_by_label, cluster_timeout=DE
                     }
                 
                 cluster = cluster_info[uuid_value]
-                
                 # Check if cluster exceeds limits
                 should_split = False
                 
@@ -300,9 +492,12 @@ def assign_uuid_to_lines(actions_dict, dict_divided_by_label, cluster_timeout=DE
                     cluster['lines'].append(log_line)
                     log_line[UUID] = uuid_value
 
+        print(a4496, len(a4496))
+
     # Print cluster statistics
     cluster_sizes = [info['line_count'] for info in cluster_info.values()]
     print(f"Found {b} unassigned lines out of {sum(len(v) for v in dict_divided_by_label.values())} total lines")
+    print(f"Found {c} control-plane lines")
     print(f"Created {len(cluster_info)} clusters")
     print(f"Problematic labels: {sorted(problematic.items(), key=lambda item: item[1], reverse=True)}")
 
