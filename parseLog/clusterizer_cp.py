@@ -187,3 +187,43 @@ def is_control_plane_action(log_line: dict) -> int | None:
     if log_line.get('verb') == 'watch' and log_line.get('username') == 'system:serviceaccount:kube-system:kube-proxy':
         if log_line.get('resource') == 'nodes':
             return CONTROL_PLANE_UUID[15]
+    # Leases
+    # {'username': 'system:kube-controller-manager', 'verb': 'get', 'resource': 'leases', 'subresource': None, 'namespace': 'kube-system', 'name': 'kube-controller-manager', 'requestURI': '/apis/coordination.k8s.io/v1/namespaces/kube-system/leases/kube-controller-manager', 'requestReceivedTimestamp': '2024-07-23T15:51:49.343786Z', 'stageTimestamp': '2024-07-23T15:51:49.347699Z', 'metadata/uid': '774a1d00-f6da-4af8-9e98-d3f07aab0c3e'}
+    # {'username': 'system:kube-scheduler', 'verb': 'get', 'resource': 'leases', 'subresource': None, 'namespace': 'kube-system', 'name': 'kube-scheduler', 'requestURI': '/apis/coordination.k8s.io/v1/namespaces/kube-system/leases/kube-scheduler', 'requestReceivedTimestamp': '2024-07-23T15:51:49.377841Z', 'stageTimestamp': '2024-07-23T15:51:49.381077Z', 'metadata/uid': '76cad05e-fbec-4503-88ab-21e9ec9d38fa'}
+    # These two go together
+    if log_line.get('verb') == 'get' and log_line.get('resource') == 'leases' and \
+            log_line.get('namespace') == 'kube-system' and \
+            log_line.get('name') in ['kube-controller-manager', 'kube-scheduler']:
+        if log_line.get('username') in ['system:kube-controller-manager', 'system:kube-scheduler']:
+            return CONTROL_PLANE_UUID[16]
+    # Informative dict: {'username': 'system:node:kubeadm-worker1', 'verb': 'update', 'resource': 'leases', 'subresource': None, 'namespace': 'kube-node-lease', 'name': 'kubeadm-worker1', 'requestURI': '/apis/coordination.k8s.io/v1/namespaces/kube-node-lease/leases/kubeadm-worker1', 'requestReceivedTimestamp': '2024-05-28T09:24:12.745411Z', 'stageTimestamp': '2024-05-28T09:24:12.752851Z', 'ownerReferences': [{'apiVersion': 'v1', 'kind': 'Node', 'name': 'kubeadm-worker1', 'uid': 'db6a67cd-b742-4291-a2ca-2861b2968a37'}], 'metadata/uid': '535ef3e4-70b6-4e00-8d2c-f71aad03087d'}
+    if log_line.get('verb') == 'update' and log_line.get('resource') == 'leases' and \
+            log_line.get('namespace') == 'kube-node-lease':
+        if log_line.get('username', '').startswith('system:node:'):
+            return CONTROL_PLANE_UUID[17]
+    # Informative dict: {'username': 'system:kube-controller-manager', 'verb': 'update', 'resource': 'leases', 'subresource': None, 'namespace': 'kube-system', 'name': 'kube-controller-manager', 'requestURI': '/apis/coordination.k8s.io/v1/namespaces/kube-system/leases/kube-controller-manager', 'requestReceivedTimestamp': '2024-05-28T09:24:14.087182Z', 'stageTimestamp': '2024-05-28T09:24:14.093831Z', 'metadata/uid': '774a1d00-f6da-4af8-9e98-d3f07aab0c3e'}
+    if log_line.get('verb') == 'update' and log_line.get('resource') == 'leases' and \
+            log_line.get('namespace') == 'kube-system' and \
+            log_line.get('name') == 'kube-controller-manager':
+        if log_line.get('username') == 'system:kube-controller-manager':
+            return CONTROL_PLANE_UUID[18]
+    # Informative dict: {'username': 'system:serviceaccount:kube-system:node-controller', 'verb': 'patch', 'resource': 'nodes', 'subresource': None, 'namespace': None, 'name': 'kubeadm-worker1', 'requestURI': '/api/v1/nodes/kubeadm-worker1', 'requestReceivedTimestamp': '2024-07-03T14:22:32.426183Z', 'stageTimestamp': '2024-07-03T14:22:32.445044Z', 'metadata/uid': 'db6a67cd-b742-4291-a2ca-2861b2968a37'}
+    if log_line.get('verb') == 'patch' and log_line.get('resource') == 'nodes':
+        if log_line.get('username') == 'system:serviceaccount:kube-system:node-controller':
+            return CONTROL_PLANE_UUID[19]
+        
+    # Informative dict: {'username': 'system:kube-scheduler', 'verb': 'update', 'resource': 'leases', 'subresource': None, 'namespace': 'kube-system', 'name': 'kube-scheduler', 'requestURI': '/apis/coordination.k8s.io/v1/namespaces/kube-system/leases/kube-scheduler', 'requestReceivedTimestamp': '2024-05-28T09:24:17.889294Z', 'stageTimestamp': '2024-05-28T09:24:17.896166Z', 'metadata/uid': '76cad05e-fbec-4503-88ab-21e9ec9d38fa'}
+    # Informative dict: {'username': 'system:kube-scheduler', 'verb': 'update', 'resource': 'leases', 'subresource': None, 'namespace': 'kube-system', 'name': 'kube-scheduler', 'requestURI': '/apis/coordination.k8s.io/v1/namespaces/kube-system/leases/kube-scheduler', 'requestReceivedTimestamp': '2024-05-28T09:24:19.904287Z', 'stageTimestamp': '2024-05-28T09:24:19.911503Z', 'metadata/uid': '76cad05e-fbec-4503-88ab-21e9ec9d38fa'}
+    if log_line.get('verb') == 'update' and log_line.get('resource') == 'leases' and \
+            log_line.get('namespace') == 'kube-system' and \
+            log_line.get('name') == 'kube-scheduler':
+        if log_line.get('username') in ['system:kube-scheduler']:
+            return CONTROL_PLANE_UUID[20]
+        
+    # Informative dict: {'username': 'system:apiserver',      'verb': 'update', 'resource': 'leases', 'subresource': None, 'namespace': 'kube-system', 'name': 'apiserver-adpx6exqq66lc64z7ri5spi2yq', 'requestURI': '/apis/coordination.k8s.io/v1/namespaces/kube-system/leases/apiserver-adpx6exqq66lc64z7ri5spi2yq', 'requestReceivedTimestamp': '2024-05-28T09:24:34.384599Z', 'stageTimestamp': '2024-05-28T09:24:34.394065Z', 'metadata/uid': '8d923080-040e-46e2-8a07-924831e68898'}
+    if log_line.get('verb') == 'update' and log_line.get('resource') == 'leases' and \
+            log_line.get('namespace') == 'kube-system' and \
+            log_line.get('name', '').startswith('apiserver-'):
+        if log_line.get('username') == 'system:apiserver':
+            return CONTROL_PLANE_UUID[21]
+    return None
