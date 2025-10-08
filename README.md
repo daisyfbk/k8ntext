@@ -2,11 +2,14 @@
 
 This repository holds the code for K8NTEXT, a project that aims to enhance Kubernetes audit logs by correlating them. The goal is to provide a more comprehensive understanding of the events occurring in a Kubernetes cluster by linking related audit log entries together.
 
-The following informative files are available:
+The following files are available:
 
 - `README.md`: this file;
 - `parseLog`: the source code for K8NTEXT, which includes the logic for parsing and correlating audit logs;
-- `scripts`: some scripts to help with the setup and execution of the project.
+- `analysis`: contains scripts for comparing the results of the prediction process, including an HTML visualizer;
+- `data-collection`: scripts used to collect the dataset from a Kubernetes cluster;
+- `plots`: scripts for generating plots and visualizations from the results;
+- `tests`: some shell scripts for evaluating K8NTEXT. The data is then fed to the `plots` scripts.
 
 ## Getting started
 
