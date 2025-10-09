@@ -1,8 +1,7 @@
-etc
 /logs
 .vscode
 *.tex
-queries.*
+queries.sh
 ssh/cluster-setup
 /*.kubeconfig
 .#*
@@ -16,7 +15,6 @@ models
 *.aux
 *.lof
 *.log
-!audit-log/audit-log-dataset.log
 *.lot
 *.fls
 *.out

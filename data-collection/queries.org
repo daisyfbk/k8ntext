@@ -1,0 +1,5892 @@
+#+TITLE: Commands used to generate logs
+#+AUTHOR: Matteo Franzil, Valentino Armani, Luis Augusto Dias Knob
+#+DATE: 2024-05-28
+#+DESCRIPTION: This document contains the commands used to generate the logs for the Audit project
+#+OPTIONS: toc:2 
+#+PROPERTY: header-args :prologue "exec 2>&1"
+#+PROPERTY: header-args+ :epilogue ":"
+#+PROPERTY: header-args+ :exports code 
+#+PROPERTY: header-args+ :results output type code
+#+PROPERTY: header-args+ :eval no-export
+#+PROPERTY: header-args+ :tangle queries.sh 
+#+PROPERTY: header-args+ :comments noweb
+
+#+LATEX_HEADER: \usepackage{xcolor}
+#+SETUPFILE: latex.setup 
+
+# Unused properties
+# #+PROPERTY: header-args:shell :var TERM=dumb
+# #+PROPERTY: header-args:shell+ :var EMACS=1
+# -*- org-confirm-babel-evaluate: nil -*-
+# :PROPERTIES:
+# :header-args:shell: :var TERM=dumb
+# :header-args:shell: :var EMACS=1
+# :header-args: :prologue "exec 2>&1"
+# :header-args: :epilogue ":"
+# :header-args: :exports code
+# :header-args: :results type code
+# :END:
+
+* Ignored logs
+** Ignored namespaces and users
+The following namespaces are ignored:
+  - =falco=
+  - =kube-flannel=
+The following users/SAs are ignored:
+  - =system:serviceaccount:kube-flannel:flannel=
+** Endpoints different than api/apis
+We will ignore endpoints which are not the regular API ones.
+- Verb: any
+- Users: any
+- Objects: any
+- Endpoints: any other than =/api= or =/apis=
+** API Server watching objects
+The API server monitors core components with a 10minute
+timeout. It remains unclear what the API server watches in other groups:
+we probably need to deploy more components to see what the API server
+watches.
+- Verb: =watch=
+- Users: =system:apiserver=
+- Objects: =configmaps=, =clusterroles=, =namespaces=, =serviceaccounts=,
+  =resourcequotas=, =clusterrolebindings=, =rolebindings=, =secrets=,
+  =nodes=, =pods=, =roles=
+- Namespaces: none, apart from =configmaps= in =kube-system=. Additionally,
+  if legacy service accounts areused, the API server also watches
+  =kube-apiserver-legacy-service-account-token-tracking=, a CM in =kube-system=.
+** =kube-controller-manager= watching objects
+The =kube-system= namespace watches objects, similar to the API server.
+However, ConfigMaps are watched over non-namespaced objects and also
+=certificateigningrequests= are watched.
+
+I believe that the objects watched by the Kube Controller Manager are
+specific to what is deployed in the cluster. For example, if the
+cluster has a deployment, the Kube Controller Manager will watch
+also =deployments=.
+
+- Verb: =watch=
+- Users: =system:kube-controller-manager=
+- Objects: same as the API server, plus =certificateigningrequests=
+- Namespaces: none
+** =kube-controller-manager= getting and creating tokens for GC and RQ controllers
+The =kube-controller-manager= gets every less than an hour the serviceaccounts
+=/api/v1/namespaces/kube-system/serviceaccounts/generic-garbage-collector= and
+=/api/v1/namespaces/kube-system/serviceaccounts/resourcequota-controller=.
+It then creates tokens for them, which expire in an hour.
+*** 1
+- Verb: =get=
+- Users: =system:kube-controller-manager=, groups =system:authenticated=
+- Objects: =/api/v1/namespaces/kube-system/serviceaccounts/generic-garbage-collector=
+*** 2
+- Verb: =get=
+- Users: =system:kube-controller-manager=, groups =system:authenticated=
+- Objects: =/api/v1/namespaces/kube-system/serviceaccounts/resourcequota-controller=
+*** 3
+- Verb: =create=
+- Users: =system:kube-controller-manager=, groups =system:authenticated=
+- Objects: =/api/v1/namespaces/kube-system/serviceaccounts/generic-garbage-collector/token=
+*** 4
+- Verb: =create=
+- Users: =system:kube-controller-manager=, groups =system:authenticated=
+- Objects: =/api/v1/namespaces/kube-system/serviceaccounts/resourcequota-controller/token=
+  
+** Kube Scheduler watching objects
+The Kube Scheduler watches pods, nodes, namespaces, always with
+a 10-minute timeout.
+- Verb: =watch=
+- Users: =system:kube-scheduler=
+- Objects: =pods=, =nodes=, =namespaces=
+- Namespaces: none
+*** Extension-apiserver-authentication
+This object is also watched by the Kube Scheduler.
+- Verb: =watch=
+- Users: =system:kube-scheduler=
+- Object: =configmaps/extension-apiserver-authentication=
+- Namespaces: =kube-system=
+** Nodes watching objects
+Each node in the cluster watches pods (non-namespaced), nodes
+(themselves), and some configmaps.
+*** Pods
+- Verb: =watch=
+- Users: =system:node:.*=, groups =["system:nodes","system:authenticated"]=
+- Objects: =pods=
+- Namespaces: none
+*** Nodes
+- Verb: =watch=
+- Users: =system:node:.*=, groups =["system:nodes","system:authenticated"]=
+- Objects: =nodes/{node-name}=
+- Namespaces: none
+*** ConfigMaps
+Every node hosting some Pod of any namespace will be in charge of watching
+the serviceaccounts of the Pods that are running.
+
+The CMs being watched are =kube-flannel-cfg=, =kube-proxy=, =kube-root-ca.crt=,
+and =coredns=. They of course depend on the components deployed in the cluster.
+Let's keep this generic.
+
+- Verb: =watch=
+- Users: =system:node:.*=, groups =["system:nodes","system:authenticated"]=
+- Objects: =configmaps/kube-system/configmaps/{serviceaccount}=
+- Namespace: =kube-system=
+** Nodes creating tokens
+*** Nodes creating tokens for SAs in the kube-system namespace
+Since nodes watch the configmaps of the Pods they are running, as the
+tokens of their service accounts expire, they will recreate them.
+- Verb: =create=
+- Users: =system:node:.*=, groups =["system:nodes","system:authenticated"]=
+- Objects: =/api/v1/namespaces/kube-system/serviceaccounts/{serviceaccount}/token=
+** Nodes getting their own status
+Nodes poll their own status every ten seconds.
+- Verb: =get=
+- Users: =system:node:.*=, groups =["system:nodes","system:authenticated"]=
+- Objects: =/api/v1/nodes/{the same node}=
+** Nodes patching their status to update conditions
+Nodes update their status (e.g., MemoryPressure, DiskPressure, PIDPressure) by patching their own status
+every five minutes.
+- Verb: =patch=
+- Users: =system:node:.*=, groups =["system:nodes","system:authenticated"]=
+- Objects: =/api/v1/nodes/{the same node}=
+** CoreDNS watching namespaces 
+- Verb: =watch=
+- Users: =system:serviceaccount:kube-system:coredns=
+- Objects: =namespaces=
+** Kube-proxy watching nodes
+- Verb: =watch=
+- Users: =system:serviceaccount:kube-system:kube-proxy=
+- Objects: =nodes=
+# ** CNI watching nodes
+# - Verb: =watch=
+# - Users: =system:serviceaccount:kube-system:kube-flannel=
+# - Objects: =nodes=
+# *** Nodes creating tokens for namespaces that have running pods
+# Each node that has a running Pod will recreate a token for the namespace
+# where the Pod is running. This token expires in an hour.
+# - Verb: =create=
+# - Users: =system:node:.*=, groups =["system:nodes","system:authenticated"]=
+# - Objects: =/api/v1/namespaces/{namespace}/serviceaccounts/default/token=
+* Log setups level 1
+** Namespace log =N1= - Simple namespace creation and deletion
+
+- Create a namespace:
+  #+BEGIN_SRC shell 
+  kubectl create namespace rising
+  #+END_SRC
+  
+  #+RESULTS:
+  #+begin_src shell
+  namespace/rising created
+  #+end_src
+
+- List the namespaces:
+  #+BEGIN_SRC shell 
+  kubectl get namespaces
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME              STATUS   AGE
+  default           Active   107d
+  kube-flannel      Active   107d
+  kube-node-lease   Active   107d
+  kube-public       Active   107d
+  kube-system       Active   107d
+  limited           Active   107d
+  my-namespace      Active   28d
+  rising            Active   10s
+  rising2           Active   71m
+  #+end_src
+
+- Get the namespace using =-o yaml=:
+  #+BEGIN_SRC shell
+  kubectl get namespace rising -o yaml
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  apiVersion: v1
+  kind: Namespace
+  metadata:
+    creationTimestamp: "2024-06-05T12:46:46Z"
+    labels:
+      kubernetes.io/metadata.name: rising
+    name: rising
+    resourceVersion: "3274921"
+    uid: c7c2284a-f438-403e-bf6b-ce389d5c779c
+  spec:
+    finalizers:
+    - kubernetes
+  status:
+    phase: Active
+  #+end_src
+
+- Describe the namespace:
+  #+BEGIN_SRC shell
+  kubectl describe namespace rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:         rising
+  Labels:       kubernetes.io/metadata.name=rising
+  Annotations:  <none>
+  Status:       Active
+
+  No resource quota.
+
+  No LimitRange resource.
+  #+end_src
+
+- Delete the namespace:
+  #+BEGIN_SRC shell
+  kubectl delete namespace rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  namespace "rising" deleted
+  #+end_src
+
+** Namespace log =N2= - Namespace with resource quotas
+- *Prerequisite*: recreate the =rising= namespace:
+   #+BEGIN_SRC shell
+   kubectl create namespace rising
+   #+END_SRC
+
+   #+RESULTS:
+   #+begin_src shell
+   Error from server (AlreadyExists): namespaces "rising" already exists
+   #+end_src
+
+- Create a ResourceQuota for the namespace:
+   #+BEGIN_SRC shell
+   cat <<EOF | kubectl apply -f -
+   apiVersion: v1
+   kind: ResourceQuota
+   metadata:
+     name: rising-quota 
+   spec:
+     hard:
+       pods: "1"
+       requests.cpu: "1"
+       requests.memory: 1Gi
+       limits.cpu: "2"
+       limits.memory: 2Gi
+   EOF
+   #+END_SRC
+
+   #+RESULTS:
+   #+begin_src shell
+   resourcequota/rising-quota created
+   #+end_src
+
+- Inspect the ResourceQuota:
+  #+BEGIN_SRC shell
+  kubectl -n rising describe resourcequota rising-quota
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:            rising-quota
+  Namespace:       rising
+  Resource         Used  Hard
+  --------         ----  ----
+  limits.cpu       0     2
+  limits.memory    0     2Gi
+  pods             0     1
+  requests.cpu     0     1
+  requests.memory  0     1Gi
+  #+end_src
+
+- Create a Pod that will exceed the quota:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: over-quota-pod
+    namespace: rising
+  spec:
+    containers:
+    - name: over-quota-container
+      image: nginx
+      resources:
+        requests:
+          cpu: "1"
+          memory: 1.5Gi
+        limits:
+          cpu: "2"
+          memory: 2Gi
+      command: ["sh", "-c", "echo Hello, Kubernetes! && sleep 3600"]
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Error from server (Forbidden): error when creating "STDIN": pods "over-quota-pod" is forbidden: exceeded quota: rising-quota, requested: requests.memory=1536Mi, used: requests.memory=0, limited: requests.memory=1Gi
+  #+end_src
+
+- Now create a Pod that will respect the quota:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: within-quota-pod
+    namespace: rising
+  spec:
+    containers:
+    - name: within-quota-container
+      image: nginx
+      resources:
+        requests:
+          cpu: "1"
+          memory: 1Gi
+        limits:
+          cpu: "2"
+          memory: 2Gi
+      command: ["sh", "-c", "echo Hello, Kubernetes! && sleep 3600"]
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/within-quota-pod created
+  #+end_src
+
+- Run a further Pod, it will fail:
+  #+BEGIN_SRC shell
+  kubectl -n rising run --image=nginx nginx
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Error from server (Forbidden): pods "nginx" is forbidden: failed quota: rising-quota: must specify limits.cpu for: nginx; limits.memory for: nginx; requests.cpu for: nginx; requests.memory for: nginx
+  #+end_src
+  
+- Clean everything up, one pod will fail because it was never created:
+  #+BEGIN_SRC shell
+    kubectl -n rising delete pod over-quota-pod
+    kubectl -n rising delete pod within-quota-pod
+    kubectl delete resourcequota rising-quota
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Error from server (NotFound): pods "over-quota-pod" not found
+  pod "within-quota-pod" deleted
+  resourcequota "rising-quota" deleted
+  #+end_src
+
+** Pod log =P1= - Simple Pod creation and inspection
+- Create a pod:
+  #+BEGIN_SRC shell 
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: rising-pod
+      namespace: rising
+    spec:
+      containers:
+      - name: first-container 
+        image: nginx
+      - name: second-container
+        image: alpine 
+        command: ["sh", "-c", "echo Hello, Kubernetes! && sleep 3600"]
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/rising-pod created
+  #+end_src
+
+- Inspect the Pod:
+  #+BEGIN_SRC shell
+  kubectl -n rising describe pod rising-pod
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:             rising-pod
+  Namespace:        rising
+  Priority:         0
+  Service Account:  default
+  Node:             kubeadm-worker1/192.168.38.11
+  Start Time:       Wed, 29 May 2024 08:41:47 +0200
+  Labels:           <none>
+  Annotations:      <none>
+  Status:           Pending
+  IP:               
+  IPs:              <none>
+  Containers:
+    first-container:
+      Container ID:   
+      Image:          nginx
+      Image ID:       
+      Port:           <none>
+      Host Port:      <none>
+      State:          Waiting
+        Reason:       ContainerCreating
+      Ready:          False
+      Restart Count:  0
+      Environment:    <none>
+      Mounts:
+        /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-gjxhl (ro)
+    second-container:
+      Container ID:  
+      Image:         alpine
+      Image ID:      
+      Port:          <none>
+      Host Port:     <none>
+      Command:
+        sh
+        -c
+        echo Hello, Kubernetes! && sleep 3600
+      State:          Waiting
+        Reason:       ContainerCreating
+      Ready:          False
+      Restart Count:  0
+      Environment:    <none>
+      Mounts:
+        /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-gjxhl (ro)
+  Conditions:
+    Type              Status
+    Initialized       True 
+    Ready             False 
+    ContainersReady   False 
+    PodScheduled      True 
+  Volumes:
+    kube-api-access-gjxhl:
+      Type:                    Projected (a volume that contains injected data from multiple sources)
+      TokenExpirationSeconds:  3607
+      ConfigMapName:           kube-root-ca.crt
+      ConfigMapOptional:       <nil>
+      DownwardAPI:             true
+  QoS Class:                   BestEffort
+  Node-Selectors:              <none>
+  Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                               node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+  Events:
+    Type    Reason     Age   From               Message
+    ----    ------     ----  ----               -------
+    Normal  Scheduled  4s    default-scheduler  Successfully assigned rising/rising-pod to kubeadm-worker1
+    Normal  Pulling    4s    kubelet            Pulling image "nginx"
+  #+end_src
+
+- Patch the Pod and try to add a third container, this will fail:
+  #+BEGIN_SRC shell
+  kubectl -n rising patch pod rising-pod --type='json' -p='[{"op": "add", "path": "/spec/containers/1", "value": {"name": "third-container", "image": "nginx"}}]'
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  The Pod "rising-pod" is invalid: spec.containers: Forbidden: pod updates may not add or remove containers
+  #+end_src
+
+- Get the pod log:
+  #+BEGIN_SRC shell
+  kubectl -n rising logs rising-pod -c second-container
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Hello, Kubernetes!
+  #+end_src
+
+- Execute commands in the second containers, the first will complain about the shell, the second will work:
+  #+BEGIN_SRC shell
+  kubectl -n rising exec -t rising-pod -c second-container -- /bin/bash -c "echo Hello again, Kubernetes!"
+  kubectl -n rising exec -t rising-pod -c second-container -- /bin/sh -c "echo Hello again, Kubernetes!"
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  error: Internal error occurred: error executing command in container: failed to exec in container: failed to start exec "fc242965197c3ac44aaeba0cf180d08276c904721d5fcc549f8932e6125dab1b": OCI runtime exec failed: exec failed: unable to start container process: exec: "/bin/bash": stat /bin/bash: no such file or directory: unknown
+  Hello again, Kubernetes!
+  #+end_src
+
+- Delete the pod:
+  #+BEGIN_SRC shell
+  kubectl -n rising delete pod rising-pod
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod "rising-pod" deleted
+  #+end_src
+  
+** Pod log =P2= - Image download
+- *Prerequisite*: run the following helper script to wipe the image cache on all nodes.
+  You *must* create the file =scripts/cluster-setup.sshconfig= with the SSH configuration for the nodes.
+  Refer to the example in the same directory to get started.
+
+  #+BEGIN_SRC shell :results type verbatim
+    for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
+      echo "Pruning images on $node"
+      ssh -F scripts/cluster-setup.sshconfig $node "sudo crictl rmi --prune"
+    done
+  #+END_SRC
+  
+  #+RESULTS:
+#+begin_src shell
+Pruning images on kubeadm-master
+Pruning images on kubeadm-worker1
+Deleted: registry.k8s.io/pause:3.6
+Deleted: docker.io/library/busybox:latest
+Deleted: docker.io/library/alpine:latest
+Deleted: docker.io/library/nginx:latest
+Pruning images on kubeadm-worker2
+#+end_src
+
+- Create a Pod with a container that uses a non-existent image:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: image-pod
+    namespace: rising
+  spec:
+    containers:
+    - name: image-container
+      image: www.fbk.eu/non-existent-image
+      command: ["sh", "-c", "echo Hello, Kubernetes! && sleep 3600"]
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/image-pod created
+  #+end_src
+
+- Get the pod log:
+  #+BEGIN_SRC shell
+  kubectl -n rising logs image-pod -c image-container
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Error from server (BadRequest): container "image-container" in pod "image-pod" is waiting to start: ContainerCreating
+  #+end_src
+
+- Get the events that led to the failure:
+  #+BEGIN_SRC shell :results type verbatim
+  kubectl get events -n rising --sort-by='.metadata.creationTimestamp' --selector 'involvedObject.name=image-pod'
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  21s         Normal    Scheduled                pod/image-pod    Successfully assigned rising/image-pod to kubeadm-worker1
+  9s          Warning   FailedCreatePodSandBox   pod/image-pod    Failed to create pod sandbox: rpc error: code = Unknown desc = failed to get sandbox image "registry.k8s.io/pause:3.6": failed to pull image "registry.k8s.io/pause:3.6": failed to pull and unpack image "registry.k8s.io/pause:3.6": failed to copy: httpReadSeeker: failed open: failed to do request: Get "https://prod-registry-k8s-io-eu-central-1.s3.dualstack.eu-central-1.amazonaws.com/containers/images/sha256:6270bb605e12e581514ada5fd5b3216f727db55dc87d5889c790e4c760683fee": dial tcp: lookup prod-registry-k8s-io-eu-central-1.s3.dualstack.eu-central-1.amazonaws.com on 127.0.0.53:53: read udp 127.0.0.1:38875->127.0.0.53:53: i/o timeout
+  #+end_src
+
+- Delete the pod:
+  #+BEGIN_SRC shell
+  kubectl -n rising delete pod image-pod
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod "image-pod" deleted
+  #+end_src
+  
+- Create a pod with an image that will surely not be in cache:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: image-pod
+      namespace: rising
+    spec:
+      containers:
+      - name: image-container
+        image: busybox
+        command: ["sh", "-c", "echo Hello, Kubernetes! && sleep 3600"]
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/image-pod created
+  #+end_src
+
+- Wait for the Pod to be downloaded and monitor the events:
+  #+BEGIN_SRC shell
+  kubectl wait --for=condition=Ready pod/image-pod -n rising
+  kubectl get events -n rising --sort-by='.metadata.creationTimestamp'
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/image-pod condition met
+  LAST SEEN   TYPE     REASON      OBJECT          MESSAGE
+  5s          Normal   Scheduled   pod/image-pod   Successfully assigned rising/image-pod to kubeadm-worker1
+  4s          Normal   Pulling     pod/image-pod   Pulling image "busybox"
+  1s          Normal   Pulled      pod/image-pod   Successfully pulled image "busybox" in 3.598s (3.598s including waiting)
+  1s          Normal   Created     pod/image-pod   Created container image-container
+  1s          Normal   Started     pod/image-pod   Started container image-container
+  #+end_src
+
+- Delete the pod:
+  #+BEGIN_SRC shell
+  kubectl -n rising delete pod image-pod
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod "image-pod" deleted
+  #+end_src
+
+** ConfigMap =C1= - Create a ConfigMap and use it in a Pod, then delete it
+- Create a ConfigMap:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: my-config
+    namespace: rising
+  data:
+    status: "decent" 
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  configmap/my-config created
+  #+end_src
+
+- Get the configmap
+  #+BEGIN_SRC shell
+  kubectl -n rising get configmap my-config -o yaml
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  apiVersion: v1
+  data:
+    status: decent
+  kind: ConfigMap
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","data":{"status":"decent"},"kind":"ConfigMap","metadata":{"annotations":{},"name":"my-config","namespace":"rising"}}
+    creationTimestamp: "2024-05-29T08:24:20Z"
+    name: my-config
+    namespace: rising
+    resourceVersion: "2345205"
+    uid: 96f6a9d4-357e-4d79-a887-9ebd02b7be74
+  #+end_src
+
+- Deploy a Pod that uses the ConfigMap:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: config-pod
+    namespace: rising
+  spec:
+    containers:
+    - name: config-container
+      image: alpine
+      command: ["sh", "-c", 'echo Status is \$STATUS && sleep 3600']
+      env:
+      - name: STATUS
+        valueFrom:
+          configMapKeyRef:
+            name: my-config
+            key: status
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/config-pod created
+  #+end_src
+
+- Access the logs of the Pod:
+  #+BEGIN_SRC shell
+    kubectl wait --for=condition=Ready pod/config-pod -n rising
+    kubectl -n rising logs config-pod -c config-container
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/config-pod condition met
+  Status is decent
+  #+end_src
+
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl -n rising delete pod config-pod
+  kubectl -n rising delete configmap my-config
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod "config-pod" deleted
+  configmap "my-config" deleted
+  #+end_src
+
+** Secret =S1= - Create a Secret and use it as environment in a Pod, then delete it
+- Create a secret
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Secret
+  metadata:
+    name: my-secret
+    namespace: rising
+  type: Opaque
+  data:
+    username: $(echo -n "admin" | base64)
+    password: $(echo -n "password" | base64)
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  secret/my-secret created
+  #+end_src
+
+- Inspect the secret:
+  #+BEGIN_SRC shell
+  kubectl -n rising get secret my-secret -o yaml
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  apiVersion: v1
+  data:
+    password: cGFzc3dvcmQ=
+    username: YWRtaW4=
+  kind: Secret
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","data":{"password":"cGFzc3dvcmQ=","username":"YWRtaW4="},"kind":"Secret","metadata":{"annotations":{},"name":"my-secret","namespace":"rising"},"type":"Opaque"}
+    creationTimestamp: "2024-05-29T08:25:11Z"
+    name: my-secret
+    namespace: rising
+    resourceVersion: "2345300"
+    uid: b35c1aee-de5d-4fa5-b755-84e6fc9af764
+  type: Opaque
+  #+end_src
+
+- Attach the secret to a Pod:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: secret-pod
+      namespace: rising
+    spec:
+      containers:
+      - name: secret-container
+        image: alpine
+        command: ["sh", "-c", 'echo Username is \$USERNAME && echo Password is \$PASSWORD && sleep 3600']
+        env:
+        - name: USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: my-secret
+              key: username
+        - name: PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: my-secret
+              key: password    
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/secret-pod created
+  #+end_src
+
+- Inspect the Pod:
+  #+BEGIN_SRC shell
+  kubectl -n rising describe pod secret-pod
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:             secret-pod
+  Namespace:        rising
+  Priority:         0
+  Service Account:  default
+  Node:             kubeadm-worker1/192.168.38.11
+  Start Time:       Wed, 29 May 2024 10:25:19 +0200
+  Labels:           <none>
+  Annotations:      <none>
+  Status:           Running
+  IP:               10.244.1.51
+  IPs:
+    IP:  10.244.1.51
+  Containers:
+    secret-container:
+      Container ID:  containerd://74f7f4f98c4f56da40642ea5924f40aa9dd0b540639a64a25e08f288891caa21
+      Image:         alpine
+      Image ID:      docker.io/library/alpine@sha256:77726ef6b57ddf65bb551896826ec38bc3e53f75cdde31354fbffb4f25238ebd
+      Port:          <none>
+      Host Port:     <none>
+      Command:
+        sh
+        -c
+        echo Username is $USERNAME && echo Password is $PASSWORD && sleep 3600
+      State:          Running
+        Started:      Wed, 29 May 2024 10:25:21 +0200
+      Ready:          True
+      Restart Count:  0
+      Environment:
+        USERNAME:  <set to the key 'username' in secret 'my-secret'>  Optional: false
+        PASSWORD:  <set to the key 'password' in secret 'my-secret'>  Optional: false
+      Mounts:
+        /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-jfmbf (ro)
+  Conditions:
+    Type              Status
+    Initialized       True 
+    Ready             True 
+    ContainersReady   True 
+    PodScheduled      True 
+  Volumes:
+    kube-api-access-jfmbf:
+      Type:                    Projected (a volume that contains injected data from multiple sources)
+      TokenExpirationSeconds:  3607
+      ConfigMapName:           kube-root-ca.crt
+      ConfigMapOptional:       <nil>
+      DownwardAPI:             true
+  QoS Class:                   BestEffort
+  Node-Selectors:              <none>
+  Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                               node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+  Events:
+    Type    Reason     Age   From               Message
+    ----    ------     ----  ----               -------
+    Normal  Scheduled  5s    default-scheduler  Successfully assigned rising/secret-pod to kubeadm-worker1
+    Normal  Pulling    4s    kubelet            Pulling image "alpine"
+    Normal  Pulled     3s    kubelet            Successfully pulled image "alpine" in 967ms (967ms including waiting)
+    Normal  Created    3s    kubelet            Created container secret-container
+    Normal  Started    3s    kubelet            Started container secret-container
+  #+end_src
+
+- Access the logs of the Pod:
+  #+BEGIN_SRC shell
+    kubectl wait --for=condition=Ready pod/secret-pod -n rising
+    kubectl -n rising logs secret-pod -c secret-container
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/secret-pod condition met
+  Username is admin
+  Password is password
+  #+end_src
+
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl -n rising delete pod secret-pod
+  kubectl -n rising delete secret my-secret
+  #+END_SRC
+  
+  #+RESULTS:
+  #+begin_src shell
+  pod "secret-pod" deleted
+  secret "my-secret" deleted
+  #+end_src
+** Secret =S2= - Create a Secret and mount it in a Pod 
+- Create a secret
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Secret
+  metadata:
+    name: my-secret-2
+    namespace: rising
+  type: Opaque
+  data:
+    username: $(echo -n "admin" | base64)
+    password: $(echo -n "password" | base64)
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  secret/my-secret-2 created
+  #+end_src
+
+- Create a Pod, but now, mount the secret as a volume:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: secret-pod-2
+      namespace: rising
+    spec:
+      containers:
+      - name: secret-container-2
+        image: alpine
+        command: ["sh", "-c", 'echo Username is \$USERNAME && echo Password is \$PASSWORD && sleep 3600']
+        volumeMounts:
+        - name: secret-volume
+          mountPath: /etc/secret
+      volumes:
+      - name: secret-volume
+        secret:
+          secretName: my-secret-2
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/secret-pod-2 created
+  #+end_src
+
+- Inspect the Pod:
+  #+BEGIN_SRC shell
+  kubectl -n rising describe pod secret-pod-2
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:             secret-pod-2
+  Namespace:        rising
+  Priority:         0
+  Service Account:  default
+  Node:             kubeadm-worker1/192.168.38.11
+  Start Time:       Thu, 13 Jun 2024 17:10:20 +0200
+  Labels:           <none>
+  Annotations:      <none>
+  Status:           Running
+  IP:               10.244.1.68
+  IPs:
+    IP:  10.244.1.68
+  Containers:
+    secret-container-2:
+      Container ID:  containerd://5fe421fbcca0caaed1008c0d1ef913f6dfd7b45c9bfa7cadf7e92f2ce8dadb21
+      Image:         alpine
+      Image ID:      docker.io/library/alpine@sha256:77726ef6b57ddf65bb551896826ec38bc3e53f75cdde31354fbffb4f25238ebd
+      Port:          <none>
+      Host Port:     <none>
+      Command:
+        sh
+        -c
+        echo Username is $USERNAME && echo Password is $PASSWORD && sleep 3600
+      State:          Running
+        Started:      Thu, 13 Jun 2024 17:10:22 +0200
+      Ready:          True
+      Restart Count:  0
+      Environment:    <none>
+      Mounts:
+        /etc/secret from secret-volume (rw)
+        /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-ghkd4 (ro)
+  Conditions:
+    Type              Status
+    Initialized       True 
+    Ready             True 
+    ContainersReady   True 
+    PodScheduled      True 
+  Volumes:
+    secret-volume:
+      Type:        Secret (a volume populated by a Secret)
+      SecretName:  my-secret-2
+      Optional:    false
+    kube-api-access-ghkd4:
+      Type:                    Projected (a volume that contains injected data from multiple sources)
+      TokenExpirationSeconds:  3607
+      ConfigMapName:           kube-root-ca.crt
+      ConfigMapOptional:       <nil>
+      DownwardAPI:             true
+  QoS Class:                   BestEffort
+  Node-Selectors:              <none>
+  Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                               node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+  Events:
+    Type    Reason     Age   From               Message
+    ----    ------     ----  ----               -------
+    Normal  Scheduled  5s    default-scheduler  Successfully assigned rising/secret-pod-2 to kubeadm-worker1
+    Normal  Pulling    4s    kubelet            Pulling image "alpine"
+    Normal  Pulled     3s    kubelet            Successfully pulled image "alpine" in 963ms (963ms including waiting)
+    Normal  Created    3s    kubelet            Created container secret-container-2
+    Normal  Started    3s    kubelet            Started container secret-container-2
+  #+end_src
+
+- Access the Secret from the Pod:
+  #+BEGIN_SRC shell
+  kubectl wait --for=condition=Ready pod/secret-pod-2 -n rising
+  kubectl -n rising exec secret-pod-2 -- cat /etc/secret/username
+  echo
+  kubectl -n rising exec secret-pod-2 -- cat /etc/secret/password
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/secret-pod-2 condition met
+  admin
+  password
+  #+end_src
+
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl -n rising delete pod secret-pod-2
+  kubectl -n rising delete secret my-secret-2
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod "secret-pod-2" deleted
+  secret "my-secret-2" deleted
+  #+end_src
+  
+** Node log =NO1= - Node inspection
+- Assess the available nodes in the cluster:
+
+#+BEGIN_SRC shell
+kubectl get nodes
+#+END_SRC
+
+#+RESULTS:
+#+begin_src shell
+NAME              STATUS   ROLES           AGE    VERSION
+kubeadm-master    Ready    control-plane   101d   v1.28.6
+kubeadm-worker1   Ready    <none>          101d   v1.28.6
+kubeadm-worker2   Ready    <none>          36d    v1.28.6
+#+end_src
+
+- Inspect one of the nodes:
+#+BEGIN_SRC shell
+kubectl describe node kubeadm-worker1
+#+END_SRC
+
+#+RESULTS:
+#+begin_src shell
+  Name:               kubeadm-worker1
+  Roles:              <none>
+  Labels:             beta.kubernetes.io/arch=amd64
+                      beta.kubernetes.io/os=linux
+                      kubernetes.io/arch=amd64
+                      kubernetes.io/hostname=kubeadm-worker1
+                      kubernetes.io/os=linux
+  Annotations:        flannel.alpha.coreos.com/backend-data: {"VNI":1,"VtepMAC":"c6:ae:25:8b:09:38"}
+                      flannel.alpha.coreos.com/backend-type: vxlan
+                      flannel.alpha.coreos.com/kube-subnet-manager: true
+                      flannel.alpha.coreos.com/public-ip: 10.231.0.125
+                      kubeadm.alpha.kubernetes.io/cri-socket: unix:///var/run/containerd/containerd.sock
+                      node.alpha.kubernetes.io/ttl: 0
+                      volumes.kubernetes.io/controller-managed-attach-detach: true
+  CreationTimestamp:  Mon, 19 Feb 2024 09:51:17 +0100
+  Taints:             <none>
+  Unschedulable:      false
+  Lease:
+    HolderIdentity:  kubeadm-worker1
+    AcquireTime:     <unset>
+    RenewTime:       Thu, 30 May 2024 13:22:16 +0200
+  Conditions:
+    Type                 Status  LastHeartbeatTime                 LastTransitionTime                Reason                       Message
+    ----                 ------  -----------------                 ------------------                ------                       -------
+    NetworkUnavailable   False   Tue, 21 May 2024 09:50:32 +0200   Tue, 21 May 2024 09:50:32 +0200   FlannelIsUp                  Flannel is running on this node
+    MemoryPressure       False   Thu, 30 May 2024 13:19:46 +0200   Tue, 30 Apr 2024 09:20:41 +0200   KubeletHasSufficientMemory   kubelet has sufficient memory available
+    DiskPressure         False   Thu, 30 May 2024 13:19:46 +0200   Wed, 22 May 2024 15:09:08 +0200   KubeletHasNoDiskPressure     kubelet has no disk pressure
+    PIDPressure          False   Thu, 30 May 2024 13:19:46 +0200   Tue, 30 Apr 2024 09:20:41 +0200   KubeletHasSufficientPID      kubelet has sufficient PID available
+    Ready                True    Thu, 30 May 2024 13:19:46 +0200   Wed, 08 May 2024 11:24:35 +0200   KubeletReady                 kubelet is posting ready status. AppArmor enabled
+  Addresses:
+    InternalIP:  192.168.38.11
+    Hostname:    kubeadm-worker1
+  Capacity:
+    cpu:                4
+    ephemeral-storage:  20134592Ki
+    hugepages-2Mi:      0
+    memory:             7395772Ki
+    pods:               110
+  Allocatable:
+    cpu:                4
+    ephemeral-storage:  18556039957
+    hugepages-2Mi:      0
+    memory:             7293372Ki
+    pods:               110
+  System Info:
+    Machine ID:                 41479085bc0642d3b8488951778a732d
+    System UUID:                41479085-bc06-42d3-b848-8951778a732d
+    Boot ID:                    3cefe34b-fdb3-4e85-b0a3-0357c52fbcd5
+    Kernel Version:             5.15.0-107-generic
+    OS Image:                   Ubuntu 22.04.4 LTS
+    Operating System:           linux
+    Architecture:               amd64
+    Container Runtime Version:  containerd://1.6.31
+    Kubelet Version:            v1.28.6
+    Kube-Proxy Version:         v1.28.6
+  PodCIDR:                      10.244.1.0/24
+  PodCIDRs:                     10.244.1.0/24
+  Non-terminated Pods:          (2 in total)
+    Namespace                   Name                     CPU Requests  CPU Limits  Memory Requests  Memory Limits  Age
+    ---------                   ----                     ------------  ----------  ---------------  -------------  ---
+    kube-flannel                kube-flannel-ds-h64vt    100m (2%)     0 (0%)      50Mi (0%)        0 (0%)         101d
+    kube-system                 kube-proxy-r85g2         0 (0%)        0 (0%)      0 (0%)           0 (0%)         101d
+  Allocated resources:
+    (Total limits may be over 100 percent, i.e., overcommitted.)
+    Resource           Requests   Limits
+    --------           --------   ------
+    cpu                100m (2%)  0 (0%)
+    memory             50Mi (0%)  0 (0%)
+    ephemeral-storage  0 (0%)     0 (0%)
+    hugepages-2Mi      0 (0%)     0 (0%)
+    Events:              <none>
+#+end_src
+
+** Certificate log =CSR1= - Create a CertificateSigningRequest and approve it
+:PROPERTIES:
+:header-args+: :session csr1
+:END:
+
+- Note: an helper script is available in =scripts/generate_k8s_user.sh=
+  that automates what is done in this section.
+
+- Use openssl to generate a key and a certificate signing request:
+  #+BEGIN_SRC bash 
+    export TEMPDIR=$(mktemp -d)
+    export ORIGINDIR=$(pwd)
+    cd $TEMPDIR
+    export KUBEUSER=malicious-user
+    openssl genpkey -out ${KUBEUSER}.key -algorithm Ed25519
+    openssl req -new -key ${KUBEUSER}.key -out ${KUBEUSER}.csr -subj "/CN=${KUBEUSER}/O=rising/O=fbk/"
+    echo "Key created, available in ${TEMPDIR} for user ${KUBEUSER}"
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  Key created, available in /var/folders/gh/9l_dnc_94b3f42yswbpmn0fc0000gn/T/tmp.aoI4Uemhvs for user malicious-user
+  #+end_src
+
+- Create a CertificateSigningRequest:
+  #+BEGIN_SRC bash 
+  cat <<EOF | kubectl apply -f -
+  apiVersion: certificates.k8s.io/v1
+  kind: CertificateSigningRequest
+  metadata:
+    name: ${KUBEUSER}
+  spec:
+    request: $(cat ${KUBEUSER}.csr | base64 | tr -d '\n')
+    signerName: kubernetes.io/kube-apiserver-client
+    usages:
+    - client auth 
+  EOF
+  #+END_SRC 
+
+  #+RESULTS:
+  #+begin_src bash
+  certificatesigningrequest.certificates.k8s.io/malicious-user created
+  #+end_src
+
+- Deny the CertificateSigningRequest:
+  #+BEGIN_SRC bash 
+  kubectl certificate deny ${KUBEUSER}
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  certificatesigningrequest.certificates.k8s.io/malicious-user denied
+  #+end_src
+  
+- Delete the failed CSR and generate a new keypair for a legitimate user:
+  #+BEGIN_SRC bash 
+  rm ${KUBEUSER}.csr ${KUBEUSER}.key
+  kubectl delete csr ${KUBEUSER}
+  export KUBEUSER=rising-user
+  openssl genpkey -out ${KUBEUSER}.key -algorithm Ed25519
+  openssl req -new -key ${KUBEUSER}.key -out ${KUBEUSER}.csr -subj "/CN=${KUBEUSER}/O=rising/O=fbk/"
+  echo "Key created, available in ${TEMPDIR} for user ${KUBEUSER}"
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  certificatesigningrequest.certificates.k8s.io "malicious-user" deleted
+  Key created, available in /var/folders/gh/9l_dnc_94b3f42yswbpmn0fc0000gn/T/tmp.M7dVzdtOLc for user rising-user
+  #+end_src
+
+- Generate a new CertificateSigningRequest:
+  #+BEGIN_SRC bash
+  cat <<EOF | kubectl apply -f -
+  apiVersion: certificates.k8s.io/v1
+  kind: CertificateSigningRequest
+  metadata:
+    name: ${KUBEUSER}
+  spec:
+    request: $(cat ${KUBEUSER}.csr | base64 | tr -d '\n')
+    signerName: kubernetes.io/kube-apiserver-client
+    usages:
+    - client auth 
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  certificatesigningrequest.certificates.k8s.io/rising-user created
+  #+end_src
+
+- Inspect the status of the CSR:
+  #+BEGIN_SRC bash  
+  kubectl get csr ${KUBEUSER} -o yaml
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  apiVersion: certificates.k8s.io/v1
+  kind: CertificateSigningRequest
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"certificates.k8s.io/v1","kind":"CertificateSigningRequest","metadata":{"annotations":{},"name":"rising-user"},"spec":{"request":"LS0tLS1CRUdJTiBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0KTUlHME1HZ0NBUUF3TlRFVU1CSUdBMVVFQXd3TGNtbHphVzVuTFhWelpYSXhEekFOQmdOVkJBb01CbkpwYzJsdQpaekVNTUFvR0ExVUVDZ3dEWm1Kck1Db3dCUVlESzJWd0F5RUE0aGo3b3JSdHkwd0pYTjVsTmZNUzJIbmExdHlWCncxMTlFWmRwUURwQTdKcWdBREFGQmdNclpYQURRUUQ4bE53dGtOSTloUXFVNnF2dVFhaVI4NFFpRFNKeGIvNVoKSWZVMEViWUF3Nm0rcXZ1dUhWQ2lxMXRGYkJCTm9vRjNUbTdXOTZjQVZjZkRUNU9abUdvQgotLS0tLUVORCBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0K","signerName":"kubernetes.io/kube-apiserver-client","usages":["client auth"]}}
+    creationTimestamp: "2024-05-30T11:26:05Z"
+    name: rising-user
+    resourceVersion: "2491043"
+    uid: a3c4e1b1-7d91-47ea-8098-3b5308cfa7be
+  spec:
+    groups:
+    - system:authenticated
+    request: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0KTUlHME1HZ0NBUUF3TlRFVU1CSUdBMVVFQXd3TGNtbHphVzVuTFhWelpYSXhEekFOQmdOVkJBb01CbkpwYzJsdQpaekVNTUFvR0ExVUVDZ3dEWm1Kck1Db3dCUVlESzJWd0F5RUE0aGo3b3JSdHkwd0pYTjVsTmZNUzJIbmExdHlWCncxMTlFWmRwUURwQTdKcWdBREFGQmdNclpYQURRUUQ4bE53dGtOSTloUXFVNnF2dVFhaVI4NFFpRFNKeGIvNVoKSWZVMEViWUF3Nm0rcXZ1dUhWQ2lxMXRGYkJCTm9vRjNUbTdXOTZjQVZjZkRUNU9abUdvQgotLS0tLUVORCBDRVJUSUZJQ0FURSBSRVFVRVNULS0tLS0K
+    signerName: kubernetes.io/kube-apiserver-client
+    usages:
+    - client auth
+    username: mfranzil
+  status: {}
+  #+end_src
+
+- Approve the CertificateSigningRequest:
+  #+BEGIN_SRC bash
+  kubectl certificate approve ${KUBEUSER}
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  certificatesigningrequest.certificates.k8s.io/rising-user approved
+  #+end_src
+  
+- Obtain the certificate from the CSR and store it in the folder
+  #+BEGIN_SRC bash 
+  kubectl get csr ${KUBEUSER} -o jsonpath='{.status.certificate}' | base64 -d > ${KUBEUSER}.crt
+  head -n 2 ${KUBEUSER}.crt
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  -----BEGIN CERTIFICATE-----
+  MIICHzCCAQegAwIBAgIRAOgQrahJ0mPtk6Uu2d/HA9owDQYJKoZIhvcNAQELBQAw
+  #+end_src
+  
+- Use the certificate to generate a =.kubeconfig= for the user:
+  #+BEGIN_SRC bash 
+    cat <<EOF > ${KUBEUSER}.kubeconfig
+    apiVersion: v1
+    kind: Config
+    preferences: {}
+    clusters:
+    $(kubectl config view --raw --minify --flatten | yq .clusters)
+    contexts: []
+    users: []
+    EOF
+    kubectl --kubeconfig ${KUBEUSER}.kubeconfig config set-credentials ${KUBEUSER} --client-certificate=${KUBEUSER}.crt --client-key=${KUBEUSER}.key --embed-certs=true
+    kubectl --kubeconfig ${KUBEUSER}.kubeconfig config set-context ${KUBEUSER} --cluster=kubernetes --user=${KUBEUSER} --cluster=risinglab
+    kubectl --kubeconfig ${KUBEUSER}.kubeconfig config use-context ${KUBEUSER}
+    cp ${KUBEUSER}.kubeconfig ${ORIGINDIR}
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  User "rising-user" set.
+  Context "rising-user" created.
+  Switched to context "rising-user".
+  #+end_src
+
+** Role log =R1= - Create a Role and bind it to a User 
+- *Prerequisite*: complete =CSR1= and obtain the credentials for the user. Make sure
+  they are available as =rising-user.kubeconfig= in the current directory.
+  
+- Create a Role:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: Role
+  metadata:
+    name: rising-reader
+    namespace: rising
+  rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  role.rbac.authorization.k8s.io/rising-reader created
+  #+end_src
+
+- List the roles in the namespace:
+  #+BEGIN_SRC shell
+  kubectl -n rising get roles
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME            CREATED AT
+  rising-reader   2024-05-30T11:28:09Z
+  #+end_src
+
+- We changed idea: let's also give =get=, =list=, =patch= and =watch= for Secrets:
+  #+BEGIN_SRC shell
+  kubectl patch role rising-reader -n rising --type='json' -p='[{"op": "add", "path": "/rules/0", "value": {"apiGroups": [""], "resources": ["secrets"], "verbs": ["get", "list", "patch", "watch"]}}]'
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  role.rbac.authorization.k8s.io/rising-reader patched
+  #+end_src
+
+- Let's create a RoleBinding and assign it to the user:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: RoleBinding
+  metadata:
+    name: pod-reader-binding
+    namespace: rising
+  subjects:
+  - kind: User
+    name: rising-user
+  roleRef:
+    kind: Role
+    name: rising-reader
+    apiGroup: rbac.authorization.k8s.io
+  EOF
+  #+END_SRC 
+
+  #+RESULTS:
+  #+begin_src shell
+  rolebinding.rbac.authorization.k8s.io/pod-reader-binding created
+  #+end_src
+
+- Test the permissions of the user:
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig rising-user.kubeconfig get pods -n rising
+  kubectl --kubeconfig rising-user.kubeconfig get secrets -n rising
+  kubectl --kubeconfig rising-user.kubeconfig delete pod non-existent-pod -n rising  
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  No resources found in rising namespace.
+  No resources found in rising namespace.
+  Error from server (Forbidden): pods "non-existent-pod" is forbidden: User "rising-user" cannot delete resource "pods" in API group "" in the namespace "rising"
+  #+end_src
+  
+** Role log =R2= - Create a ClusterRole and bind it to a Group
+- *Prequisite*: complete =CSR1= and obtain the credentials for the user. Make sure
+  they are available as =rising-user.kubeconfig= in the current directory.
+- *Prequisite*: complete =R1= and keep the =rising-reader= Role. 
+
+- Create a ClusterRole:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: cluster-reader
+  rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "patch", "watch"]
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  clusterrole.rbac.authorization.k8s.io/cluster-reader created
+  #+end_src
+
+- Actually, let's straight out replace the ClusterRole with a new one:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: cluster-reader
+  rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  clusterrole.rbac.authorization.k8s.io/cluster-reader configured
+  #+end_src
+
+- Create a ClusterRoleBinding and assign it to the =fbk= group:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRoleBinding
+  metadata:
+    name: cluster-reader-binding
+  subjects:
+    - kind: Group
+      name: fbk
+  roleRef:
+    kind: ClusterRole
+    name: cluster-reader
+    apiGroup: rbac.authorization.k8s.io
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  clusterrolebinding.rbac.authorization.k8s.io/cluster-reader-binding created
+  #+end_src
+   
+- Test the permissions of the user:
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig rising-user.kubeconfig get nodes
+  kubectl --kubeconfig rising-user.kubeconfig get pods -n rising
+  kubectl --kubeconfig rising-user.kubeconfig get configmaps -n rising
+  kubectl --kubeconfig rising-user.kubeconfig get pods -n kube-system
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME              STATUS   ROLES           AGE    VERSION
+  kubeadm-master    Ready    control-plane   101d   v1.28.6
+  kubeadm-worker1   Ready    <none>          101d   v1.28.6
+  kubeadm-worker2   Ready    <none>          36d    v1.28.6
+  No resources found in rising namespace.
+  Error from server (Forbidden): configmaps is forbidden: User "rising-user" cannot list resource "configmaps" in API group "" in the namespace "rising"
+  Error from server (Forbidden): pods is forbidden: User "rising-user" cannot list resource "pods" in API group "" in the namespace "kube-system"
+  #+end_src
+  
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl delete rolebinding pod-reader-binding -n rising
+  kubectl delete role rising-reader -n rising
+  kubectl delete clusterrolebinding cluster-reader-binding
+  kubectl delete clusterrole cluster-reader
+  kubectl delete csr rising-user
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  rolebinding.rbac.authorization.k8s.io "pod-reader-binding" deleted
+  role.rbac.authorization.k8s.io "rising-reader" deleted
+  clusterrolebinding.rbac.authorization.k8s.io "cluster-reader-binding" deleted
+  clusterrole.rbac.authorization.k8s.io "cluster-reader" deleted
+  certificatesigningrequest.certificates.k8s.io "rising-user" deleted
+  #+end_src
+
+** Role log =R3= - Create a ServiceAccount for a long-running Pod and bind it to a Role
+- Set up a ServiceAccount:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    name: long-running-sa
+    namespace: rising
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  serviceaccount/long-running-sa created
+  #+end_src
+
+- Create a Role:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: Role
+  metadata:
+    name: long-running-role
+    namespace: rising
+  rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  role.rbac.authorization.k8s.io/long-running-role created
+  #+end_src
+
+- Bind the ServiceAccount to the Role:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: RoleBinding
+  metadata:
+    name: long-running-role-binding
+    namespace: rising
+  subjects:
+  - kind: ServiceAccount
+    name: long-running-sa
+    namespace: rising
+  roleRef:
+    kind: Role
+    name: long-running-role
+    apiGroup: rbac.authorization.k8s.io
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  rolebinding.rbac.authorization.k8s.io/long-running-role-binding created
+  #+end_src
+
+- Create a Pod that uses the ServiceAccount:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: long-running-pod
+    namespace: rising
+  spec:
+    serviceAccountName: long-running-sa
+    containers:
+    - name: long-running-container
+      image: ubuntu 
+      command: ["sh", "-c", "echo Hello, Kubernetes! && sleep 3600"]
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/long-running-pod created
+  #+end_src
+
+- Inspect the Pod:
+  #+BEGIN_SRC shell
+  kubectl -n rising describe pod long-running-pod | head -n 10
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:             long-running-pod
+  Namespace:        rising
+  Priority:         0
+  Service Account:  long-running-sa
+  Node:             kubeadm-worker1/192.168.38.11
+  Start Time:       Fri, 31 May 2024 10:31:49 +0200
+  Labels:           <none>
+  Annotations:      <none>
+  Status:           Running
+  IP:               10.244.1.58
+  #+end_src
+
+- Try to use the ServiceAccount from inside the Pod:
+  #+BEGIN_SRC shell
+    kubectl wait --for=condition=Ready pod/long-running-pod -n rising
+    kubectl -n rising exec long-running-pod -- sh -c 'apt-get -qq update; apt-get install -yqq curl yq >/dev/null;
+    export KUBE_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token);
+    curl -sSk -H "Authorization: Bearer $KUBE_TOKEN" "https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_PORT_443_TCP_PORT/apis/authentication.k8s.io/v1/selfsubjectaccessreviews" > temp.json; jq .message temp.json
+    curl -sSk -H "Authorization: Bearer $KUBE_TOKEN" "https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_PORT_443_TCP_PORT/api/v1/namespaces/rising/pods" > temp.json; head -n 5 temp.json'
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/long-running-pod condition met
+  "selfsubjectaccessreviews.authentication.k8s.io is forbidden: User \"system:serviceaccount:rising:long-running-sa\" cannot list resource \"selfsubjectaccessreviews\" in API group \"authentication.k8s.io\" at the cluster scope"
+  {
+    "kind": "PodList",
+    "apiVersion": "v1",
+    "metadata": {
+      "resourceVersion": "2605973"
+  #+end_src
+  
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl -n rising delete pod long-running-pod
+  kubectl -n rising delete role long-running-role
+  kubectl -n rising delete rolebinding long-running-role-binding
+  kubectl -n rising delete serviceaccount long-running-sa
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod "long-running-pod" deleted
+  role.rbac.authorization.k8s.io "long-running-role" deleted
+  rolebinding.rbac.authorization.k8s.io "long-running-role-binding" deleted
+  serviceaccount "long-running-sa" deleted
+  #+end_src
+  
+** Access Review =AR1= - Use can-i to view permissions of self, other users, over different namespaces
+- Create a set of ServiceAccounts for the logs (while this
+  should not be the case in a real-world scenario, it is done
+  since SAs and Users are equivalent once authorized):
+  #+BEGIN_SRC shell
+  kubectl apply -f - <<EOF
+  apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    name: alice
+    namespace: rising
+  ---
+  apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    name: bob
+    namespace: rising
+  ---
+  apiVersion: v1
+  kind: ServiceAccount
+  metadata:
+    name: charlie
+    namespace: rising
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  serviceaccount/alice created
+  serviceaccount/bob created
+  serviceaccount/charlie created
+  #+end_src
+
+- Create tokens for the ServiceAccounts:
+  #+BEGIN_SRC shell
+  kubectl apply -f - <<EOF
+  apiVersion: v1
+  kind: Secret
+  metadata:
+    name: alice-token
+    namespace: rising
+    annotations:
+      kubernetes.io/service-account.name: alice
+  type: kubernetes.io/service-account-token
+  ---
+  apiVersion: v1
+  kind: Secret
+  metadata:
+    name: bob-token
+    namespace: rising
+    annotations:
+      kubernetes.io/service-account.name: bob 
+  type: kubernetes.io/service-account-token
+  ---
+  apiVersion: v1
+  kind: Secret
+  metadata:
+    name: charlie-token
+    namespace: rising
+    annotations:
+      kubernetes.io/service-account.name: charlie
+  type: kubernetes.io/service-account-token
+  ---
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  secret/alice-token created
+  secret/bob-token created
+  secret/charlie-token created
+  #+end_src
+
+- Create two Roles, one for reading Pods and one for reading Secrets:
+  #+BEGIN_SRC shell
+  kubectl apply -f - <<EOF
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: Role
+  metadata:
+    name: pod-reader
+    namespace: rising
+  rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  ---
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: Role
+  metadata:
+    name: secret-reader
+    namespace: rising
+  rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  role.rbac.authorization.k8s.io/pod-reader created
+  role.rbac.authorization.k8s.io/secret-reader created
+  #+end_src
+
+- Bind the ServiceAccounts to the Roles:
+  #+BEGIN_SRC shell
+  kubectl apply -f - <<EOF
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: RoleBinding
+  metadata:
+    name: pod-reader-binding
+    namespace: rising
+  subjects:
+    - kind: ServiceAccount
+      name: alice
+      namespace: rising
+    - kind: ServiceAccount
+      name: bob
+      namespace: rising
+  roleRef:
+    kind: Role
+    name: pod-reader
+    apiGroup: rbac.authorization.k8s.io
+  ---
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: RoleBinding
+  metadata:
+    name: secret-reader-binding
+    namespace: rising
+  subjects:
+    - kind: ServiceAccount
+      name: charlie
+      namespace: rising
+  roleRef:
+    kind: Role
+    name: secret-reader
+    apiGroup: rbac.authorization.k8s.io
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  rolebinding.rbac.authorization.k8s.io/pod-reader-binding created
+  rolebinding.rbac.authorization.k8s.io/secret-reader-binding created
+  #+end_src
+
+- Obtain credentials for the ServiceAccounts and generate a kubeconfig for them:
+  #+BEGIN_SRC shell
+  kubectl get secret alice-token -n rising -o jsonpath='{.data.token}' | base64 -d > alice.token
+  kubectl get secret bob-token -n rising -o jsonpath='{.data.token}' | base64 -d > bob.token
+  kubectl get secret charlie-token -n rising -o jsonpath='{.data.token}' | base64 -d > charlie.token
+  cat <<EOF > alice.kubeconfig
+  apiVersion: v1
+  kind: Config
+  preferences: {}
+  clusters:
+  $(kubectl config view --raw --minify --flatten | yq .clusters)
+  contexts: []
+  users: []
+  EOF
+  cp alice.kubeconfig bob.kubeconfig
+  cp alice.kubeconfig charlie.kubeconfig
+  kubectl --kubeconfig alice.kubeconfig config set-credentials alice --token=$(cat alice.token)
+  kubectl --kubeconfig bob.kubeconfig config set-credentials bob --token=$(cat bob.token)
+  kubectl --kubeconfig charlie.kubeconfig config set-credentials charlie --token=$(cat charlie.token)
+  kubectl --kubeconfig alice.kubeconfig config set-context alice --cluster=kubernetes --user=alice --cluster=risinglab
+  kubectl --kubeconfig bob.kubeconfig config set-context bob --cluster=kubernetes --user=bob --cluster=risinglab
+  kubectl --kubeconfig charlie.kubeconfig config set-context charlie --cluster=kubernetes --user=charlie --cluster=risinglab
+  kubectl --kubeconfig alice.kubeconfig config use-context alice
+  kubectl --kubeconfig bob.kubeconfig config use-context bob
+  kubectl --kubeconfig charlie.kubeconfig config use-context charlie
+  rm alice.token bob.token charlie.token
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  User "alice" set.
+  User "bob" set.
+  User "charlie" set.
+  Context "alice" created.
+  Context "bob" created.
+  Context "charlie" created.
+  Switched to context "alice".
+  Switched to context "bob".
+  Switched to context "charlie".
+  #+end_src
+
+- Check as Alice if she can list Pods and Secrets in the namespace:
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig alice.kubeconfig auth can-i list pods -n rising
+  kubectl --kubeconfig alice.kubeconfig auth can-i list secrets -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  yes
+  no
+  #+end_src
+
+- Check as Bob if he can list Pods in the namespaces =rising= and =kube-system=:
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig bob.kubeconfig auth can-i list pods -n rising
+  kubectl --kubeconfig bob.kubeconfig auth can-i list pods -n kube-system
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  yes
+  no
+  #+end_src
+
+- Check as Charlie if he can list Secrets in the namespace:
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig charlie.kubeconfig auth can-i list secrets -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  yes
+  #+end_src
+
+- Check as Charlie if he can list nodes:
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig charlie.kubeconfig auth can-i list nodes
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Warning: resource 'nodes' is not namespace scoped
+
+  no
+  #+end_src
+
+- Check what Charlie can do in the =rising= namespace:
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig charlie.kubeconfig auth can-i --list -n rising 
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Resources                                       Non-Resource URLs                      Resource Names   Verbs
+  selfsubjectreviews.authentication.k8s.io        []                                     []               [create]
+  selfsubjectaccessreviews.authorization.k8s.io   []                                     []               [create]
+  selfsubjectrulesreviews.authorization.k8s.io    []                                     []               [create]
+  secrets                                         []                                     []               [get list]
+                                                  [/.well-known/openid-configuration/]   []               [get]
+                                                  [/.well-known/openid-configuration]    []               [get]
+                                                  [/api/*]                               []               [get]
+                                                  [/api]                                 []               [get]
+                                                  [/apis/*]                              []               [get]
+                                                  [/apis]                                []               [get]
+                                                  [/healthz]                             []               [get]
+                                                  [/healthz]                             []               [get]
+                                                  [/livez]                               []               [get]
+                                                  [/livez]                               []               [get]
+                                                  [/openapi/*]                           []               [get]
+                                                  [/openapi]                             []               [get]
+                                                  [/openid/v1/jwks/]                     []               [get]
+                                                  [/openid/v1/jwks]                      []               [get]
+                                                  [/readyz]                              []               [get]
+                                                  [/readyz]                              []               [get]
+                                                  [/version/]                            []               [get]
+                                                  [/version/]                            []               [get]
+                                                  [/version]                             []               [get]
+                                                  [/version]                             []               [get]
+  serviceaccounts                                 []                                     [alice]          [impersonate]
+  serviceaccounts                                 []                                     [bob]            [impersonate]
+  #+end_src
+  
+** Access Review =AR2= - Use auth whoami to view the current user
+- *Prerequisite*: complete =AR1= and obtain the credentials for the users. Make sure
+  they are available as =alice.kubeconfig=, =bob.kubeconfig= and =charlie.kubeconfig= in the current directory.
+
+- Check as each of the users who they are: 
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig alice.kubeconfig auth whoami
+  kubectl --kubeconfig bob.kubeconfig auth whoami
+  kubectl --kubeconfig charlie.kubeconfig auth whoami
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  ATTRIBUTE   VALUE
+  Username    system:serviceaccount:rising:alice
+  UID         4d26c60c-0786-43b2-ba36-7a2a0c878e01
+  Groups      [system:serviceaccounts system:serviceaccounts:rising system:authenticated]
+  ATTRIBUTE   VALUE
+  Username    system:serviceaccount:rising:bob
+  UID         8e31af98-4542-40a5-b37d-8d7f8c3b31d9
+  Groups      [system:serviceaccounts system:serviceaccounts:rising system:authenticated]
+  ATTRIBUTE   VALUE
+  Username    system:serviceaccount:rising:charlie
+  UID         5b50d6c3-fae2-4d06-8277-75e93a5db4ee
+  Groups      [system:serviceaccounts system:serviceaccounts:rising system:authenticated]
+  #+end_src
+
+** Access Review =AR3= - Impersonating a user
+- *Prerequisite*: complete =AR1= and obtain the credentials for the users. Make sure
+  they are available as =alice.kubeconfig=, =bob.kubeconfig= and =charlie.kubeconfig= in the current directory.
+  
+- Augment Charlie's capabilities to let him impersonate ServiceAccounts:
+  #+BEGIN_SRC shell
+  kubectl apply -f - <<EOF
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRole
+  metadata:
+    name: impersonator
+  rules:
+    - apiGroups: [""]
+      resources: ["serviceaccounts"]
+      verbs: ["impersonate"]
+      resourceNames: ["alice", "bob"]
+  ---
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: ClusterRoleBinding
+  metadata:
+    name: impersonator-binding
+  subjects:
+    - kind: ServiceAccount
+      name: charlie
+      namespace: rising
+  roleRef:
+    kind: ClusterRole
+    name: impersonator
+    apiGroup: rbac.authorization.k8s.io
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  clusterrole.rbac.authorization.k8s.io/impersonator created
+  clusterrolebinding.rbac.authorization.k8s.io/impersonator-binding created
+  #+end_src
+  
+- Check if Charlie can impersonate any user or SA: 
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig charlie.kubeconfig auth can-i impersonate users
+  kubectl --kubeconfig charlie.kubeconfig auth can-i impersonate serviceaccounts
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  no
+  #+end_src
+
+- Let Charlie see if Alice can list Pods in =rising=, and what she can do in =kube-system=:
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig charlie.kubeconfig auth can-i list pods -n rising --as system:serviceaccount:rising:alice
+  kubectl --kubeconfig charlie.kubeconfig auth can-i --list -n kube-system --as system:serviceaccount:rising:alice
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  yes
+  Resources                                       Non-Resource URLs                      Resource Names   Verbs
+  selfsubjectreviews.authentication.k8s.io        []                                     []               [create]
+  selfsubjectaccessreviews.authorization.k8s.io   []                                     []               [create]
+  selfsubjectrulesreviews.authorization.k8s.io    []                                     []               [create]
+                                                  [/.well-known/openid-configuration/]   []               [get]
+                                                  [/.well-known/openid-configuration]    []               [get]
+                                                  [/api/*]                               []               [get]
+                                                  [/api]                                 []               [get]
+                                                  [/apis/*]                              []               [get]
+                                                  [/apis]                                []               [get]
+                                                  [/healthz]                             []               [get]
+                                                  [/healthz]                             []               [get]
+                                                  [/livez]                               []               [get]
+                                                  [/livez]                               []               [get]
+                                                  [/openapi/*]                           []               [get]
+                                                  [/openapi]                             []               [get]
+                                                  [/openid/v1/jwks/]                     []               [get]
+                                                  [/openid/v1/jwks]                      []               [get]
+                                                  [/readyz]                              []               [get]
+                                                  [/readyz]                              []               [get]
+                                                  [/version/]                            []               [get]
+                                                  [/version/]                            []               [get]
+                                                  [/version]                             []               [get]
+                                                  [/version]                             []               [get]
+  #+end_src
+
+- As Charlie, let's impersonate Bob and create a Pod in the =rising= namespace, then list Pods:
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig charlie.kubeconfig --as system:serviceaccount:rising:bob run --image=ubuntu --restart=Never --namespace=rising --command -- sleep 3600
+  kubectl --kubeconfig charlie.kubeconfig --as system:serviceaccount:rising:bob get pods -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Error from server (Forbidden): pods is forbidden: User "system:serviceaccount:rising:bob" cannot create resource "pods" in API group "" in the namespace "rising"
+  No resources found in rising namespace.
+  #+end_src
+
+- As Charlie, let's impersonate Alice and try to list nodes:
+  #+BEGIN_SRC shell
+  kubectl --kubeconfig charlie.kubeconfig --as system:serviceaccount:rising:alice get nodes
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Error from server (Forbidden): nodes is forbidden: User "system:serviceaccount:rising:alice" cannot list resource "nodes" in API group "" at the cluster scope
+  #+end_src
+
+- Clean everything up:
+  #+BEGIN_SRC shell
+    kubectl delete clusterrolebinding impersonator-binding
+    kubectl delete clusterrole impersonator
+    kubectl delete rolebinding pod-reader-binding -n rising
+    kubectl delete role pod-reader -n rising
+    kubectl delete rolebinding secret-reader-binding -n rising
+    kubectl delete role secret-reader -n rising
+    kubectl delete secret alice-token bob-token charlie-token -n rising
+    kubectl delete serviceaccount alice bob charlie -n rising
+    rm alice.kubeconfig bob.kubeconfig charlie.kubeconfig
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  clusterrolebinding.rbac.authorization.k8s.io "impersonator-binding" deleted
+  clusterrole.rbac.authorization.k8s.io "impersonator" deleted
+  rolebinding.rbac.authorization.k8s.io "pod-reader-binding" deleted
+  role.rbac.authorization.k8s.io "pod-reader" deleted
+  rolebinding.rbac.authorization.k8s.io "secret-reader-binding" deleted
+  role.rbac.authorization.k8s.io "secret-reader" deleted
+  secret "alice-token" deleted
+  secret "bob-token" deleted
+  secret "charlie-token" deleted
+  serviceaccount "alice" deleted
+  serviceaccount "bob" deleted
+  serviceaccount "charlie" deleted
+  #+end_src
+* Log setups level 2
+** Deployment log =D1= - Create a Deployment for a ReplicaSet and expose it as a Service
+- Create a Deployment:
+#+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: test-deployment
+    namespace: rising
+    labels:
+      app: test
+  spec:
+    replicas: 2
+    selector:
+      matchLabels:
+        app: test
+    template:
+      metadata:
+        labels:
+          app: test
+     spec:
+        containers:
+        - name: nginx
+          image: nginx:latest
+          ports:
+          - containerPort: 80
+  EOF
+#+END_SRC
+
+#+RESULTS:
+#+begin_src shell
+deployment.apps/test-deployment created
+#+end_src
+
+- Inspect the Deployment:
+  #+BEGIN_SRC shell
+  kubectl get deployments test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME              READY   UP-TO-DATE   AVAILABLE   AGE
+  test-deployment   0/2     2            0           5s
+  #+end_src
+
+- Inspect the rollout status:
+  #+BEGIN_SRC shell
+  kubectl rollout status deployment test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Waiting for deployment "test-deployment" rollout to finish: 1 of 2 updated replicas are available...
+  deployment "test-deployment" successfully rolled out
+  #+end_src
+
+- Inspect the ReplicaSet created by the Deployment:
+  #+BEGIN_SRC shell
+  kubectl get replicasets -l app=test -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                         DESIRED   CURRENT   READY   AGE
+  test-deployment-64487946cc   2         2         2       19s
+  #+end_src
+
+- Describe the ReplicaSet directly:
+  #+BEGIN_SRC shell
+  kubectl describe replicasets -l app=test -n rising
+  #+END_SRC
+
+- Expose the Deployment as a Service:
+  #+BEGIN_SRC shell
+  kubectl expose deployment test-deployment --type=NodePort --port=80 --target-port=80 --name=test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  service/test-deployment exposed
+  #+end_src
+
+- Inspect the Service:
+  #+BEGIN_SRC shell
+  kubectl get services test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME              TYPE       CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
+  test-deployment   NodePort   10.111.74.27   <none>        80:30293/TCP   4s
+  #+end_src
+
+- Tear everything down:
+  #+BEGIN_SRC shell
+  kubectl delete service test-deployment -n rising
+  kubectl delete deployment test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  service "test-deployment" deleted
+  deployment.apps "test-deployment" deleted
+  #+end_src
+
+** Deployment log =D2= - Scale a Deployment and update its image
+- Create a Deployment again:
+#+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: test-deployment
+    namespace: rising
+    labels:
+      app: test
+  spec:
+    replicas: 2
+    selector:
+      matchLabels:
+        app: test
+    template:
+      metadata:
+        labels:
+          app: test
+     spec:
+        containers:
+        - name: nginx
+          image: nginx:latest
+          ports:
+          - containerPort: 80
+  EOF
+#+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment created
+  #+end_src
+
+- Scale the Deployment to 3 replicas:
+  #+BEGIN_SRC shell
+  kubectl scale deployment test-deployment --replicas=3 -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment scaled
+  #+end_src
+
+- Inspect the Deployment:
+  #+BEGIN_SRC shell
+  kubectl get deployments test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME              READY   UP-TO-DATE   AVAILABLE   AGE
+  test-deployment   3/3     3            3           21s
+  #+end_src
+
+- Update the image of the Deployment:
+  #+BEGIN_SRC shell
+  kubectl set image deployment test-deployment nginx=nginx:1.16.1 -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment image updated
+  #+end_src
+  
+- Inspect the rollout status:
+  #+BEGIN_SRC shell
+  kubectl rollout status deployment test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment "test-deployment" successfully rolled out
+  #+end_src
+
+- Scale down the Deployment to 2 replicas:
+  #+BEGIN_SRC shell
+  kubectl scale deployment test-deployment --replicas=2 -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment scaled
+  #+end_src
+
+- Inspect ReplicaSets:
+  #+BEGIN_SRC shell
+  kubectl get replicasets -l app=test -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                         DESIRED   CURRENT   READY   AGE
+  test-deployment-64487946cc   0         0         0       68s
+  test-deployment-f546b5d99    2         2         2       42s
+  #+end_src
+
+- Inspect the Pods:
+  #+BEGIN_SRC shell
+  kubectl get pods -l app=test -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                              READY   STATUS    RESTARTS   AGE
+  test-deployment-f546b5d99-25t9s   1/1     Running   0          47s
+  test-deployment-f546b5d99-n7kj5   1/1     Running   0          38s
+  #+end_src
+
+- Tear everything down:
+  #+BEGIN_SRC shell
+  kubectl delete deployment test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps "test-deployment" deleted
+  #+end_src
+
+** Deployment log =D3= - Roll back, pause and resume a Deployment
+- Create a Deployment again:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: test-deployment
+    namespace: rising
+    labels:
+      app: test
+  spec:
+    replicas: 2
+    selector:
+      matchLabels:
+        app: test
+    template:
+      metadata:
+        labels:
+          app: test
+     spec:
+        containers:
+        - name: nginx
+          image: nginx:latest
+          ports:
+          - containerPort: 80
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment created
+  #+end_src
+
+- Wait for the Deployment to be ready:
+  #+BEGIN_SRC shell
+  kubectl wait --for=condition=Available deployment/test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment condition met
+  #+end_src
+        
+- Pause the Deployment:
+  #+BEGIN_SRC shell
+  kubectl rollout pause deployment test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment paused
+  #+end_src
+
+- Update the image of the Deployment:
+  #+BEGIN_SRC shell
+  kubectl set image deployment test-deployment nginx=nginx:1.16.1 -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment image updated
+  #+end_src
+
+- Inspect the rollout history:
+  #+BEGIN_SRC shell
+  kubectl rollout history deployment test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment 
+  REVISION  CHANGE-CAUSE
+  1         <none>
+
+  #+end_src
+
+- Inspect the ReplicaSets:
+  #+BEGIN_SRC shell
+  kubectl get replicasets -l app=test -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                         DESIRED   CURRENT   READY   AGE
+  test-deployment-64487946cc   2         2         2       28s
+  #+end_src
+
+- Resume the Deployment:
+  #+BEGIN_SRC shell
+  kubectl rollout resume deployment test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment resumed
+  #+end_src
+
+- Inspect the rollout history again:
+  #+BEGIN_SRC shell
+  kubectl rollout history deployment test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment 
+  REVISION  CHANGE-CAUSE
+  1         <none>
+  2         <none>
+
+  #+end_src
+
+- Roll back the Deployment to the previous revision:
+  #+BEGIN_SRC shell
+  kubectl rollout undo deployment test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment rolled back
+  #+end_src
+
+- Inspect the rollout history one more time:
+  #+BEGIN_SRC shell
+  kubectl rollout history deployment test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment 
+  REVISION  CHANGE-CAUSE
+  2         <none>
+  3         <none>
+
+  #+end_src
+  
+- List Pods:
+  #+BEGIN_SRC shell
+  kubectl get pods -l app=test
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                               READY   STATUS    RESTARTS   AGE
+  test-deployment-64487946cc-24xdb   1/1     Running   0          56s
+  test-deployment-64487946cc-w44nd   1/1     Running   0          59s
+  #+end_src
+
+- Tear everything down:
+  #+BEGIN_SRC shell
+  kubectl delete deployment test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps "test-deployment" deleted
+  #+end_src
+  
+** Deployment log =D4= - Watch a Deployment fail and recover
+- Install a restrictive ResourceQuota:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: ResourceQuota
+  metadata:
+    name: test-quota
+    namespace: rising
+  spec:
+    hard:
+      pods: "1"
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  resourcequota/test-quota created
+  #+end_src
+
+- Create a Deployment again:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: test-deployment
+    namespace: rising
+    labels:
+      app: test
+  spec:
+    replicas: 2
+    selector:
+      matchLabels:
+        app: test
+    template:
+      metadata:
+        labels:
+          app: test
+      spec:
+        containers:
+        - name: nginx
+          image: nginx:latest
+          ports:
+          - containerPort: 80
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment created
+  #+end_src
+
+- Check the status of the Deployment:
+  #+BEGIN_SRC shell
+  kubectl describe deployment test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:                   test-deployment
+  Namespace:              rising
+  CreationTimestamp:      Wed, 03 Jul 2024 15:57:50 +0200
+  Labels:                 app=test
+  Annotations:            deployment.kubernetes.io/revision: 1
+  Selector:               app=test
+  Replicas:               2 desired | 1 updated | 1 total | 1 available | 1 unavailable
+  StrategyType:           RollingUpdate
+  MinReadySeconds:        0
+  RollingUpdateStrategy:  25% max unavailable, 25% max surge
+  Pod Template:
+    Labels:  app=test
+    Containers:
+     nginx:
+      Image:         nginx:latest
+      Port:          80/TCP
+      Host Port:     0/TCP
+      Environment:   <none>
+      Mounts:        <none>
+    Volumes:         <none>
+    Node-Selectors:  <none>
+    Tolerations:     <none>
+  Conditions:
+    Type             Status  Reason
+    ----             ------  ------
+    Available        False   MinimumReplicasUnavailable
+    ReplicaFailure   True    FailedCreate
+    Progressing      True    ReplicaSetUpdated
+  OldReplicaSets:    <none>
+  NewReplicaSet:     test-deployment-64487946cc (1/2 replicas created)
+  Events:
+    Type    Reason             Age   From                   Message
+    ----    ------             ----  ----                   -------
+    Normal  ScalingReplicaSet  7s    deployment-controller  Scaled up replica set test-deployment-64487946cc to 2
+  #+end_src
+
+- Relax the ResourceQuota:
+  #+BEGIN_SRC shell
+  kubectl patch resourcequota test-quota -p '{"spec":{"hard":{"pods":"5"}}}' -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  resourcequota/test-quota patched
+  #+end_src
+
+- Check the status of the Deployment again:
+  #+BEGIN_SRC shell
+  kubectl rollout status deployment test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Waiting for deployment "test-deployment" rollout to finish: 1 out of 2 new replicas have been updated...
+  Waiting for deployment "test-deployment" rollout to finish: 1 out of 2 new replicas have been updated...
+  Waiting for deployment "test-deployment" rollout to finish: 1 of 2 updated replicas are available...
+  deployment "test-deployment" successfully rolled out
+  #+end_src
+
+- Change the image of the Deployment and put a non-existent image:
+  #+BEGIN_SRC shell
+  kubectl set image deployment test-deployment nginx=engincs:ahahahah -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment image updated
+  #+end_src
+
+- Check the status of the Deployment:
+  #+BEGIN_SRC shell
+  kubectl describe deployment test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:                   test-deployment
+  Namespace:              rising
+  CreationTimestamp:      Wed, 03 Jul 2024 15:57:50 +0200
+  Labels:                 app=test
+  Annotations:            deployment.kubernetes.io/revision: 2
+  Selector:               app=test
+  Replicas:               2 desired | 1 updated | 3 total | 2 available | 1 unavailable
+  StrategyType:           RollingUpdate
+  MinReadySeconds:        0
+  RollingUpdateStrategy:  25% max unavailable, 25% max surge
+  Pod Template:
+    Labels:  app=test
+    Containers:
+     nginx:
+      Image:         engincs:ahahahah
+      Port:          80/TCP
+      Host Port:     0/TCP
+      Environment:   <none>
+      Mounts:        <none>
+    Volumes:         <none>
+    Node-Selectors:  <none>
+    Tolerations:     <none>
+  Conditions:
+    Type           Status  Reason
+    ----           ------  ------
+    Available      True    MinimumReplicasAvailable
+    Progressing    True    ReplicaSetUpdated
+  OldReplicaSets:  test-deployment-64487946cc (2/2 replicas created)
+  NewReplicaSet:   test-deployment-69f5cddc77 (1/1 replicas created)
+  Events:
+    Type    Reason             Age   From                   Message
+    ----    ------             ----  ----                   -------
+    Normal  ScalingReplicaSet  70s   deployment-controller  Scaled up replica set test-deployment-64487946cc to 2
+    Normal  ScalingReplicaSet  36s   deployment-controller  Scaled up replica set test-deployment-69f5cddc77 to 1
+  #+end_src
+  
+- List the Pods:
+  #+BEGIN_SRC shell
+  kubectl get pods -l app=test -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                               READY   STATUS         RESTARTS   AGE
+  test-deployment-64487946cc-fb5d6   1/1     Running        0          72s
+  test-deployment-64487946cc-qnxlv   1/1     Running        0          98s
+  test-deployment-69f5cddc77-spksx   0/1     ErrImagePull   0          64s
+  #+end_src
+
+- Fix the image of the Deployment:
+  #+BEGIN_SRC shell
+  kubectl set image deployment test-deployment nginx=nginx:1.16.1 -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment image updated
+  #+end_src
+
+- Check the status again:
+  #+BEGIN_SRC shell
+  kubectl get deployment test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME              READY   UP-TO-DATE   AVAILABLE   AGE
+  test-deployment   2/2     2            2           2m31s
+  #+end_src
+
+- Now, set an impossible affinity for the Deployment:
+  #+BEGIN_SRC shell
+  kubectl patch deployment test-deployment -p '{"spec":{"template":{"spec":{"affinity":{"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"nonexistent","operator":"In","values":["true"]}]}]}}}}}}}' -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/test-deployment patched
+  #+end_src
+  
+- Check the status of the Deployment:
+  #+BEGIN_SRC shell
+  kubectl describe deployment test-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:                   test-deployment
+  Namespace:              rising
+  CreationTimestamp:      Wed, 03 Jul 2024 15:57:50 +0200
+  Labels:                 app=test
+  Annotations:            deployment.kubernetes.io/revision: 4
+  Selector:               app=test
+  Replicas:               2 desired | 1 updated | 3 total | 2 available | 1 unavailable
+  StrategyType:           RollingUpdate
+  MinReadySeconds:        0
+  RollingUpdateStrategy:  25% max unavailable, 25% max surge
+  Pod Template:
+    Labels:  app=test
+    Containers:
+     nginx:
+      Image:         nginx:1.16.1
+      Port:          80/TCP
+      Host Port:     0/TCP
+      Environment:   <none>
+      Mounts:        <none>
+    Volumes:         <none>
+    Node-Selectors:  <none>
+    Tolerations:     <none>
+  Conditions:
+    Type           Status  Reason
+    ----           ------  ------
+    Available      True    MinimumReplicasAvailable
+    Progressing    True    ReplicaSetUpdated
+  OldReplicaSets:  test-deployment-64487946cc (0/0 replicas created), test-deployment-69f5cddc77 (0/0 replicas created), test-deployment-f546b5d99 (2/2 replicas created)
+  NewReplicaSet:   test-deployment-6789ff7c7f (1/1 replicas created)
+  Events:
+    Type    Reason             Age    From                   Message
+    ----    ------             ----   ----                   -------
+    Normal  ScalingReplicaSet  2m51s  deployment-controller  Scaled up replica set test-deployment-64487946cc to 2
+    Normal  ScalingReplicaSet  2m17s  deployment-controller  Scaled up replica set test-deployment-69f5cddc77 to 1
+    Normal  ScalingReplicaSet  56s    deployment-controller  Scaled down replica set test-deployment-69f5cddc77 to 0 from 1
+    Normal  ScalingReplicaSet  56s    deployment-controller  Scaled up replica set test-deployment-f546b5d99 to 1 from 0
+    Normal  ScalingReplicaSet  53s    deployment-controller  Scaled down replica set test-deployment-64487946cc to 1 from 2
+    Normal  ScalingReplicaSet  53s    deployment-controller  Scaled up replica set test-deployment-f546b5d99 to 2 from 1
+    Normal  ScalingReplicaSet  51s    deployment-controller  Scaled down replica set test-deployment-64487946cc to 0 from 1
+    Normal  ScalingReplicaSet  14s    deployment-controller  Scaled up replica set test-deployment-6789ff7c7f to 1
+  #+end_src
+
+- Inspect the Pods:
+  #+BEGIN_SRC shell
+  kubectl get pods -l app=test -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                               READY   STATUS    RESTARTS   AGE
+  test-deployment-6789ff7c7f-f5kp7   0/1     Pending   0          34s
+  test-deployment-f546b5d99-4d4x8    1/1     Running   0          76s
+  test-deployment-f546b5d99-87hh4    1/1     Running   0          73s
+  #+end_src
+ 
+- Tear everything down:
+  #+BEGIN_SRC shell
+  kubectl delete deployment test-deployment -n rising
+  kubectl delete resourcequota test-quota -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps "test-deployment" deleted
+  resourcequota "test-quota" deleted
+  #+end_src
+
+** Deployment log =D5= - Manage two Deployments contemporaneously
+- Create two Deployments together:
+  #+BEGIN_SRC shell
+    kubectl apply -f - <<EOF
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: interesting-deployment-1
+      namespace: rising
+      labels:
+        app: interesting-app
+    spec:
+      replicas: 4
+      selector:
+        matchLabels:
+          app: interesting-app
+      template:
+        metadata:
+          labels:
+            app: interesting-app
+        spec:
+          containers:
+          - name: interesting-container-1
+            image: nginx:1.19.6
+            ports:
+            - containerPort: 80
+          - name: sidecar-container-1
+            image: busybox:1.31.1
+            command: ['sh', '-c', 'echo sidecar-container-1 is running && sleep 3600']
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: interesting-deployment-2
+      namespace: rising
+      labels:
+        app: interesting-app
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: interesting-app
+      template:
+        metadata:
+          labels:
+            app: interesting-app
+        spec:
+          containers:
+          - name: interesting-container-2
+            image: nginx:latest
+          initContainers:
+          - name: init-container-1
+            image: busybox:1.31.1
+            command: ['sh', '-c', 'echo init-container-1 is running && sleep 5']
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/interesting-deployment-1 created
+  deployment.apps/interesting-deployment-2 created
+  #+end_src
+
+- Wait for the Deployments to be ready:
+  #+BEGIN_SRC shell
+  kubectl wait --for=condition=Available deployment/interesting-deployment-1 -n rising
+  kubectl wait --for=condition=Available deployment/interesting-deployment-2 -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/interesting-deployment-1 condition met
+  deployment.apps/interesting-deployment-2 condition met
+  #+end_src
+  
+- Check the rollout status of the Deployments:
+  #+BEGIN_SRC shell
+  kubectl rollout status deployment interesting-deployment-1 -n rising
+  kubectl rollout status deployment interesting-deployment-2 -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment "interesting-deployment-1" successfully rolled out
+  deployment "interesting-deployment-2" successfully rolled out
+  #+end_src
+
+- Inspect the Deployments:
+  #+BEGIN_SRC shell
+  kubectl get deployments -l app=interesting-app -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                       READY   UP-TO-DATE   AVAILABLE   AGE
+  interesting-deployment-1   4/4     4            4           89s
+  interesting-deployment-2   2/2     2            2           89s
+  #+end_src
+
+** ReplicaSet log =RS1= - Use bare ReplicaSets to manage Pods
+- Create a ReplicaSet:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: apps/v1
+  kind: ReplicaSet
+  metadata:
+    name: frontend
+    namespace: rising
+    labels:
+      app: guestbook
+      tier: frontend
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        tier: frontend
+    template:
+      metadata:
+        labels:
+          tier: frontend
+      spec:
+        containers:
+        - name: outward
+          image: httpd:latest
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  replicaset.apps/frontend created
+  #+end_src
+
+- List the ReplicaSets:
+  #+BEGIN_SRC shell
+  kubectl get replicasets -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME       DESIRED   CURRENT   READY   AGE
+  frontend   3         3         0       4s
+  #+end_src
+
+- Inspect the ReplicaSet:
+  #+BEGIN_SRC shell
+  kubectl describe replicasets frontend -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:         frontend
+  Namespace:    rising
+  Selector:     tier=frontend
+  Labels:       app=guestbook
+                tier=frontend
+  Annotations:  <none>
+  Replicas:     3 current / 3 desired
+  Pods Status:  3 Running / 0 Waiting / 0 Succeeded / 0 Failed
+  Pod Template:
+    Labels:  tier=frontend
+    Containers:
+     outward:
+      Image:         httpd:latest
+      Port:          <none>
+      Host Port:     <none>
+      Environment:   <none>
+      Mounts:        <none>
+    Volumes:         <none>
+    Node-Selectors:  <none>
+    Tolerations:     <none>
+  Events:
+    Type    Reason            Age   From                   Message
+    ----    ------            ----  ----                   -------
+    Normal  SuccessfulCreate  8s    replicaset-controller  Created pod: frontend-qqzxd
+    Normal  SuccessfulCreate  8s    replicaset-controller  Created pod: frontend-wddfd
+    Normal  SuccessfulCreate  8s    replicaset-controller  Created pod: frontend-zrw6c
+  #+end_src
+ 
+- Scale down the ReplicaSet:
+  #+BEGIN_SRC shell
+  kubectl scale replicasets frontend --replicas=2 -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  replicaset.apps/frontend scaled
+  #+end_src
+  
+- Inspect the Pods:
+  #+BEGIN_SRC shell
+  kubectl get pods -l tier=frontend -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME             READY   STATUS    RESTARTS   AGE
+  frontend-wddfd   1/1     Running   0          20s
+  frontend-zrw6c   1/1     Running   0          20s
+  #+end_src
+
+- Tear everything down:
+  #+BEGIN_SRC shell
+  kubectl delete replicasets frontend -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  replicaset.apps "frontend" deleted
+  #+end_src
+  
+** DaemonSet log =DS1= - Manage a DaemonSet
+- Create a DaemonSet:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: apps/v1
+  kind: DaemonSet
+  metadata:
+    name: fluentd-elasticsearch
+    namespace: kube-system
+    labels:
+      k8s-app: fluentd-logging
+  spec:
+    selector:
+      matchLabels:
+        name: fluentd-elasticsearch
+    template:
+      metadata:
+        labels:
+          name: fluentd-elasticsearch
+      spec:
+        tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        containers:
+        - name: fluentd-elasticsearch
+          image: quay.io/fluentd_elasticsearch/fluentd:v2.5.2
+          resources:
+            limits:
+              memory: 200Mi
+            requests:
+              cpu: 100m
+              memory: 200Mi
+          volumeMounts:
+          - name: varlog
+            mountPath: /var/log
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: varlog
+          hostPath:
+            path: /var/log
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  daemonset.apps/fluentd-elasticsearch created
+  #+end_src
+
+- Inspect the DaemonSet:
+  #+BEGIN_SRC shell
+  kubectl get daemonsets fluentd-elasticsearch -n kube-system
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                    DESIRED   CURRENT   READY   UP-TO-DATE   AVAILABLE   NODE SELECTOR   AGE
+  fluentd-elasticsearch   3         3         3       3            3           <none>          5s
+  #+end_src
+
+- Inspect the Pods:
+  #+BEGIN_SRC shell
+  kubectl get pods -l name=fluentd-elasticsearch -n kube-system
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                          READY   STATUS    RESTARTS   AGE
+  fluentd-elasticsearch-9fptr   1/1     Running   0          12s
+  fluentd-elasticsearch-jngnw   1/1     Running   0          12s
+  fluentd-elasticsearch-t5582   1/1     Running   0          12s
+  #+end_src
+
+- Cordon =kubeadm-worker1=:
+  #+BEGIN_SRC shell
+  kubectl cordon kubeadm-worker1
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  node/kubeadm-worker1 cordoned
+  #+end_src
+  
+- Check the Pods again:
+  #+BEGIN_SRC shell
+  kubectl get pods -l name=fluentd-elasticsearch -n kube-system
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                          READY   STATUS    RESTARTS   AGE
+  fluentd-elasticsearch-9fptr   1/1     Running   0          20s
+  fluentd-elasticsearch-jngnw   1/1     Running   0          20s
+  fluentd-elasticsearch-t5582   1/1     Running   0          20s
+  #+end_src
+
+- Uncordon and add a label to =kubeadm-worker1=:
+  #+BEGIN_SRC shell
+  kubectl uncordon kubeadm-worker1
+  kubectl taint nodes kubeadm-worker1 test-label=no-schedule:NoExecute
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  node/kubeadm-worker1 uncordoned
+  node/kubeadm-worker1 tainted
+  #+end_src
+
+- Edit the DaemonSet to tolerate the taint, this will drop out the master node: 
+  #+BEGIN_SRC shell
+  kubectl patch daemonset fluentd-elasticsearch -p '{"spec":{"template":{"spec":{"tolerations":[{"key":"test-label","operator":"Equal","effect":"NoExecute","value":"no-schedule"}]}}}}' -n kube-system
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  daemonset.apps/fluentd-elasticsearch patched
+  #+end_src
+  
+- Check the Pods again:
+  #+BEGIN_SRC shell
+  kubectl get pods -l name=fluentd-elasticsearch -n kube-system
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                          READY   STATUS    RESTARTS   AGE
+  fluentd-elasticsearch-5t54s   1/1     Running   0          4s
+  fluentd-elasticsearch-8prm6   1/1     Running   0          7s
+  #+end_src
+
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl delete daemonset fluentd-elasticsearch -n kube-system
+  kubectl taint nodes kubeadm-worker1 test-label-
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  daemonset.apps "fluentd-elasticsearch" deleted
+  node/kubeadm-worker1 untainted
+  #+end_src
+
+** Job log =J1= - Manage a Job
+- Create a Job:
+#+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: batch/v1
+  kind: Job
+  metadata:
+    name: pi
+    namespace: rising
+  spec:
+    template:
+      spec:
+        containers:
+        - name: pi
+          image: perl:5.34.0
+          command: ["perl",  "-Mbignum=bpi", "-wle", "print bpi(2000)"]
+        restartPolicy: Never
+    backoffLimit: 4
+  EOF
+#+END_SRC
+
+#+RESULTS:
+#+begin_src shell
+job.batch/pi created
+#+end_src
+  
+- List available Jobs:
+  #+BEGIN_SRC shell
+  kubectl get jobs -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME   COMPLETIONS   DURATION   AGE
+  pi     0/1           7s         7s
+  #+end_src
+
+- Inspect the Job:
+  #+BEGIN_SRC shell
+  kubectl describe jobs pi -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:             pi
+  Namespace:        rising
+  Selector:         batch.kubernetes.io/controller-uid=fd12c889-7876-4f13-a039-1fb0d7fa23b6
+  Labels:           batch.kubernetes.io/controller-uid=fd12c889-7876-4f13-a039-1fb0d7fa23b6
+                    batch.kubernetes.io/job-name=pi
+                    controller-uid=fd12c889-7876-4f13-a039-1fb0d7fa23b6
+                    job-name=pi
+  Annotations:      <none>
+  Parallelism:      1
+  Completions:      1
+  Completion Mode:  NonIndexed
+  Suspend:          false
+  Backoff Limit:    4
+  Start Time:       Wed, 03 Jul 2024 16:27:33 +0200
+  Pods Statuses:    1 Active (1 Ready) / 0 Succeeded / 0 Failed
+  Pod Template:
+    Labels:  batch.kubernetes.io/controller-uid=fd12c889-7876-4f13-a039-1fb0d7fa23b6
+             batch.kubernetes.io/job-name=pi
+             controller-uid=fd12c889-7876-4f13-a039-1fb0d7fa23b6
+             job-name=pi
+    Containers:
+     pi:
+      Image:      perl:5.34.0
+      Port:       <none>
+      Host Port:  <none>
+      Command:
+        perl
+        -Mbignum=bpi
+        -wle
+        print bpi(2000)
+      Environment:   <none>
+      Mounts:        <none>
+    Volumes:         <none>
+    Node-Selectors:  <none>
+    Tolerations:     <none>
+  Events:
+    Type    Reason            Age   From            Message
+    ----    ------            ----  ----            -------
+    Normal  SuccessfulCreate  11s   job-controller  Created pod: pi-wkp47
+  #+end_src
+
+- Check the Pods:
+  #+BEGIN_SRC shell
+  kubectl get pods -l job-name=pi -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME       READY   STATUS      RESTARTS   AGE
+  pi-wkp47   0/1     Completed   0          16s
+  #+end_src
+
+- Assess the logs generated by the Job:
+  #+BEGIN_SRC shell
+  kubectl wait --for=condition=complete job/pi -n rising
+  kubectl logs jobs/pi -n rising | head -c 20
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  job.batch/pi condition met
+  3.141592653589793238
+  #+end_src
+
+- Update the spec of the Job to trigger auto deletion:
+  #+BEGIN_SRC shell
+  kubectl patch job pi -p '{"spec":{"ttlSecondsAfterFinished":60}}' -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  job.batch/pi patched
+  #+end_src
+
+- Wait for the Job to be deleted:
+  #+BEGIN_SRC shell
+  kubectl wait --for=delete job/pi -n rising --timeout=80s
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  job.batch/pi condition met
+  #+end_src
+
+** CronJob log =CJ1= - Manage a CronJob
+- Create a CronJob:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: batch/v1
+  kind: CronJob
+  metadata:
+    name: hello
+    labels:
+      cj: hello
+    namespace: rising
+  spec:
+    schedule: "* * * * *"
+    jobTemplate:
+      metadata:
+        labels:
+          cj: hello
+      spec:
+        template:
+          spec:
+            containers:
+            - name: hello
+              image: busybox:1.28
+              imagePullPolicy: IfNotPresent
+              command:
+              - /bin/sh
+              - -c
+              - date; echo Hello from the Kubernetes cluster
+            restartPolicy: OnFailure
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  cronjob.batch/hello created
+  #+end_src
+  
+- List available CronJobs:
+  #+BEGIN_SRC shell
+  kubectl get cronjobs -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME    SCHEDULE    SUSPEND   ACTIVE   LAST SCHEDULE   AGE
+  hello   * * * * *   False     0        <none>          7s
+  #+end_src
+
+- Inspect the CronJob:
+  #+BEGIN_SRC shell
+  kubectl describe cronjobs hello -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:                          hello
+  Namespace:                     rising
+  Labels:                        cj=hello
+  Annotations:                   <none>
+  Schedule:                      * * * * *
+  Concurrency Policy:            Allow
+  Suspend:                       False
+  Successful Job History Limit:  3
+  Failed Job History Limit:      1
+  Starting Deadline Seconds:     <unset>
+  Selector:                      <unset>
+  Parallelism:                   <unset>
+  Completions:                   <unset>
+  Pod Template:
+    Labels:  <none>
+    Containers:
+     hello:
+      Image:      busybox:1.28
+      Port:       <none>
+      Host Port:  <none>
+      Command:
+        /bin/sh
+        -c
+        date; echo Hello from the Kubernetes cluster
+      Environment:     <none>
+      Mounts:          <none>
+    Volumes:           <none>
+    Node-Selectors:    <none>
+    Tolerations:       <none>
+  Last Schedule Time:  <unset>
+  Active Jobs:         <none>
+  Events:              <none>
+  #+end_src
+
+- Wait two-three minutes and check the Jobs created by the CronJob:
+  #+BEGIN_SRC shell
+  sleep 120
+  kubectl get jobs -l cj=hello -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME             COMPLETIONS   DURATION   AGE
+  hello-28666967   1/1           3s         75s
+  hello-28666968   1/1           3s         15s
+  #+end_src
+  
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl delete cronjob hello -n rising 
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  cronjob.batch "hello" deleted
+  #+end_src
+
+* Log setups level 3
+** Pod log =P3= - Use kubectl debug and Ephemerals Containers
+- Run a dumb Pod that does not have a shell:
+  #+BEGIN_SRC shell
+  kubectl run -n rising --restart=Never --image=registry.k8s.io/pause:latest dumb-pod -- sleep 3600 
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/dumb-pod created
+  #+end_src
+
+- Try to launch a =kubectl exec=, it will fail:
+  #+BEGIN_SRC shell
+  kubectl exec -it dumb-pod -- sh
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Unable to use a TTY - input is not a terminal or the right kind of file
+  error: Internal error occurred: error executing command in container: failed to exec in container: failed to start exec "79180519b918a7f1df405e2cd1be1c23d07ca4239d8f99e490badd377e4d5719": OCI runtime exec failed: exec failed: unable to start container process: exec: "sh": executable file not found in $PATH: unknown
+  #+end_src
+
+- Use =kubectl debug= to attach an Ephemeral Container:
+  #+BEGIN_SRC shell
+  kubectl debug dumb-pod --image=busybox:1.31.1 --target=dumb-pod 
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Targeting container "dumb-pod". If you don't see processes from this container it may be because the container runtime doesn't support this feature.
+  Defaulting debug container name to debugger-n8xgc.
+  #+end_src
+  
+- Describe the newly created Ephemeral Container:
+  #+BEGIN_SRC shell
+  kubectl describe pod dumb-pod -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:             dumb-pod
+  Namespace:        rising
+  Priority:         0
+  Service Account:  default
+  Node:             kubeadm-worker1/192.168.38.11
+  Start Time:       Wed, 17 Jul 2024 09:10:44 +0200
+  Labels:           run=dumb-pod
+  Annotations:      <none>
+  Status:           Running
+  IP:               10.244.1.7
+  IPs:
+    IP:  10.244.1.7
+  Containers:
+    dumb-pod:
+      Container ID:  containerd://7f08d97581ad8a941dd803cddcd8b0347e8a0bf3e2098f21f2ba5b2d0e2eb8a3
+      Image:         registry.k8s.io/pause:latest
+      Image ID:      registry.k8s.io/pause@sha256:a78c2d6208eff9b672de43f880093100050983047b7b0afe0217d3656e1b0d5f
+      Port:          <none>
+      Host Port:     <none>
+      Args:
+        sleep
+        3600
+      State:          Running
+        Started:      Wed, 17 Jul 2024 09:10:45 +0200
+      Ready:          True
+      Restart Count:  0
+      Environment:    <none>
+      Mounts:
+        /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-2t2lv (ro)
+  Ephemeral Containers:
+    debugger-n8xgc:
+      Container ID:   containerd://3d6385e8dff748d82c6f762e3126597c8601902740279d174bc5c490a2c1dd89
+      Image:          busybox:1.31.1
+      Image ID:       docker.io/library/busybox@sha256:95cf004f559831017cdf4628aaf1bb30133677be8702a8c5f2994629f637a209
+      Port:           <none>
+      Host Port:      <none>
+      State:          Terminated
+        Reason:       Completed
+        Exit Code:    0
+        Started:      Wed, 17 Jul 2024 09:11:39 +0200
+        Finished:     Wed, 17 Jul 2024 09:11:39 +0200
+      Ready:          False
+      Restart Count:  0
+      Environment:    <none>
+      Mounts:         <none>
+  Conditions:
+    Type              Status
+    Initialized       True 
+    Ready             True 
+    ContainersReady   True 
+    PodScheduled      True 
+  Volumes:
+    kube-api-access-2t2lv:
+      Type:                    Projected (a volume that contains injected data from multiple sources)
+      TokenExpirationSeconds:  3607
+      ConfigMapName:           kube-root-ca.crt
+      ConfigMapOptional:       <nil>
+      DownwardAPI:             true
+  QoS Class:                   BestEffort
+  Node-Selectors:              <none>
+  Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                               node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+  Events:
+    Type    Reason     Age   From               Message
+    ----    ------     ----  ----               -------
+    Normal  Scheduled  64s   default-scheduler  Successfully assigned rising/dumb-pod to kubeadm-worker1
+    Normal  Pulling    64s   kubelet            Pulling image "registry.k8s.io/pause:latest"
+    Normal  Pulled     63s   kubelet            Successfully pulled image "registry.k8s.io/pause:latest" in 291ms (291ms including waiting)
+    Normal  Created    63s   kubelet            Created container dumb-pod
+    Normal  Started    63s   kubelet            Started container dumb-pod
+    Normal  Pulled     9s    kubelet            Container image "busybox:1.31.1" already present on machine
+    Normal  Created    9s    kubelet            Created container debugger-n8xgc
+    Normal  Started    9s    kubelet            Started container debugger-n8xgc
+  #+end_src
+  
+- Destroy the ephemeral Pod and the dumb Pod: 
+  #+BEGIN_SRC shell
+  kubectl delete pod dumb-pod -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod "dumb-pod" deleted
+  #+end_src
+
+** Pod log =P4= - Use Port Forwarding to access a Pod
+:PROPERTIES:
+:header-args+: :session pn1
+:END:
+
+- Create a Deployment:
+  #+BEGIN_SRC bash
+    cat <<EOF | kubectl apply -f -
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: mongo
+      labels:
+        app.kubernetes.io/name: mongo
+        app.kubernetes.io/component: backend
+    spec:
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: mongo
+          app.kubernetes.io/component: backend
+      replicas: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: mongo
+            app.kubernetes.io/component: backend
+        spec:
+          containers:
+          - name: mongo
+            image: mongo:4.2
+            args:
+              - --bind_ip
+              - 0.0.0.0
+            resources:
+              requests:
+                cpu: 100m
+                memory: 100Mi
+            ports:
+            - containerPort: 27017
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  deployment.apps/mongo created
+  #+end_src
+  
+- Inspect Deployments, ReplicaSets, Pods:
+  #+BEGIN_SRC bash
+  kubectl get deployments -n rising
+  kubectl get replicasets -n rising
+  kubectl get pods -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  NAME    READY   UP-TO-DATE   AVAILABLE   AGE
+  mongo   1/1     1            1           33s
+  NAME              DESIRED   CURRENT   READY   AGE
+  mongo-f56ff5dfc   1         1         1       34s
+  NAME                    READY   STATUS    RESTARTS   AGE
+  mongo-f56ff5dfc-9mpmp   1/1     Running   0          34s
+  #+end_src
+  
+- Create a Service to expose Mongo:
+  #+BEGIN_SRC bash
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: mongo
+      labels:
+        app.kubernetes.io/name: mongo
+        app.kubernetes.io/component: backend
+    spec:
+      ports:
+      - port: 27017
+        targetPort: 27017
+      selector:
+        app.kubernetes.io/name: mongo
+        app.kubernetes.io/component: backend
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  service/mongo created
+  #+end_src
+
+- Port-forward the Pod and send the process to background:
+  #+BEGIN_SRC bash 
+  kubectl port-forward deployment/mongo 28015:27017 &
+  pid=$!
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  [1] 42462
+  #+end_src
+
+- Clean everything up:
+  #+BEGIN_SRC bash 
+  kill $pid
+  kubectl delete deployment mongo -n rising
+  kubectl delete service mongo -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  deployment.apps "mongo" deleted
+  [1]+  Terminated: 15          kubectl port-forward deployment/mongo 28015:27017
+  service "mongo" deleted
+  #+end_src
+
+** LimitRange log =LR1= - Create a LimitRange to restrict the resources of a Pod
+- Define a LimitRange for the namespace:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: LimitRange
+    metadata:
+      name: limit-range
+      namespace: rising
+    spec:
+      limits:
+      - type: Container 
+        default:
+          cpu: 300m
+          memory: 200Mi
+        defaultRequest:
+          cpu: 200m
+          memory: 100Mi
+        max:
+          cpu: 500m
+          memory: 500Mi
+        min:
+          cpu: 100m
+          memory: 50Mi
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  limitrange/limit-range created
+  #+end_src
+  
+- Inspect the newly created LimitRange:
+  #+BEGIN_SRC shell
+  kubectl describe limitrange limit-range -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:       limit-range
+  Namespace:  rising
+  Type        Resource  Min   Max    Default Request  Default Limit  Max Limit/Request Ratio
+  ----        --------  ---   ---    ---------------  -------------  -----------------------
+  Container   cpu       100m  500m   200m             300m           -
+  Container   memory    50Mi  500Mi  100Mi            200Mi          -
+  #+end_src
+  
+- Create a Pod that does not fit the LimitRange:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: bad-pod
+    namespace: rising
+  spec:
+    containers:
+    - name: bad-container
+      image: busybox:1.31.1
+      command: ["sh", "-c", "sleep 3600"]
+      resources:
+        requests:
+          cpu: 600m
+          memory: 300Mi
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  The Pod "bad-pod" is invalid: 
+  ,* spec.containers[0].resources.requests: Invalid value: "600m": must be less than or equal to cpu limit of 300m
+  ,* spec.containers[0].resources.requests: Invalid value: "300Mi": must be less than or equal to memory limit of 200Mi
+  #+end_src
+
+- Create a lawful Pod:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: good-pod
+    namespace: rising
+  spec:
+    containers:
+    - name: good-container
+      image: busybox:1.31.1
+      command: ["sh", "-c", "sleep 3600"]
+      resources:
+        requests:
+          cpu: 200m
+          memory: 100Mi
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/good-pod created
+  #+end_src
+
+- Inspect the good Pod:
+  #+BEGIN_SRC shell
+  kubectl describe pod good-pod -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:             good-pod
+  Namespace:        rising
+  Priority:         0
+  Service Account:  default
+  Node:             kubeadm-worker1/192.168.38.11
+  Start Time:       Wed, 17 Jul 2024 09:15:35 +0200
+  Labels:           <none>
+  Annotations:      kubernetes.io/limit-ranger: LimitRanger plugin set: cpu, memory limit for container good-container
+  Status:           Running
+  IP:               10.244.1.8
+  IPs:
+    IP:  10.244.1.8
+  Containers:
+    good-container:
+      Container ID:  containerd://796a706e5d229c104c82520ec75c4653a34068355121055202e159df932ffba1
+      Image:         busybox:1.31.1
+      Image ID:      docker.io/library/busybox@sha256:95cf004f559831017cdf4628aaf1bb30133677be8702a8c5f2994629f637a209
+      Port:          <none>
+      Host Port:     <none>
+      Command:
+        sh
+        -c
+        sleep 3600
+      State:          Running
+        Started:      Wed, 17 Jul 2024 09:15:35 +0200
+      Ready:          True
+      Restart Count:  0
+      Limits:
+        cpu:     300m
+        memory:  200Mi
+      Requests:
+        cpu:        200m
+        memory:     100Mi
+      Environment:  <none>
+      Mounts:
+        /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-29bqn (ro)
+  Conditions:
+    Type              Status
+    Initialized       True 
+    Ready             True 
+    ContainersReady   True 
+    PodScheduled      True 
+  Volumes:
+    kube-api-access-29bqn:
+      Type:                    Projected (a volume that contains injected data from multiple sources)
+      TokenExpirationSeconds:  3607
+      ConfigMapName:           kube-root-ca.crt
+      ConfigMapOptional:       <nil>
+      DownwardAPI:             true
+  QoS Class:                   Burstable
+  Node-Selectors:              <none>
+  Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                               node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+  Events:
+    Type    Reason     Age   From               Message
+    ----    ------     ----  ----               -------
+    Normal  Scheduled  10s   default-scheduler  Successfully assigned rising/good-pod to kubeadm-worker1
+    Normal  Pulled     10s   kubelet            Container image "busybox:1.31.1" already present on machine
+    Normal  Created    10s   kubelet            Created container good-container
+    Normal  Started    10s   kubelet            Started container good-container
+  #+end_src
+
+- Delete it:
+  #+BEGIN_SRC shell
+  kubectl delete pod good-pod -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod "good-pod" deleted
+  #+end_src
+
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl delete limitrange limit-range -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  limitrange "limit-range" deleted
+  #+end_src
+
+** Service log =SV1= - Expose the three types of Services from a Pod 
+- Create a Pod:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: service-pod
+    namespace: rising
+    labels:
+      app: service-app
+  spec:
+    containers:
+    - name: service-container
+      image: nginx:1.19.6
+      ports:
+        - containerPort: 80
+          name: http
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/service-pod created
+  #+end_src
+  
+- Expose a ClusterIP service (by default if you don't specify its type):
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: nginx-service
+      namespace: rising
+    spec:
+      selector:
+        app: service-app
+      ports:
+      - name: http-external
+        protocol: TCP
+        port: 80
+        targetPort: http
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  service/nginx-service created
+  #+end_src
+
+  
+- Inspect the newly create Service:
+  #+BEGIN_SRC shell
+  kubectl describe service nginx-service -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:              nginx-service
+  Namespace:         rising
+  Labels:            <none>
+  Annotations:       <none>
+  Selector:          app=service-app
+  Type:              ClusterIP
+  IP Family Policy:  SingleStack
+  IP Families:       IPv4
+  IP:                10.105.224.144
+  IPs:               10.105.224.144
+  Port:              http-external  80/TCP
+  TargetPort:        http/TCP
+  Endpoints:         10.244.1.236:80
+  Session Affinity:  None
+  Events:            <none>
+  #+end_src
+
+- List the Services:
+  #+BEGIN_SRC shell
+  kubectl get services -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME            TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)   AGE
+  nginx-service   ClusterIP   10.105.224.144   <none>        80/TCP    50s
+  #+end_src
+
+- Update the Service, and replace it with a NodePort:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: nginx-service
+      namespace: rising
+    spec:
+      type: NodePort
+      selector:
+        app: service-app
+      ports:
+      - name: http-external
+        protocol: TCP
+        port: 80
+        targetPort: http
+        nodePort: 30080
+    EOF
+  #+END_SRC 
+
+  #+RESULTS:
+  #+begin_src shell
+  service/nginx-service configured
+  #+end_src
+  
+- Inspect the updated Service:
+  #+BEGIN_SRC shell
+  kubectl describe service nginx-service -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:                     nginx-service
+  Namespace:                rising
+  Labels:                   <none>
+  Annotations:              <none>
+  Selector:                 app=service-app
+  Type:                     NodePort
+  IP Family Policy:         SingleStack
+  IP Families:              IPv4
+  IP:                       10.105.224.144
+  IPs:                      10.105.224.144
+  Port:                     http-external  80/TCP
+  TargetPort:               http/TCP
+  NodePort:                 http-external  30080/TCP
+  Endpoints:                10.244.1.236:80
+  Session Affinity:         None
+  External Traffic Policy:  Cluster
+  Events:                   <none>
+  #+end_src
+  
+- List Services again:
+  #+BEGIN_SRC shell
+  kubectl get services -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME            TYPE       CLUSTER-IP       EXTERNAL-IP   PORT(S)        AGE
+  nginx-service   NodePort   10.105.224.144   <none>        80:30080/TCP   103s
+  #+end_src
+
+#+BEGIN_QUOTE
+/LoadBalancer/ services are not supported in my environment, so I can't test them.
+#+END_QUOTE
+
+- Add an ExternalName service:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: external-service
+      namespace: rising
+    spec:
+      type: ExternalName
+      externalName: risinglab.fbk.eu
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  service/external-service created
+  #+end_src
+  
+- Clean all the resources:
+  #+BEGIN_SRC shell
+  kubectl delete pod service-pod -n rising
+  kubectl delete service nginx-service -n rising
+  kubectl delete service external-service -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod "service-pod" deleted
+  service "nginx-service" deleted
+  service "external-service" deleted
+  #+end_src
+
+** Service log =SV2= - Expose Deployments through Services
+- Create a Deployment with an explicit containerPort:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: exposed-deployment
+    namespace: rising
+  spec:
+    selector:
+      matchLabels:
+        run: nginx-deployment
+    replicas: 2
+    template:
+      metadata:
+        labels:
+          run: nginx-deployment
+      spec:
+        containers:
+        - name: nginx-runner
+          image: nginx
+          ports:
+          - containerPort: 80
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/exposed-deployment created
+  #+end_src
+
+- Check the newly created Deployment:
+  #+BEGIN_SRC shell
+  kubectl get deployments -n rising -o wide
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                 READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS     IMAGES   SELECTOR
+  exposed-deployment   2/2     2            2           41s   nginx-runner   nginx    run=nginx-deployment
+  #+end_src
+  
+- Expose the Deployment, it will default to a ClusterIP using the only containerPort available:
+  #+BEGIN_SRC shell
+  kubectl expose deployment exposed-deployment
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  service/exposed-deployment exposed
+  #+end_src
+  
+- List the Services:
+  #+BEGIN_SRC shell
+  kubectl get services -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                 TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)   AGE
+  exposed-deployment   ClusterIP   10.99.29.82   <none>        80/TCP    9s
+  #+end_src
+
+- Describe the Service:
+ #+BEGIN_SRC shell
+  kubectl describe service exposed-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:              exposed-deployment
+  Namespace:         rising
+  Labels:            <none>
+  Annotations:       <none>
+  Selector:          run=nginx-deployment
+  Type:              ClusterIP
+  IP Family Policy:  SingleStack
+  IP Families:       IPv4
+  IP:                10.99.29.82
+  IPs:               10.99.29.82
+  Port:              <unset>  80/TCP
+  TargetPort:        80/TCP
+  Endpoints:         10.244.1.238:80,10.244.3.71:80
+  Session Affinity:  None
+  Events:            <none>
+  #+end_src
+
+- List the EndpointSlices:
+  #+BEGIN_SRC shell
+  kubectl get endpointslices -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                       ADDRESSTYPE   PORTS   ENDPOINTS                  AGE
+  exposed-deployment-dlqcs   IPv4          80      10.244.1.238,10.244.3.71   21s
+  #+end_src
+  
+- Scale the Deployment:
+  #+BEGIN_SRC shell
+  kubectl scale deployment exposed-deployment --replicas=3 -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/exposed-deployment scaled
+  #+end_src
+
+- Inspect the changes in the Service:
+  #+BEGIN_SRC shell
+  kubectl describe service exposed-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:              exposed-deployment
+  Namespace:         rising
+  Labels:            <none>
+  Annotations:       <none>
+  Selector:          run=nginx-deployment
+  Type:              ClusterIP
+  IP Family Policy:  SingleStack
+  IP Families:       IPv4
+  IP:                10.99.29.82
+  IPs:               10.99.29.82
+  Port:              <unset>  80/TCP
+  TargetPort:        80/TCP
+  Endpoints:         10.244.1.238:80,10.244.1.239:80,10.244.3.71:80
+  Session Affinity:  None
+  Events:            <none>
+  #+end_src
+
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl delete deployment exposed-deployment -n rising
+  kubectl delete service exposed-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps "exposed-deployment" deleted
+  service "exposed-deployment" deleted
+  #+end_src
+
+** Service log =SV3= - Use multi-port Services 
+- Create a Pod that exposes two ports:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: multi-port-pod
+    namespace: rising
+    labels:
+      app: multi-port-app
+  spec:
+    containers:
+    - name: multi-port-container
+      image: nginx:1.19.6
+      ports:
+      - containerPort: 80
+        name: http
+      - containerPort: 443
+        name: https
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/multi-port-pod created
+  #+end_src
+
+- Expose the Pod through a Service:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: multi-port-service
+    namespace: rising
+  spec:
+    selector:
+      app: multi-port-app
+    ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: http
+    - name: https
+      protocol: TCP
+      port: 443
+      targetPort: https
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  service/multi-port-service created
+  #+end_src
+  
+- Inspect the Service:
+  #+BEGIN_SRC shell
+  kubectl describe service multi-port-service -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:              multi-port-service
+  Namespace:         rising
+  Labels:            <none>
+  Annotations:       <none>
+  Selector:          app=multi-port-app
+  Type:              ClusterIP
+  IP Family Policy:  SingleStack
+  IP Families:       IPv4
+  IP:                10.99.12.239
+  IPs:               10.99.12.239
+  Port:              http  80/TCP
+  TargetPort:        http/TCP
+  Endpoints:         10.244.1.240:80
+  Port:              https  443/TCP
+  TargetPort:        https/TCP
+  Endpoints:         10.244.1.240:443
+  Session Affinity:  None
+  Events:            <none>
+  #+end_src
+
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl delete pod multi-port-pod -n rising
+  kubectl delete service multi-port-service -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod "multi-port-pod" deleted
+  service "multi-port-service" deleted
+  #+end_src
+
+** EndpointSlice log =ES1= - Use EndpointSlices to manually group selectorless Services 
+- Create two Pods and a Service that has no selector:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: endpoint-pod-1
+      namespace: rising
+    spec:
+      containers:
+      - name: endpoint-container
+        image: nginx:1.19.6
+        ports:
+        - containerPort: 80
+          name: http
+    ---
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: endpoint-pod-2
+      namespace: rising
+    spec:
+      containers:
+      - name: endpoint-container
+        image: nginx:1.27.0
+        ports:
+        - containerPort: 80
+          name: http
+    ---
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: endpoint-service
+      namespace: rising
+    spec:
+      ports:
+        - name: http
+          port: 80
+          targetPort: 4000
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/endpoint-pod-1 created
+  pod/endpoint-pod-2 created
+  service/endpoint-service created
+  #+end_src
+  
+- Inspect EndpointSlices:
+  #+BEGIN_SRC shell
+  kubectl get endpointslices -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  No resources found in rising namespace.
+  #+end_src
+  
+- This Service will not create any EndpointSlice. We need to create one manually:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: discovery.k8s.io/v1
+    kind: EndpointSlice
+    metadata:
+      name: endpoint-service-1
+      namespace: rising
+      labels:
+        kubernetes.io/service-name: endpoint-service
+    addressType: IPv4
+    ports:
+      - name: http
+        appProtocol: http
+        protocol: TCP
+        port: 4000  
+    endpoints:
+        - addresses:
+            - $(kubectl get pod endpoint-pod-1 -n rising -o jsonpath='{.status.podIP}')
+        - addresses:
+            - $(kubectl get pod endpoint-pod-2 -n rising -o jsonpath='{.status.podIP}')
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  endpointslice.discovery.k8s.io/endpoint-service-1 created
+  #+end_src
+  
+- Inspect the EndpointSlice:
+  #+BEGIN_SRC shell
+  kubectl describe endpointslice endpoint-service-1 -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:         endpoint-service-1
+  Namespace:    rising
+  Labels:       kubernetes.io/service-name=endpoint-service
+  Annotations:  <none>
+  AddressType:  IPv4
+  Ports:
+    Name  Port  Protocol
+    ----  ----  --------
+    http  4000  TCP
+  Endpoints:
+    - Addresses:  10.244.1.243
+      Conditions:
+        Ready:    <unset>
+      Hostname:   <unset>
+      NodeName:   <unset>
+      Zone:       <unset>
+    - Addresses:  10.244.1.244
+      Conditions:
+        Ready:   <unset>
+      Hostname:  <unset>
+      NodeName:  <unset>
+      Zone:      <unset>
+  Events:        <none>
+  #+end_src
+
+- Tear everything down:
+  #+BEGIN_SRC shell
+  kubectl delete pod endpoint-pod-1 -n rising
+  kubectl delete pod endpoint-pod-2 -n rising
+  kubectl delete service endpoint-service -n rising
+  kubectl delete endpointslice endpoint-service-1 -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod "endpoint-pod-1" deleted
+  pod "endpoint-pod-2" deleted
+  service "endpoint-service" deleted
+  endpointslice.discovery.k8s.io "endpoint-service-1" deleted
+  #+end_src
+
+** Ingress log =IG1= - Import an external IngressController, then create an Ingress and expose a Service
+- Mark the nodes with =ingress-ready=:
+  #+BEGIN_SRC shell
+  kubectl label node kubeadm-worker1 ingress-ready=true
+  kubectl label node kubeadm-worker2 ingress-ready=true
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  node/kubeadm-worker1 labeled
+  node/kubeadm-worker2 labeled
+  #+end_src
+
+- Import the NGINX Ingress Controller:
+  #+BEGIN_SRC shell
+  kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  namespace/ingress-nginx created
+  serviceaccount/ingress-nginx created
+  serviceaccount/ingress-nginx-admission created
+  role.rbac.authorization.k8s.io/ingress-nginx created
+  role.rbac.authorization.k8s.io/ingress-nginx-admission created
+  clusterrole.rbac.authorization.k8s.io/ingress-nginx created
+  clusterrole.rbac.authorization.k8s.io/ingress-nginx-admission created
+  rolebinding.rbac.authorization.k8s.io/ingress-nginx created
+  rolebinding.rbac.authorization.k8s.io/ingress-nginx-admission created
+  clusterrolebinding.rbac.authorization.k8s.io/ingress-nginx created
+  clusterrolebinding.rbac.authorization.k8s.io/ingress-nginx-admission created
+  configmap/ingress-nginx-controller created
+  service/ingress-nginx-controller created
+  service/ingress-nginx-controller-admission created
+  deployment.apps/ingress-nginx-controller created
+  job.batch/ingress-nginx-admission-create created
+  job.batch/ingress-nginx-admission-patch created
+  ingressclass.networking.k8s.io/nginx created
+  validatingwebhookconfiguration.admissionregistration.k8s.io/ingress-nginx-admission created
+  #+end_src
+
+- Wait for the Ingress Controller to be ready:
+  #+BEGIN_SRC shell
+  kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=90s
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/ingress-nginx-controller-7b6bb75c96-brwgr condition met
+  #+end_src
+
+- Deploy a Pod and a Service:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: ingress-pod
+    namespace: rising
+  spec:
+    containers:
+    - name: ingress-container
+      image: nginx:1.19.6
+      ports:
+      - containerPort: 80
+        name: http
+  ---
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: ingress-service
+    namespace: rising
+  spec:
+    selector:
+      app: ingress-app
+    ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: http
+  EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/ingress-pod created
+  service/ingress-service created
+  #+end_src
+  
+- Create the Ingress:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: ingress
+      namespace: rising
+    spec:
+      rules:
+      - host: ingress.local
+        http:
+          paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ingress-service
+                port:
+                  number: 80
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  ingress.networking.k8s.io/ingress created
+  #+end_src
+  
+- Inspect the Ingress:
+  #+BEGIN_SRC shell
+  kubectl describe ingress ingress -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:             ingress
+  Labels:           <none>
+  Namespace:        rising
+  Address:          
+  Ingress Class:    <none>
+  Default backend:  <default>
+  Rules:
+    Host           Path  Backends
+    ----           ----  --------
+    ingress.local  
+                   /   ingress-service:80 (<none>)
+  Annotations:     <none>
+  Events:
+    Type    Reason  Age   From                      Message
+    ----    ------  ----  ----                      -------
+    Normal  Sync    5s    nginx-ingress-controller  Scheduled for sync
+  #+end_src
+
+- List the IngressClasses:
+  #+BEGIN_SRC shell
+  kubectl get ingressclasses -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME    CONTROLLER             PARAMETERS   AGE
+  nginx   k8s.io/ingress-nginx   <none>       59s
+  #+end_src
+  
+- Clean what we created:
+  #+BEGIN_SRC shell
+  kubectl delete pod ingress-pod -n rising
+  kubectl delete service ingress-service -n rising
+  kubectl delete ingress ingress -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod "ingress-pod" deleted
+  service "ingress-service" deleted
+  ingress.networking.k8s.io "ingress" deleted
+  #+end_src
+
+- Remove the NGINX Ingress Controller:
+  #+BEGIN_SRC shell
+  kubectl delete -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  namespace "ingress-nginx" deleted
+  serviceaccount "ingress-nginx" deleted
+  serviceaccount "ingress-nginx-admission" deleted
+  role.rbac.authorization.k8s.io "ingress-nginx" deleted
+  role.rbac.authorization.k8s.io "ingress-nginx-admission" deleted
+  clusterrole.rbac.authorization.k8s.io "ingress-nginx" deleted
+  clusterrole.rbac.authorization.k8s.io "ingress-nginx-admission" deleted
+  rolebinding.rbac.authorization.k8s.io "ingress-nginx" deleted
+  rolebinding.rbac.authorization.k8s.io "ingress-nginx-admission" deleted
+  clusterrolebinding.rbac.authorization.k8s.io "ingress-nginx" deleted
+  clusterrolebinding.rbac.authorization.k8s.io "ingress-nginx-admission" deleted
+  configmap "ingress-nginx-controller" deleted
+  service "ingress-nginx-controller" deleted
+  service "ingress-nginx-controller-admission" deleted
+  deployment.apps "ingress-nginx-controller" deleted
+  job.batch "ingress-nginx-admission-create" deleted
+  job.batch "ingress-nginx-admission-patch" deleted
+  ingressclass.networking.k8s.io "nginx" deleted
+  validatingwebhookconfiguration.admissionregistration.k8s.io "ingress-nginx-admission" deleted
+  #+end_src
+  
+- Unlabel the nodes:
+  #+BEGIN_SRC shell
+  kubectl label node kubeadm-worker1 ingress-ready-
+  kubectl label node kubeadm-worker2 ingress-ready-
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  node/kubeadm-worker1 unlabeled
+  node/kubeadm-worker2 unlabeled
+  #+end_src
+
+** Proxy Log =PX1= - Manually construct a Proxy API call for Nodes, Pods, and Services  
+:PROPERTIES:
+:header-args+: :session px1
+:END:
+
+- Use =kubectl cluster-info= to obtain endpoint information:
+  #+BEGIN_SRC bash 
+    cplane=$(kubectl cluster-info | grep 'control plane' | grep -oP 'https://[^/]+' --color=never)
+    proxy_endpoint=${cplane}
+    echo $proxy_endpoint
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  https://10.231.0.115:6443
+  #+end_src
+
+
+- Try the node proxy (the response will be empty, but the call will be successful):
+  #+BEGIN_SRC bash 
+  first_node=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+  ./scripts/kube-api.sh $proxy_endpoint api/v1/nodes/${first_node}:10250/proxy 
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  #+end_src
+  
+- Deploy a Pod and a Service:
+  #+BEGIN_SRC bash
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: proxy-pod
+    namespace: rising
+  spec:
+    containers:
+    - name: nginx
+      image: nginx
+      ports:
+      - containerPort: 80
+  ---
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: proxy
+    namespace: rising
+  spec:
+    selector:
+      app: proxy
+    ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  EOF
+  #+END_SRC 
+
+  #+RESULTS:
+  #+begin_src bash
+  pod/proxy-pod created
+  service/proxy created
+  #+end_src
+
+- Try the pod proxy:
+  #+BEGIN_SRC bash
+  first_pod=$(kubectl get pods -n rising -o jsonpath='{.items[0].metadata.name}')
+  ./scripts/kube-api.sh $proxy_endpoint api/v1/namespaces/rising/pods/${first_pod}:80/proxy 
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  #+end_src
+  
+- Try the service proxy:
+  #+BEGIN_SRC bash
+  ./scripts/kube-api.sh $proxy_endpoint api/v1/namespaces/rising/services/proxy:80/proxy 
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src bash
+  #+end_src
+  
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl delete pod proxy-pod -n rising
+  kubectl delete service proxy -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod "proxy-pod" deleted
+  service "proxy" deleted
+  #+end_src
+
+** NetworkPolicy log =NP1= - Create a NetworkPolicy to restrict traffic to a Pod
+- Run some services:
+  #+BEGIN_SRC shell
+  kubectl run web1 --image=nginx --port=80 --labels="app=web" --expose --namespace=default
+  kubectl run web2 --image=nginx --port=80 --labels="app=web" --expose --namespace=rising
+  kubectl run bb --image=busybox --labels="app=bb" --namespace=rising -- sleep 3600
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  service/web1 created
+  pod/web1 created
+  service/web2 created
+  pod/web2 created
+  pod/bb created
+  #+end_src
+
+#+BEGIN_QUOTE
+ A pod is isolated for ingress if there is any NetworkPolicy that both selects the pod and has "Ingress" in its policyTypes.
+ A pod is isolated for egress if there is any NetworkPolicy that both selects the pod and has "Egress" in its policyTypes.
+#+END_QUOTE
+
+- Create a NetworkPolicy:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: bb-to-web
+      namespace: rising
+    spec:
+      podSelector:
+        matchLabels:
+          app: web
+      policyTypes:
+      - Ingress
+      ingress:
+      - from:
+        - podSelector:
+            matchLabels:
+              app: bb
+    ---
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: web-to-web-block
+      namespace: rising
+    spec:
+      podSelector: {}
+      policyTypes:
+      - Ingress
+      - Egress
+    ---
+    apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: web-to-web-block
+      namespace: default
+    spec:
+      podSelector: {}
+      policyTypes:
+      - Ingress 
+      - Egress
+    EOF
+  #+END_SRC 
+
+  #+RESULTS:
+  #+begin_src shell
+  networkpolicy.networking.k8s.io/bb-to-web created
+  networkpolicy.networking.k8s.io/web-to-web-block created
+  networkpolicy.networking.k8s.io/web-to-web-block created
+  #+end_src
+
+- Assess the NetworkPolicy:
+  #+BEGIN_SRC shell
+  kubectl get networkpolicies -A -o wide
+  kubectl describe networkpolicy bb-to-web -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAMESPACE   NAME               POD-SELECTOR   AGE
+  default     web-to-web-block   <none>         7s
+  rising      bb-to-web          app=web        7s
+  rising      web-to-web-block   <none>         7s
+  Name:         bb-to-web
+  Namespace:    rising
+  Created on:   2024-07-17 09:18:51 +0200 CEST
+  Labels:       <none>
+  Annotations:  <none>
+  Spec:
+    PodSelector:     app=web
+    Allowing ingress traffic:
+      To Port: <any> (traffic allowed to all ports)
+      From:
+        PodSelector: app=bb
+    Not affecting egress traffic
+    Policy Types: Ingress
+  #+end_src
+  
+- See if the busybox Pod can reach the web1 Pod:
+  #+BEGIN_SRC shell
+  kubectl exec -n rising bb -- wget -qO- http://web1.default | grep Welcome
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  <title>Welcome to nginx!</title>
+  <h1>Welcome to nginx!</h1>
+  #+end_src
+
+- See if the web1 Pod can connect to the web2 Pod:
+  #+BEGIN_SRC shell
+  kubectl exec -n default web1 -- curl -s http://web2.rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  <!DOCTYPE html>
+  <html>
+  <head>
+  <title>Welcome to nginx!</title>
+  <style>
+  html { color-scheme: light dark; }
+  body { width: 35em; margin: 0 auto;
+  font-family: Tahoma, Verdana, Arial, sans-serif; }
+  </style>
+  </head>
+  <body>
+  <h1>Welcome to nginx!</h1>
+  <p>If you see this page, the nginx web server is successfully installed and
+  working. Further configuration is required.</p>
+
+  <p>For online documentation and support please refer to
+  <a href="http://nginx.org/">nginx.org</a>.<br/>
+  Commercial support is available at
+  <a href="http://nginx.com/">nginx.com</a>.</p>
+
+  <p><em>Thank you for using nginx.</em></p>
+  </body>
+  </html>
+  #+end_src
+
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl delete networkpolicy bb-to-web web-to-web-block -n rising
+  kubectl delete networkpolicy web-to-web-block -n default
+  kubectl delete pod web1 -n default
+  kubectl delete pod web2 bb -n rising
+  kubectl delete service web1 -n default
+  kubectl delete service web2 -n rising
+  #+END_SRC 
+
+  #+RESULTS:
+  #+begin_src shell
+  networkpolicy.networking.k8s.io "bb-to-web" deleted
+  networkpolicy.networking.k8s.io "web-to-web-block" deleted
+  networkpolicy.networking.k8s.io "web-to-web-block" deleted
+  pod "web1" deleted
+  pod "web2" deleted
+  pod "bb" deleted
+  service "web1" deleted
+  service "web2" deleted
+  #+end_src
+  
+* Log setups level 4
+** Storage log =ST1= - Install a custom CSI driver and create a StorageClass
+- Deploy an NFS server:
+  #+BEGIN_SRC shell
+  kubectl create -f https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/deploy/example/nfs-provisioner/nfs-server.yaml
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  service/nfs-server created
+  deployment.apps/nfs-server created
+  #+end_src
+
+- Wait for the NFS server to be ready:
+  #+BEGIN_SRC shell
+  kubectl rollout status deployment nfs-server
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment "nfs-server" successfully rolled out
+  #+end_src
+
+- Install the NFS CSI Driver:
+  #+BEGIN_SRC shell
+  ver="v4.8.0"
+  repo="https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/$ver/deploy"
+  
+  kubectl apply -f $repo/rbac-csi-nfs.yaml
+  kubectl apply -f $repo/csi-nfs-driverinfo.yaml
+  kubectl apply -f $repo/csi-nfs-controller.yaml
+  kubectl apply -f $repo/csi-nfs-node.yaml
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  serviceaccount/csi-nfs-controller-sa created
+  serviceaccount/csi-nfs-node-sa created
+  clusterrole.rbac.authorization.k8s.io/nfs-external-provisioner-role created
+  clusterrolebinding.rbac.authorization.k8s.io/nfs-csi-provisioner-binding created
+  csidriver.storage.k8s.io/nfs.csi.k8s.io created
+  deployment.apps/csi-nfs-controller created
+  daemonset.apps/csi-nfs-node created
+  #+end_src
+
+- Wait for the NFS CSI Driver to be ready:
+  #+BEGIN_SRC shell
+  kubectl rollout status daemonset csi-nfs-node -n kube-system
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  daemon set "csi-nfs-node" successfully rolled out
+  #+end_src
+
+- List and describe the CSINodes:
+  #+BEGIN_SRC shell
+  kubectl get csinodes
+  kubectl describe csinode kubeadm-master
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME              DRIVERS   AGE
+  kubeadm-master    1         155d
+  kubeadm-worker1   1         155d
+  kubeadm-worker2   1         90d
+  Name:               kubeadm-master
+  Labels:             <none>
+  Annotations:        storage.alpha.kubernetes.io/migrated-plugins:
+                        kubernetes.io/aws-ebs,kubernetes.io/azure-disk,kubernetes.io/azure-file,kubernetes.io/cinder,kubernetes.io/gce-pd,kubernetes.io/vsphere-vo...
+  CreationTimestamp:  Mon, 19 Feb 2024 09:50:44 +0100
+  Spec:
+    Drivers:
+      nfs.csi.k8s.io:
+        Node ID:  kubeadm-master
+  Events:         <none>
+  #+end_src
+
+- List and describe the CSIDriver:
+  #+BEGIN_SRC shell
+  kubectl get csidrivers
+  kubectl describe csidriver nfs.csi.k8s.io
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME             ATTACHREQUIRED   PODINFOONMOUNT   STORAGECAPACITY   TOKENREQUESTS   REQUIRESREPUBLISH   MODES        AGE
+  nfs.csi.k8s.io   false            false            false             <unset>         false               Persistent   66s
+  Name:         nfs.csi.k8s.io
+  Namespace:    
+  Labels:       <none>
+  Annotations:  <none>
+  API Version:  storage.k8s.io/v1
+  Kind:         CSIDriver
+  Metadata:
+    Creation Timestamp:  2024-07-23T13:59:04Z
+    Resource Version:    9498996
+    UID:                 75b5d4cd-2e0e-4633-9282-0b4df03f388c
+  Spec:
+    Attach Required:     false
+    Fs Group Policy:     File
+    Pod Info On Mount:   false
+    Requires Republish:  false
+    Se Linux Mount:      false
+    Storage Capacity:    false
+    Volume Lifecycle Modes:
+      Persistent
+  Events:  <none>
+  #+end_src
+
+- Create a StorageClass: (using nfs-server.rising.svc.cluster.local)
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: storage.k8s.io/v1
+    kind: StorageClass
+    metadata:
+      name: nfs-storage
+      namespace: rising
+    provisioner: nfs.csi.k8s.io
+    parameters:
+      server: nfs-server.rising.svc.cluster.local
+      share: /
+    reclaimPolicy: Delete
+    volumeBindingMode: Immediate
+    mountOptions:
+      - nfsvers=4.1
+    EOF
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  storageclass.storage.k8s.io/nfs-storage created
+  #+end_src
+  
+- List and describe the StorageClasses:
+  # in the dataset I got it wrong with the describe, so get happens twice
+  #+BEGIN_SRC shell
+  kubectl get storageclasses -n rising
+  kubectl describe storageclass nfs-storage -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME          PROVISIONER      RECLAIMPOLICY   VOLUMEBINDINGMODE   ALLOWVOLUMEEXPANSION   AGE
+  nfs-storage   nfs.csi.k8s.io   Delete          Immediate           false                  7s
+  Name:            nfs-storage
+  IsDefaultClass:  No
+  Annotations:     kubectl.kubernetes.io/last-applied-configuration={"apiVersion":"storage.k8s.io/v1","kind":"StorageClass","metadata":{"annotations":{},"name":"nfs-storage"},"mountOptions":["nfsvers=4.1"],"parameters":{"server":"nfs-server.rising.svc.cluster.local","share":"/"},"provisioner":"nfs.csi.k8s.io","reclaimPolicy":"Delete","volumeBindingMode":"Immediate"}
+
+  Provisioner:           nfs.csi.k8s.io
+  Parameters:            server=nfs-server.rising.svc.cluster.local,share=/
+  AllowVolumeExpansion:  <unset>
+  MountOptions:
+    nfsvers=4.1
+  ReclaimPolicy:      Delete
+  VolumeBindingMode:  Immediate
+  Events:             <none>
+  #+end_src
+
+** Storage log =ST2= - Set up a PersistentVolume and a PersistentVolumeClaim with a Deployment 
+- Create a Deployment with PVCs:
+  #+BEGIN_SRC shell
+    cat <<EOF | kubectl apply -f -
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: nginx-deployment
+      namespace: rising
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: nginx
+      template:
+        metadata:
+          labels:
+            app: nginx
+        spec:
+          containers:
+          - name: nginx
+            image: nginx:1.19.6
+            ports:
+            - containerPort: 80
+            volumeMounts:
+            - mountPath: /usr/share/nginx/html
+              name: storage
+          volumes:
+          - name: storage
+            persistentVolumeClaim:
+              claimName: nginx-pvc
+    ---
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: nginx-pvc
+      namespace: rising
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      storageClassName: nfs-storage
+      resources:
+        requests:
+          storage: 1Gi
+    EOF
+  #+END_SRC 
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/nginx-deployment created
+  persistentvolumeclaim/nginx-pvc created
+  #+end_src
+  
+- Wait for the Deployment to be ready:
+  #+BEGIN_SRC shell
+  kubectl rollout status deployment nginx-deployment -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment "nginx-deployment" successfully rolled out
+  #+end_src
+
+- Inspect the Deployment:
+  #+BEGIN_SRC shell
+  kubectl get deployments -n rising 
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME               READY   UP-TO-DATE   AVAILABLE   AGE
+  nfs-server         1/1     1            1           30m
+  nginx-deployment   2/2     2            2           10s
+  #+end_src
+
+- Inspect the Pods:
+  #+BEGIN_SRC shell
+  kubectl get pods -l app=nginx -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                                READY   STATUS    RESTARTS   AGE
+  nginx-deployment-695dcf87d8-h27b5   1/1     Running   0          14s
+  nginx-deployment-695dcf87d8-zsf85   1/1     Running   0          14s
+  #+end_src
+
+- Inspect the PV and PVC:
+  #+BEGIN_SRC shell
+  kubectl get pv
+  kubectl get pvc -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM              STORAGECLASS   REASON   AGE
+  pvc-879c9f02-9804-451b-a15c-1787e7c96eff   1Gi        RWO            Delete           Bound    rising/nginx-pvc   nfs-storage             19s
+  NAME        STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+  nginx-pvc   Bound    pvc-879c9f02-9804-451b-a15c-1787e7c96eff   1Gi        RWO            nfs-storage    19s
+  #+end_src
+
+- Scale up the Deployment:
+  #+BEGIN_SRC shell
+  kubectl scale deployment nginx-deployment --replicas=3 -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps/nginx-deployment scaled
+  #+end_src
+
+- Inspect the Pods again:
+  #+BEGIN_SRC shell
+  kubectl wait --for=condition=Ready pod -l app=nginx -n rising
+  kubectl get pods -l app=nginx -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  pod/nginx-deployment-695dcf87d8-5gm6g condition met
+  pod/nginx-deployment-695dcf87d8-h27b5 condition met
+  pod/nginx-deployment-695dcf87d8-zsf85 condition met
+  NAME                                READY   STATUS    RESTARTS   AGE
+  nginx-deployment-695dcf87d8-5gm6g   1/1     Running   0          11s
+  nginx-deployment-695dcf87d8-h27b5   1/1     Running   0          34s
+  nginx-deployment-695dcf87d8-zsf85   1/1     Running   0          34s
+  #+end_src
+
+- Inspect the PV and PVC again:
+  #+BEGIN_SRC shell
+  kubectl get pv
+  kubectl get pvc -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM              STORAGECLASS   REASON   AGE
+  pvc-879c9f02-9804-451b-a15c-1787e7c96eff   1Gi        RWO            Delete           Bound    rising/nginx-pvc   nfs-storage             42s
+  NAME        STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+  nginx-pvc   Bound    pvc-879c9f02-9804-451b-a15c-1787e7c96eff   1Gi        RWO            nfs-storage    42s
+  #+end_src
+
+- Describe the PV:
+  #+BEGIN_SRC shell
+  kubectl describe pv $(kubectl get pv | grep nginx-pvc | awk '{print $1}')
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:            pvc-879c9f02-9804-451b-a15c-1787e7c96eff
+  Labels:          <none>
+  Annotations:     pv.kubernetes.io/provisioned-by: nfs.csi.k8s.io
+                   volume.kubernetes.io/provisioner-deletion-secret-name: 
+                   volume.kubernetes.io/provisioner-deletion-secret-namespace: 
+  Finalizers:      [external-provisioner.volume.kubernetes.io/finalizer kubernetes.io/pv-protection]
+  StorageClass:    nfs-storage
+  Status:          Bound
+  Claim:           rising/nginx-pvc
+  Reclaim Policy:  Delete
+  Access Modes:    RWO
+  VolumeMode:      Filesystem
+  Capacity:        1Gi
+  Node Affinity:   <none>
+  Message:         
+  Source:
+      Type:              CSI (a Container Storage Interface (CSI) volume source)
+      Driver:            nfs.csi.k8s.io
+      FSType:            
+      VolumeHandle:      nfs-server.rising.svc.cluster.local##pvc-879c9f02-9804-451b-a15c-1787e7c96eff##
+      ReadOnly:          false
+      VolumeAttributes:      csi.storage.k8s.io/pv/name=pvc-879c9f02-9804-451b-a15c-1787e7c96eff
+                             csi.storage.k8s.io/pvc/name=nginx-pvc
+                             csi.storage.k8s.io/pvc/namespace=rising
+                             server=nfs-server.rising.svc.cluster.local
+                             share=/
+                             storage.kubernetes.io/csiProvisionerIdentity=1721743146785-6770-nfs.csi.k8s.io
+                             subdir=pvc-879c9f02-9804-451b-a15c-1787e7c96eff
+  Events:                <none>
+  #+end_src
+
+- Clean everything up:
+  #+BEGIN_SRC shell
+  kubectl delete deployment nginx-deployment -n rising
+  kubectl patch pvc nginx-pvc -p '{"metadata":{"finalizers":null}}' -n rising
+  kubectl delete pvc nginx-pvc -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment.apps "nginx-deployment" deleted
+  persistentvolumeclaim/nginx-pvc patched
+  persistentvolumeclaim "nginx-pvc" deleted
+  #+end_src
+
+- Oh wait. List the PVs:
+  #+BEGIN_SRC shell
+  kubectl get pv
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS        CLAIM              STORAGECLASS   REASON   AGE
+  pvc-879c9f02-9804-451b-a15c-1787e7c96eff   1Gi        RWO            Delete           Terminating   rising/nginx-pvc   nfs-storage             107s
+  #+end_src
+
+- The PV is in the /Terminating/ state: we need to delete it manually.
+  #+BEGIN_SRC shell
+  kubectl patch pv $(kubectl get pv | grep nginx-pvc | awk '{print $1}') -p '{"metadata":{"finalizers":null}}'
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  persistentvolume/pvc-879c9f02-9804-451b-a15c-1787e7c96eff patched
+  #+end_src
+  
+- List the PVs: it should be empty.
+  #+BEGIN_SRC shell
+  kubectl get pv
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  No resources found
+  #+end_src
+
+** Storage log =ST3= - Pre-bind a PVC to a PV and use CSI manual provisioning
+- Create a PV and a PVC:
+  #+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: PersistentVolume
+  metadata:
+    name: pv-nginx
+  spec:
+    capacity:
+      storage: 10Gi
+    accessModes:
+      - ReadWriteOnce
+    persistentVolumeReclaimPolicy: Delete
+    mountOptions:
+      - nfsvers=4.1
+    csi:
+      driver: nfs.csi.k8s.io
+      volumeHandle: nfs-server.rising.svc.cluster.local/share##
+      volumeAttributes:
+        server: nfs-server.rising.svc.cluster.local
+        share: /
+  ---
+  apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    name: pvc-nginx
+    namespace: rising
+  spec:
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: 10Gi
+    volumeName: pv-nginx
+    storageClassName: "" 
+  EOF
+  #+END_SRC
+  
+  #+RESULTS:
+  #+begin_src shell
+  persistentvolume/pv-nginx created
+  persistentvolumeclaim/pvc-nginx created
+  #+end_src
+
+- Inspect the newly created PV and PVC:
+  #+BEGIN_SRC shell
+  kubectl describe pv pv-nginx
+  kubectl describe -n rising pvc pvc-nginx
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Name:            pv-nginx
+  Labels:          <none>
+  Annotations:     pv.kubernetes.io/bound-by-controller: yes
+  Finalizers:      [kubernetes.io/pv-protection]
+  StorageClass:    
+  Status:          Bound
+  Claim:           rising/pvc-nginx
+  Reclaim Policy:  Delete
+  Access Modes:    RWO
+  VolumeMode:      Filesystem
+  Capacity:        10Gi
+  Node Affinity:   <none>
+  Message:         
+  Source:
+      Type:              CSI (a Container Storage Interface (CSI) volume source)
+      Driver:            nfs.csi.k8s.io
+      FSType:            
+      VolumeHandle:      nfs-server.rising.svc.cluster.local/share##
+      ReadOnly:          false
+      VolumeAttributes:      server=nfs-server.rising.svc.cluster.local
+                             share=/
+  Events:                <none>
+  Name:          pvc-nginx
+  Namespace:     rising
+  StorageClass:  
+  Status:        Bound
+  Volume:        pv-nginx
+  Labels:        <none>
+  Annotations:   pv.kubernetes.io/bind-completed: yes
+  Finalizers:    [kubernetes.io/pvc-protection]
+  Capacity:      10Gi
+  Access Modes:  RWO
+  VolumeMode:    Filesystem
+  Used By:       <none>
+  Events:        <none>
+  #+end_src
+
+- Create a Pod that uses the PV:
+#+BEGIN_SRC shell
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: nginx-nfs-example
+    namespace: rising
+  spec:
+    containers:
+      - image: nginx
+        name: nginx
+        ports:
+          - containerPort: 80
+            protocol: TCP
+        volumeMounts:
+          - mountPath: /var/www
+            name: pvc-nginx
+            readOnly: false
+    volumes:
+      - name: pvc-nginx
+        persistentVolumeClaim:
+          claimName: pvc-nginx
+  EOF
+#+END_SRC
+
+#+RESULTS:
+#+begin_src shell
+pod/nginx-nfs-example created
+#+end_src
+
+- Verify that the Pod is running and has the volume mounted:
+#+BEGIN_SRC shell
+kubectl wait --for=condition=Ready pod/nginx-nfs-example -n rising
+kubectl exec nginx-nfs-example -- bash -c "findmnt /var/www -o TARGET,SOURCE,FSTYPE"
+#+END_SRC
+
+#+RESULTS:
+#+begin_src shell
+pod/nginx-nfs-example condition met
+TARGET   SOURCE                                FSTYPE
+/var/www nfs-server.rising.svc.cluster.local:/ nfs4
+#+end_src
+
+- Tear everything down:
+#+BEGIN_SRC shell
+  kubectl delete pod nginx-nfs-example -n rising
+  kubectl patch pvc pvc-nginx -p '{"metadata":{"finalizers":null}}' -n rising
+  kubectl patch pv pv-nginx -p '{"metadata":{"finalizers":null}}'
+  kubectl delete pvc pvc-nginx -n rising
+  kubectl delete pv pv-nginx
+#+END_SRC
+
+#+RESULTS:
+#+begin_src shell
+pod "nginx-nfs-example" deleted
+persistentvolumeclaim/pvc-nginx patched
+persistentvolume/pv-nginx patched
+persistentvolumeclaim "pvc-nginx" deleted
+persistentvolume "pv-nginx" deleted
+#+end_src
+
+** Stateful Set log =SS1= - Manage a StatefulSet
+- Create a StatefulSet with an associated Service:
+  #+begin_src sh
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: nginx
+    namespace: rising
+    labels:
+      app: nginx
+  spec:
+    ports:
+    - port: 80
+      name: web
+    clusterIP: None
+    selector:
+      app: nginx
+  ---
+  apiVersion: apps/v1
+  kind: StatefulSet
+  metadata:
+    namespace: rising
+    name: web
+  spec:
+    selector:
+      matchLabels:
+        app: nginx 
+    serviceName: "nginx"
+    replicas: 3 
+    minReadySeconds: 10 
+    template:
+      metadata:
+        labels:
+          app: nginx 
+      spec:
+        terminationGracePeriodSeconds: 10
+        containers:
+        - name: nginx
+          image: nginx:1.19.6
+          ports:
+          - containerPort: 80
+            name: web
+          volumeMounts:
+          - name: www
+            mountPath: /usr/share/nginx/html
+    volumeClaimTemplates:
+    - metadata:
+        name: www
+      spec:
+        storageClassName: nfs-storage
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 200Mi
+  EOF
+  #+end_src
+
+  #+RESULTS:
+  #+begin_src sh
+  service/nginx created
+  statefulset.apps/web created
+  #+end_src
+
+- Wait until the StatefulSet is ready:
+  #+BEGIN_SRC shell
+  kubectl rollout status statefulset web -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  Waiting for 2 pods to be ready...
+  Waiting for 2 pods to be ready...
+  Waiting for 2 pods to be ready...
+  Waiting for 1 pods to be ready...
+  Waiting for 1 pods to be ready...
+  Waiting for 1 pods to be ready...
+  partitioned roll out complete: 3 new pods have been updated...
+  #+end_src
+
+- Inspect the StatefulSet:
+  #+BEGIN_SRC shell
+  kubectl get statefulsets web -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME   READY   AGE
+  web    3/3     61s
+  #+end_src
+
+- Inspect the Pods:
+  #+BEGIN_SRC shell
+  kubectl get pods -l app=nginx -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME    READY   STATUS    RESTARTS   AGE
+  web-0   1/1     Running   0          64s
+  web-1   1/1     Running   0          44s
+  web-2   1/1     Running   0          24s
+  #+end_src
+
+- List the PV and PVCs:
+  #+BEGIN_SRC shell
+  kubectl get pv
+  kubectl get pvc -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM              STORAGECLASS   REASON   AGE
+  pvc-039ed6f6-5414-4350-a2fa-753a71ec4fe7   200Mi      RWO            Delete           Bound    rising/www-web-2   nfs-storage             28s
+  pvc-bbb1988c-85a3-44d1-9e42-56c75be23ea2   200Mi      RWO            Delete           Bound    rising/www-web-1   nfs-storage             48s
+  pvc-bf2283f0-82aa-4406-b547-19ae80300ced   200Mi      RWO            Delete           Bound    rising/www-web-0   nfs-storage             68s
+  NAME        STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+  www-web-0   Bound    pvc-bf2283f0-82aa-4406-b547-19ae80300ced   200Mi      RWO            nfs-storage    68s
+  www-web-1   Bound    pvc-bbb1988c-85a3-44d1-9e42-56c75be23ea2   200Mi      RWO            nfs-storage    48s
+  www-web-2   Bound    pvc-039ed6f6-5414-4350-a2fa-753a71ec4fe7   200Mi      RWO            nfs-storage    28s
+  #+end_src
+
+- Scale up the StatefulSet:
+  #+BEGIN_SRC shell
+  kubectl scale statefulsets web --replicas=4 -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  statefulset.apps/web scaled
+  #+end_src
+
+- Inspect the Pods again:
+  #+BEGIN_SRC shell
+  kubectl rollout status statefulset web -n rising
+  kubectl get pods -l app=nginx -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  partitioned roll out complete: 4 new pods have been updated...
+  NAME    READY   STATUS    RESTARTS   AGE
+  web-0   1/1     Running   0          86s
+  web-1   1/1     Running   0          66s
+  web-2   1/1     Running   0          46s
+  web-3   1/1     Running   0          11s
+  #+end_src
+
+- Scale down to 2:
+  #+BEGIN_SRC shell
+  kubectl scale statefulsets web --replicas=2 -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  statefulset.apps/web scaled
+  #+end_src
+  
+- Inspect the Pods:
+  #+BEGIN_SRC shell
+  kubectl get pods -l app=nginx -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME    READY   STATUS    RESTARTS   AGE
+  web-0   1/1     Running   0          103s
+  web-1   1/1     Running   0          83s
+  #+end_src
+
+- Inspect the PersistentVolumes and the PersistentVolumeClaims:
+  #+BEGIN_SRC shell
+  kubectl get pv
+  kubectl get pvc -n rising
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM              STORAGECLASS   REASON   AGE
+  pvc-039ed6f6-5414-4350-a2fa-753a71ec4fe7   200Mi      RWO            Delete           Bound    rising/www-web-2   nfs-storage             69s
+  pvc-738a62e3-5ef6-4516-8def-4177f89a23e6   200Mi      RWO            Delete           Bound    rising/www-web-3   nfs-storage             34s
+  pvc-bbb1988c-85a3-44d1-9e42-56c75be23ea2   200Mi      RWO            Delete           Bound    rising/www-web-1   nfs-storage             89s
+  pvc-bf2283f0-82aa-4406-b547-19ae80300ced   200Mi      RWO            Delete           Bound    rising/www-web-0   nfs-storage             109s
+  NAME        STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+  www-web-0   Bound    pvc-bf2283f0-82aa-4406-b547-19ae80300ced   200Mi      RWO            nfs-storage    109s
+  www-web-1   Bound    pvc-bbb1988c-85a3-44d1-9e42-56c75be23ea2   200Mi      RWO            nfs-storage    89s
+  www-web-2   Bound    pvc-039ed6f6-5414-4350-a2fa-753a71ec4fe7   200Mi      RWO            nfs-storage    69s
+  www-web-3   Bound    pvc-738a62e3-5ef6-4516-8def-4177f89a23e6   200Mi      RWO            nfs-storage    34s
+  #+end_src
+  
+- Re-scale up to 3, see that the number of PV/PVC is unchanged:
+  #+BEGIN_SRC shell
+  kubectl scale statefulsets web --replicas=3 -n rising
+  kubectl get pv
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  statefulset.apps/web scaled
+  NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM              STORAGECLASS   REASON   AGE
+  pvc-039ed6f6-5414-4350-a2fa-753a71ec4fe7   200Mi      RWO            Delete           Bound    rising/www-web-2   nfs-storage             117s
+  pvc-738a62e3-5ef6-4516-8def-4177f89a23e6   200Mi      RWO            Delete           Bound    rising/www-web-3   nfs-storage             82s
+  pvc-bbb1988c-85a3-44d1-9e42-56c75be23ea2   200Mi      RWO            Delete           Bound    rising/www-web-1   nfs-storage             2m17s
+  pvc-bf2283f0-82aa-4406-b547-19ae80300ced   200Mi      RWO            Delete           Bound    rising/www-web-0   nfs-storage             2m37s
+  #+end_src
+
+- Clean everything up (StatefulSets retain PVCs by default, so we need to delete them first):
+  #+BEGIN_SRC shell
+    kubectl delete statefulset web -n rising
+    kubectl delete service nginx -n rising
+    kubectl delete pvc www-web-0 www-web-1 www-web-2 www-web-3 -n rising
+    for i in {0..3}; do kubectl patch pv $(kubectl get pv | grep www-web-$i | awk '{print $1}') -p '{"metadata":{"finalizers":null}}'; done
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  statefulset.apps "web" deleted
+  service "nginx" deleted
+  persistentvolumeclaim "www-web-0" deleted
+  persistentvolumeclaim "www-web-1" deleted
+  persistentvolumeclaim "www-web-2" deleted
+  persistentvolumeclaim "www-web-3" deleted
+  persistentvolume/pvc-bf2283f0-82aa-4406-b547-19ae80300ced patched
+  persistentvolume/pvc-bbb1988c-85a3-44d1-9e42-56c75be23ea2 patched
+  persistentvolume/pvc-039ed6f6-5414-4350-a2fa-753a71ec4fe7 patched
+  persistentvolume/pvc-738a62e3-5ef6-4516-8def-4177f89a23e6 patched
+  #+end_src
+
+** Storage log =ST4= - Tear down the NFS CSI Driver and its components
+- Delete the StorageClass:
+  #+BEGIN_SRC shell
+  kubectl delete storageclass nfs-storage 
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  storageclass.storage.k8s.io "nfs-storage" deleted
+  #+end_src
+
+- Delete the NFS CSI Driver:
+  #+BEGIN_SRC shell
+  ver="v4.8.0"
+  repo="https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/$ver/deploy"
+  
+  kubectl delete -f $repo/csi-nfs-node.yaml
+  kubectl delete -f $repo/csi-nfs-controller.yaml
+  kubectl delete -f $repo/csi-nfs-driverinfo.yaml
+  kubectl delete -f $repo/rbac-csi-nfs.yaml
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  daemonset.apps "csi-nfs-node" deleted
+  deployment.apps "csi-nfs-controller" deleted
+  csidriver.storage.k8s.io "nfs.csi.k8s.io" deleted
+  serviceaccount "csi-nfs-controller-sa" deleted
+  serviceaccount "csi-nfs-node-sa" deleted
+  clusterrole.rbac.authorization.k8s.io "nfs-external-provisioner-role" deleted
+  clusterrolebinding.rbac.authorization.k8s.io "nfs-csi-provisioner-binding" deleted
+  #+end_src
+
+- Delete the NFS server:
+  #+BEGIN_SRC shell
+  kubectl delete -f https://raw.githubusercontent.com/kubernetes-csi/csi-driver-nfs/master/deploy/example/nfs-provisioner/nfs-server.yaml
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  service "nfs-server" deleted
+  deployment.apps "nfs-server" deleted
+  #+end_src
+
+** AdmissionControl log =AC1= - Create a MutatingWebhookConfiguration and a ValidatingWebhookConfiguration
+- Install Gatekeeper:
+  #+BEGIN_SRC shell
+  kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.16.3/deploy/gatekeeper.yaml 
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  namespace/gatekeeper-system created
+  resourcequota/gatekeeper-critical-pods created
+  customresourcedefinition.apiextensions.k8s.io/assign.mutations.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/assignimage.mutations.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/assignmetadata.mutations.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/configs.config.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/constraintpodstatuses.status.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/constrainttemplatepodstatuses.status.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/constrainttemplates.templates.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/expansiontemplate.expansion.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/expansiontemplatepodstatuses.status.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/modifyset.mutations.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/mutatorpodstatuses.status.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/providers.externaldata.gatekeeper.sh created
+  customresourcedefinition.apiextensions.k8s.io/syncsets.syncset.gatekeeper.sh created
+  serviceaccount/gatekeeper-admin created
+  role.rbac.authorization.k8s.io/gatekeeper-manager-role created
+  clusterrole.rbac.authorization.k8s.io/gatekeeper-manager-role created
+  rolebinding.rbac.authorization.k8s.io/gatekeeper-manager-rolebinding created
+  clusterrolebinding.rbac.authorization.k8s.io/gatekeeper-manager-rolebinding created
+  secret/gatekeeper-webhook-server-cert created
+  service/gatekeeper-webhook-service created
+  deployment.apps/gatekeeper-audit created
+  deployment.apps/gatekeeper-controller-manager created
+  poddisruptionbudget.policy/gatekeeper-controller-manager created
+  mutatingwebhookconfiguration.admissionregistration.k8s.io/gatekeeper-mutating-webhook-configuration created
+  validatingwebhookconfiguration.admissionregistration.k8s.io/gatekeeper-validating-webhook-configuration created
+  #+end_src
+  
+- Wait for the Gatekeeper components to be ready:
+  #+BEGIN_SRC shell
+  kubectl rollout status deployment/gatekeeper-controller-manager -n gatekeeper-system
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  deployment "gatekeeper-controller-manager" successfully rolled out
+  #+end_src
+
+- List the CRDs created by Gatekeeper:
+  #+BEGIN_SRC shell
+  kubectl get crds
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                                                 CREATED AT
+  assign.mutations.gatekeeper.sh                       2024-07-23T15:50:01Z
+  assignimage.mutations.gatekeeper.sh                  2024-07-23T15:50:01Z
+  assignmetadata.mutations.gatekeeper.sh               2024-07-23T15:50:02Z
+  configs.config.gatekeeper.sh                         2024-07-23T15:50:02Z
+  constraintpodstatuses.status.gatekeeper.sh           2024-07-23T15:50:02Z
+  constrainttemplatepodstatuses.status.gatekeeper.sh   2024-07-23T15:50:02Z
+  constrainttemplates.templates.gatekeeper.sh          2024-07-23T15:50:02Z
+  expansiontemplate.expansion.gatekeeper.sh            2024-07-23T15:50:02Z
+  expansiontemplatepodstatuses.status.gatekeeper.sh    2024-07-23T15:50:03Z
+  modifyset.mutations.gatekeeper.sh                    2024-07-23T15:50:03Z
+  mutatorpodstatuses.status.gatekeeper.sh              2024-07-23T15:50:03Z
+  providers.externaldata.gatekeeper.sh                 2024-07-23T15:50:04Z
+  syncsets.syncset.gatekeeper.sh                       2024-07-23T15:50:04Z
+  #+end_src
+
+- Get and list the ValidatingWebhookConfigurations:
+  #+BEGIN_SRC shell
+  kubectl get validatingwebhookconfigurations.admissionregistration.k8s.io -n gatekeeper-system
+  kubectl describe validatingwebhookconfigurations.admissionregistration.k8s.io gatekeeper-validating-webhook-configuration -n gatekeeper-system
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                                          WEBHOOKS   AGE
+  gatekeeper-validating-webhook-configuration   2          30s
+  Name:         gatekeeper-validating-webhook-configuration
+  Namespace:    
+  Labels:       gatekeeper.sh/system=yes
+  Annotations:  <none>
+  API Version:  admissionregistration.k8s.io/v1
+  Kind:         ValidatingWebhookConfiguration
+  Metadata:
+    Creation Timestamp:  2024-07-23T15:50:06Z
+    Generation:          2
+    Resource Version:    9512911
+    UID:                 55701a84-27cd-4e0e-940c-290c2c10cc95
+  Webhooks:
+    Admission Review Versions:
+      v1
+      v1beta1
+    Client Config:
+      Ca Bundle:  LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURNVENDQWhtZ0F3SUJBZ0lCQURBTkJna3Foa2lHOXcwQkFRc0ZBREF0TVJNd0VRWURWUVFLRXdwbllYUmwKYTJWbGNHVnlNUll3RkFZRFZRUURFdzFuWVhSbGEyVmxjR1Z5TFdOaE1CNFhEVEkwTURjeU16RTBOVEF3T0ZvWApEVE0wTURjeU1URTFOVEF3T0Zvd0xURVRNQkVHQTFVRUNoTUtaMkYwWld0bFpYQmxjakVXTUJRR0ExVUVBeE1OCloyRjBaV3RsWlhCbGNpMWpZVENDQVNJd0RRWUpLb1pJaHZjTkFRRUJCUUFEZ2dFUEFEQ0NBUW9DZ2dFQkFNcVQKUHBsRGpBM1N6KzZiQTIzWE5vcXZXVjJNandFRS9RUjZYSitwSG9rQmd1a0FlbG92N1Q0ejZDanFPb2tVb1lBeQpndWpHSW1nQ2lTbW82Y0w4NyszMnJOdEkvVGUwVFVzOFUycUR1K2M4S0wzWVRidHBqV0ptaWlOaVk1THV2RFBnClI3SG55N1oxUmo4cXJoNXRwaDlzNFNXK3lRVXRaOU1yaGh4MDJNekJTVFZoQ2xoN3pTdEVpZUttWnlmVE1kSm4KZnc0bVg3VkRxZDk4a3NUNURpQjNkQnRxYzJBRmtHYnNiWlNCOXZYNWF5b3hhdy9GRkU5KzZRcS9malhDZEpPLwoyR2JiSzM0SmFUZFVOeGw1aWUrUTBaQnVCM1J0Q2JaK3JXMHVOTWlya2Vsb1V3QXU3bnpSbTZBOEJlSGdjdkdnCkF2V2tSa1lMbDJDbzhhNnJ1TnNDQXdFQUFhTmNNRm93RGdZRFZSMFBBUUgvQkFRREFnS2tNQThHQTFVZEV3RUIKL3dRRk1BTUJBZjh3SFFZRFZSME9CQllFRkJqYjV3SmZSSTRTbmk0TU52dGJJVGp1QzBIek1CZ0dBMVVkRVFRUgpNQStDRFdkaGRHVnJaV1Z3WlhJdFkyRXdEUVlKS29aSWh2Y05BUUVMQlFBRGdnRUJBRXJtZ2RsZGdSWTU3aFJiClEwNFZXTCtLaitFUW1mY3o0YXJzQjdrSU5jenUyczBNZ1VrZUZjZko0cHByYVFtUTc2V0ZXYWQ0TWM4YitZRzIKOGh1NXhVQVFCbzNTbnVIeW5OUWkxK1prTE9hOGwvUTVNOGhpdFI2UDhKVGRzNFRrb1crOVNYNDdsZ3FzK2Ftagpxc3VyWWRZVTZib24yUlNHV1ZlSlJrRlNaNXBJRGh1VDJ1YmhDcDVkUWN2LytHcHdhWC9mTnl2SFBGTVVNZmtJCmJCKzhFbWxaL1dEZFhyVHArMENMTGh6bVZaOHFiTE4xeE9YMXEwa3JvMWsrZ2gvQ3Nhb1RCQTNDaFI0UzdNUG8KTUp0YjZyZkt0anhWOEVZaWhVVTdMUHpITWltaGZXQjlsbmN2MDdLSlNoa25lQkluVUxmek8vTnJnc3pMWk40MQpWb0F4SXQ0PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+      Service:
+        Name:        gatekeeper-webhook-service
+        Namespace:   gatekeeper-system
+        Path:        /v1/admit
+        Port:        443
+    Failure Policy:  Ignore
+    Match Policy:    Exact
+    Name:            validation.gatekeeper.sh
+    Namespace Selector:
+      Match Expressions:
+        Key:       admission.gatekeeper.sh/ignore
+        Operator:  DoesNotExist
+        Key:       kubernetes.io/metadata.name
+        Operator:  NotIn
+        Values:
+          gatekeeper-system
+    Object Selector:
+    Rules:
+      API Groups:
+        ,*
+      API Versions:
+        ,*
+      Operations:
+        CREATE
+        UPDATE
+      Resources:
+        ,*
+        pods/ephemeralcontainers
+        pods/exec
+        pods/log
+        pods/eviction
+        pods/portforward
+        pods/proxy
+        pods/attach
+        pods/binding
+        deployments/scale
+        replicasets/scale
+        statefulsets/scale
+        replicationcontrollers/scale
+        services/proxy
+        nodes/proxy
+        services/status
+      Scope:          *
+    Side Effects:     None
+    Timeout Seconds:  3
+    Admission Review Versions:
+      v1
+      v1beta1
+    Client Config:
+      Ca Bundle:  LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURNVENDQWhtZ0F3SUJBZ0lCQURBTkJna3Foa2lHOXcwQkFRc0ZBREF0TVJNd0VRWURWUVFLRXdwbllYUmwKYTJWbGNHVnlNUll3RkFZRFZRUURFdzFuWVhSbGEyVmxjR1Z5TFdOaE1CNFhEVEkwTURjeU16RTBOVEF3T0ZvWApEVE0wTURjeU1URTFOVEF3T0Zvd0xURVRNQkVHQTFVRUNoTUtaMkYwWld0bFpYQmxjakVXTUJRR0ExVUVBeE1OCloyRjBaV3RsWlhCbGNpMWpZVENDQVNJd0RRWUpLb1pJaHZjTkFRRUJCUUFEZ2dFUEFEQ0NBUW9DZ2dFQkFNcVQKUHBsRGpBM1N6KzZiQTIzWE5vcXZXVjJNandFRS9RUjZYSitwSG9rQmd1a0FlbG92N1Q0ejZDanFPb2tVb1lBeQpndWpHSW1nQ2lTbW82Y0w4NyszMnJOdEkvVGUwVFVzOFUycUR1K2M4S0wzWVRidHBqV0ptaWlOaVk1THV2RFBnClI3SG55N1oxUmo4cXJoNXRwaDlzNFNXK3lRVXRaOU1yaGh4MDJNekJTVFZoQ2xoN3pTdEVpZUttWnlmVE1kSm4KZnc0bVg3VkRxZDk4a3NUNURpQjNkQnRxYzJBRmtHYnNiWlNCOXZYNWF5b3hhdy9GRkU5KzZRcS9malhDZEpPLwoyR2JiSzM0SmFUZFVOeGw1aWUrUTBaQnVCM1J0Q2JaK3JXMHVOTWlya2Vsb1V3QXU3bnpSbTZBOEJlSGdjdkdnCkF2V2tSa1lMbDJDbzhhNnJ1TnNDQXdFQUFhTmNNRm93RGdZRFZSMFBBUUgvQkFRREFnS2tNQThHQTFVZEV3RUIKL3dRRk1BTUJBZjh3SFFZRFZSME9CQllFRkJqYjV3SmZSSTRTbmk0TU52dGJJVGp1QzBIek1CZ0dBMVVkRVFRUgpNQStDRFdkaGRHVnJaV1Z3WlhJdFkyRXdEUVlKS29aSWh2Y05BUUVMQlFBRGdnRUJBRXJtZ2RsZGdSWTU3aFJiClEwNFZXTCtLaitFUW1mY3o0YXJzQjdrSU5jenUyczBNZ1VrZUZjZko0cHByYVFtUTc2V0ZXYWQ0TWM4YitZRzIKOGh1NXhVQVFCbzNTbnVIeW5OUWkxK1prTE9hOGwvUTVNOGhpdFI2UDhKVGRzNFRrb1crOVNYNDdsZ3FzK2Ftagpxc3VyWWRZVTZib24yUlNHV1ZlSlJrRlNaNXBJRGh1VDJ1YmhDcDVkUWN2LytHcHdhWC9mTnl2SFBGTVVNZmtJCmJCKzhFbWxaL1dEZFhyVHArMENMTGh6bVZaOHFiTE4xeE9YMXEwa3JvMWsrZ2gvQ3Nhb1RCQTNDaFI0UzdNUG8KTUp0YjZyZkt0anhWOEVZaWhVVTdMUHpITWltaGZXQjlsbmN2MDdLSlNoa25lQkluVUxmek8vTnJnc3pMWk40MQpWb0F4SXQ0PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+      Service:
+        Name:        gatekeeper-webhook-service
+        Namespace:   gatekeeper-system
+        Path:        /v1/admitlabel
+        Port:        443
+    Failure Policy:  Fail
+    Match Policy:    Exact
+    Name:            check-ignore-label.gatekeeper.sh
+    Namespace Selector:
+      Match Expressions:
+        Key:       kubernetes.io/metadata.name
+        Operator:  NotIn
+        Values:
+          gatekeeper-system
+    Object Selector:
+    Rules:
+      API Groups:
+
+      API Versions:
+        ,*
+      Operations:
+        CREATE
+        UPDATE
+      Resources:
+        namespaces
+      Scope:          *
+    Side Effects:     None
+    Timeout Seconds:  3
+  Events:             <none>
+  #+end_src
+
+- Get and list the MutatingWebhookConfigurations:
+  #+BEGIN_SRC shell
+  kubectl get mutatingwebhookconfigurations.admissionregistration.k8s.io -n gatekeeper-system
+  kubectl describe mutatingwebhookconfigurations.admissionregistration.k8s.io gatekeeper-mutating-webhook-configuration -n gatekeeper-system
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                                        WEBHOOKS   AGE
+  gatekeeper-mutating-webhook-configuration   1          38s
+  Name:         gatekeeper-mutating-webhook-configuration
+  Namespace:    
+  Labels:       gatekeeper.sh/system=yes
+  Annotations:  <none>
+  API Version:  admissionregistration.k8s.io/v1
+  Kind:         MutatingWebhookConfiguration
+  Metadata:
+    Creation Timestamp:  2024-07-23T15:50:06Z
+    Generation:          2
+    Resource Version:    9512912
+    UID:                 2a90c916-3b69-4b3e-85cd-e316f1392523
+  Webhooks:
+    Admission Review Versions:
+      v1
+      v1beta1
+    Client Config:
+      Ca Bundle:  LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURNVENDQWhtZ0F3SUJBZ0lCQURBTkJna3Foa2lHOXcwQkFRc0ZBREF0TVJNd0VRWURWUVFLRXdwbllYUmwKYTJWbGNHVnlNUll3RkFZRFZRUURFdzFuWVhSbGEyVmxjR1Z5TFdOaE1CNFhEVEkwTURjeU16RTBOVEF3T0ZvWApEVE0wTURjeU1URTFOVEF3T0Zvd0xURVRNQkVHQTFVRUNoTUtaMkYwWld0bFpYQmxjakVXTUJRR0ExVUVBeE1OCloyRjBaV3RsWlhCbGNpMWpZVENDQVNJd0RRWUpLb1pJaHZjTkFRRUJCUUFEZ2dFUEFEQ0NBUW9DZ2dFQkFNcVQKUHBsRGpBM1N6KzZiQTIzWE5vcXZXVjJNandFRS9RUjZYSitwSG9rQmd1a0FlbG92N1Q0ejZDanFPb2tVb1lBeQpndWpHSW1nQ2lTbW82Y0w4NyszMnJOdEkvVGUwVFVzOFUycUR1K2M4S0wzWVRidHBqV0ptaWlOaVk1THV2RFBnClI3SG55N1oxUmo4cXJoNXRwaDlzNFNXK3lRVXRaOU1yaGh4MDJNekJTVFZoQ2xoN3pTdEVpZUttWnlmVE1kSm4KZnc0bVg3VkRxZDk4a3NUNURpQjNkQnRxYzJBRmtHYnNiWlNCOXZYNWF5b3hhdy9GRkU5KzZRcS9malhDZEpPLwoyR2JiSzM0SmFUZFVOeGw1aWUrUTBaQnVCM1J0Q2JaK3JXMHVOTWlya2Vsb1V3QXU3bnpSbTZBOEJlSGdjdkdnCkF2V2tSa1lMbDJDbzhhNnJ1TnNDQXdFQUFhTmNNRm93RGdZRFZSMFBBUUgvQkFRREFnS2tNQThHQTFVZEV3RUIKL3dRRk1BTUJBZjh3SFFZRFZSME9CQllFRkJqYjV3SmZSSTRTbmk0TU52dGJJVGp1QzBIek1CZ0dBMVVkRVFRUgpNQStDRFdkaGRHVnJaV1Z3WlhJdFkyRXdEUVlKS29aSWh2Y05BUUVMQlFBRGdnRUJBRXJtZ2RsZGdSWTU3aFJiClEwNFZXTCtLaitFUW1mY3o0YXJzQjdrSU5jenUyczBNZ1VrZUZjZko0cHByYVFtUTc2V0ZXYWQ0TWM4YitZRzIKOGh1NXhVQVFCbzNTbnVIeW5OUWkxK1prTE9hOGwvUTVNOGhpdFI2UDhKVGRzNFRrb1crOVNYNDdsZ3FzK2Ftagpxc3VyWWRZVTZib24yUlNHV1ZlSlJrRlNaNXBJRGh1VDJ1YmhDcDVkUWN2LytHcHdhWC9mTnl2SFBGTVVNZmtJCmJCKzhFbWxaL1dEZFhyVHArMENMTGh6bVZaOHFiTE4xeE9YMXEwa3JvMWsrZ2gvQ3Nhb1RCQTNDaFI0UzdNUG8KTUp0YjZyZkt0anhWOEVZaWhVVTdMUHpITWltaGZXQjlsbmN2MDdLSlNoa25lQkluVUxmek8vTnJnc3pMWk40MQpWb0F4SXQ0PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+      Service:
+        Name:        gatekeeper-webhook-service
+        Namespace:   gatekeeper-system
+        Path:        /v1/mutate
+        Port:        443
+    Failure Policy:  Ignore
+    Match Policy:    Exact
+    Name:            mutation.gatekeeper.sh
+    Namespace Selector:
+      Match Expressions:
+        Key:       admission.gatekeeper.sh/ignore
+        Operator:  DoesNotExist
+        Key:       kubernetes.io/metadata.name
+        Operator:  NotIn
+        Values:
+          gatekeeper-system
+    Object Selector:
+    Reinvocation Policy:  Never
+    Rules:
+      API Groups:
+        ,*
+      API Versions:
+        ,*
+      Operations:
+        CREATE
+        UPDATE
+      Resources:
+        ,*
+      Scope:          *
+    Side Effects:     None
+    Timeout Seconds:  1
+  Events:             <none>
+  #+end_src
+  
+- Get and list the PodDisruptionBudgets:
+  #+BEGIN_SRC shell
+  kubectl get poddisruptionbudgets.policy -n gatekeeper-system
+  kubectl describe poddisruptionbudgets.policy gatekeeper-controller-manager -n gatekeeper-system
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  NAME                            MIN AVAILABLE   MAX UNAVAILABLE   ALLOWED DISRUPTIONS   AGE
+  gatekeeper-controller-manager   1               N/A               2                     45s
+  Name:           gatekeeper-controller-manager
+  Namespace:      gatekeeper-system
+  Min available:  1
+  Selector:       control-plane=controller-manager,gatekeeper.sh/operation=webhook,gatekeeper.sh/system=yes
+  Status:
+      Allowed disruptions:  2
+      Current:              3
+      Desired:              1
+      Total:                3
+  Events:                   <none>
+  #+end_src
+
+#+BEGIN_QUOTE
+Creating and managing OPA policies is out of scope for this document.
+#+END_QUOTE
+
+- Uninstall Gatekeeper:
+  #+BEGIN_SRC shell
+  kubectl delete -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.16.3/deploy/gatekeeper.yaml
+  #+END_SRC
+
+  #+RESULTS:
+  #+begin_src shell
+  namespace "gatekeeper-system" deleted
+  resourcequota "gatekeeper-critical-pods" deleted
+  customresourcedefinition.apiextensions.k8s.io "assign.mutations.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "assignimage.mutations.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "assignmetadata.mutations.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "configs.config.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "constraintpodstatuses.status.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "constrainttemplatepodstatuses.status.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "constrainttemplates.templates.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "expansiontemplate.expansion.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "expansiontemplatepodstatuses.status.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "modifyset.mutations.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "mutatorpodstatuses.status.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "providers.externaldata.gatekeeper.sh" deleted
+  customresourcedefinition.apiextensions.k8s.io "syncsets.syncset.gatekeeper.sh" deleted
+  serviceaccount "gatekeeper-admin" deleted
+  role.rbac.authorization.k8s.io "gatekeeper-manager-role" deleted
+  clusterrole.rbac.authorization.k8s.io "gatekeeper-manager-role" deleted
+  rolebinding.rbac.authorization.k8s.io "gatekeeper-manager-rolebinding" deleted
+  clusterrolebinding.rbac.authorization.k8s.io "gatekeeper-manager-rolebinding" deleted
+  secret "gatekeeper-webhook-server-cert" deleted
+  service "gatekeeper-webhook-service" deleted
+  deployment.apps "gatekeeper-audit" deleted
+  deployment.apps "gatekeeper-controller-manager" deleted
+  poddisruptionbudget.policy "gatekeeper-controller-manager" deleted
+  mutatingwebhookconfiguration.admissionregistration.k8s.io "gatekeeper-mutating-webhook-configuration" deleted
+  validatingwebhookconfiguration.admissionregistration.k8s.io "gatekeeper-validating-webhook-configuration" deleted
+  #+end_src
+
+

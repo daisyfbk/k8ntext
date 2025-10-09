@@ -26,7 +26,7 @@ def plot_loss(losses: list) -> None:
     if any('val_loss' not in loss for loss in losses):
         log.error('No validation loss found, skipping plotting losses')
         return
-    
+
     max_length = max(max(len(loss['loss']), len(loss['val_loss'])) for loss in losses)
 
     all_losses = []
@@ -221,7 +221,7 @@ def plot_error_statistics(error_statistics: dict) -> None:
     labels = list(error_statistics['errors'].keys())
 
     for i, (label, indices) in enumerate(error_statistics['errors'].items()):
-        plt.scatter(indices, [i]*len(indices), c=colors[i], label=label, alpha=0.6)
+        plt.scatter(indices, [i] * len(indices), c=colors[i], label=label, alpha=0.6)
 
     plt.legend()
     plt.xlabel('Sequence Index')
@@ -241,12 +241,12 @@ def plot_error_statistics(error_statistics: dict) -> None:
         sorted_sequence = sorted(sequence.items(), key=lambda x: -x[1])
         correct_label_position = 0
         while correct_label_position < len(sorted_sequence) - 1 \
-            and sorted_sequence[correct_label_position][0] != original:
+                and sorted_sequence[correct_label_position][0] != original:
             correct_label_position += 1
 
         if sorted_sequence[correct_label_position][0] != original:
             raise ValueError(f'Original label {original} not found in sequence {sorted_sequence}')
-        
+
         # Store data for plotting
         indecision_ids.append(indecision_id)
         correct_label_positions.append(correct_label_position)

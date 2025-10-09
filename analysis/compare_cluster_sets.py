@@ -19,8 +19,8 @@ def load_uuid_clusters(filename: str) -> Tuple[Dict[str, str], Dict[str, List[st
             #    continue
             #### TEST
             #### TEST 2
-            if 'cplabel' in entry and entry['cplabel']:
-                continue
+            #if 'cplabel' in entry and entry['cplabel']:
+            #    continue
             if 'UUID' in entry and 'auditID' in entry:
                 if entry['UUID'] == '1010':
                     continue
@@ -40,6 +40,9 @@ def plot_cluster_sizes(gt_sizes: List[int], pred_sizes: List[int]):
     # Remove all size 1s for better visualization
     # gt_sizes = [size for size in gt_sizes if size > 1]
     # pred_sizes = [size for size in pred_sizes if size > 1]
+
+    print(sorted(gt_sizes, reverse=True)[:20])
+    print(sorted(pred_sizes, reverse=True)[:20])
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
     
@@ -186,6 +189,7 @@ def main():
     # Calculate mapping accuracy
     accuracy = calculate_mapping_accuracy(gt_clusters_filt, pred_clusters_filt,
                                             gt_inverse, pred_inverse)
+                    
     print(f"\nMapping accuracy: {accuracy:.3f}")
     
 
