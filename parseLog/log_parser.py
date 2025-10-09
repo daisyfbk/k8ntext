@@ -444,7 +444,7 @@ def label_whitelisted_log_line(whitelisted_lines):
 
 
 def parse(mode: ParsingMode, input_filename: Optional[str] = None):
-    config.read('config.ini')
+    config.read('config/config.ini')
 
     if input_filename is None:
         raise ValueError("Input filename is required")

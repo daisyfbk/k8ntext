@@ -197,21 +197,23 @@ def generate_tikz():
 
 \begin{document}
 
-\definecolor{myblue}{HTML}{3070c8}
-\definecolor{mygreen}{HTML}{228833}
-\definecolor{myred}{HTML}{EE6677}
+\definecolor{plotblue}{HTML}{3070c8}
+\definecolor{plotgreen}{HTML}{228833}
+\definecolor{plotred}{HTML}{EE6677}
 
 \begin{tikzpicture}
 \begin{axis}[
-    xbar,
-    width=0.9\linewidth,
-    height=10cm,
+    width=0.5\linewidth,
+    xmajorgrids=true,
+    major grid style={dotted, very thick},
     xlabel={F1 score},
     xmin=0.97, xmax=1.0,
     xtick={0.97, 0.975, 0.98, 0.985, 0.99, 0.995, 1.0},
     xticklabel style={
         /pgf/number format/fixed,
         /pgf/number format/precision=3,
+        rotate=45,
+        anchor=east,
     },"""
             
     yticks = ", ".join([str(i) for i in range(len(features))])
@@ -220,20 +222,24 @@ def generate_tikz():
     tikz_middle = f"""
     ytick={{{yticks}}},
     yticklabels={{{ylabels}}},
-    y dir=reverse,
-    bar width=8pt,
+    % y dir=reverse,
+    bar width=5pt,
     enlarge y limits=0.05,
-    nodes near coords,
-    nodes near coords align={{horizontal}},
-    every node near coord/.append style={{
-        %font=\\tiny,
-        /pgf/number format/precision=4,
-        /pgf/number format/fixed,
+    """
+    tikz_middle += r"""
+    nodes near coords={\pgfmathprintnumber[fixed,precision=4]{\pgfplotspointmeta}},
+    point meta=x,  % Use x-value (F1 score) for labels instead of y-value (index)
+    nodes near coords align={horizontal},
+    every node near coord/.append style={
+        font=\footnotesize,
         xshift=3pt
-    }},
-    title={{F1 score with Different Missing Features}},
-    %title style={{yshift=5pt}},
-    xticklabel style={{rotate=45, anchor=east}},
+    },
+    title={F1 score with Different Missing Features},
+    %title style={yshift=5pt},
+    tick label style={font=\small},
+    label style={font=\small},
+    ytick pos=left,
+    %xticklabel style={rotate=45, anchor=east, align=right, text width=6cm},
 ]
 
 """
@@ -246,13 +252,10 @@ def generate_tikz():
     for i, (f, p) in enumerate(sorted_data[:5]):
         # Format as (value, index)
         top5_coords.append(f"({p:.4f},{i})")
-    
-    top5_coords_str = "\n    ".join(top5_coords)
-    tikz_plots += f"""% Top 5 bars (blue)
-\\addplot[fill=myblue, draw=none] coordinates {{
-    {top5_coords_str}
+        tikz_plots += f"""% {f} (blue)
+\\addplot[xbar, fill=plotblue, draw=none] coordinates {{
+    ({p:.4f},{i})
 }};
-
 """
     
 #    # Spacer (no need for symbolic coordinates now, just use the index)
@@ -261,11 +264,21 @@ def generate_tikz():
 # \\addplot[draw=none, forget plot] coordinates {{(0,{spacer_index})}}; 
 #"""
     
+    # All features (red)
+    all_feat_index = 5 # 8
+    all_feat_data = [item for item in sorted_data if item[0] == "All features"][0]
+    tikz_plots += f"""% All features (red)
+\\addplot[xbar, fill=plotred, draw=none] coordinates {{
+    ({all_feat_data[1]:.4f},{all_feat_index})
+}};
+
+"""
+    
     # Average (green)
-    avg_index = 5 # 6
+    avg_index = 6 # 6
     avg_data = [item for item in sorted_data if item[0] == "Average"][0]
     tikz_plots += f"""% Average (green)
-\\addplot[fill=mygreen, draw=none] coordinates {{
+\\addplot[xbar, fill=plotgreen, draw=none] coordinates {{
     ({avg_data[1]:.4f},{avg_index})
 }};
 
@@ -278,15 +291,6 @@ def generate_tikz():
 # 
 # """
     
-    # All features (red)
-    all_feat_index = 6 # 8
-    all_feat_data = [item for item in sorted_data if item[0] == "All features"][0]
-    tikz_plots += f"""% All features (red)
-\\addplot[fill=myred, draw=none] coordinates {{
-    ({all_feat_data[1]:.4f},{all_feat_index})
-}};
-
-"""
     
 #     # Spacer
 #     spacer_index3 = 9
@@ -299,15 +303,13 @@ def generate_tikz():
     bottom5_coords = []
     for i in range(7, 12): # 10, 15):
         # Map to the correct sorted_data index (last 5 items)
-        data_index = i - 10 - 5 + len(sorted_data)
+        data_index = i - 7 + len(sorted_data) - 5
         f, p = sorted_data[data_index]
         # Format as (value, index)
         bottom5_coords.append(f"({p:.4f},{i})")
-    
-    bottom5_coords_str = "\n    ".join(bottom5_coords)
-    tikz_plots += f"""% Bottom 5 bars (blue)
-\\addplot[fill=myblue, draw=none] coordinates {{
-    {bottom5_coords_str}
+        tikz_plots += f"""% {f} (blue)
+\\addplot[xbar, fill=plotblue, draw=none] coordinates {{
+    ({p:.4f},{i})
 }};
 
 """

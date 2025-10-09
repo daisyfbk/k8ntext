@@ -1,8 +1,29 @@
 #!/bin/bash
 
-LOGROTATE_FILE="$HOME/logrotate_audit"
-AUDIT_FOLDER="$HOME/audit-folder"
-DATASET_FOLDER="$HOME/shared-audit-dataset"
+BASE_FOLDER=$(dirname "$0")
+
+LOGROTATE_FILE="$BASE_FOLDER/logrotate_audit"
+AUDIT_FOLDER="$BASE_FOLDER/audit-folder"
+DATASET_FOLDER="$BASE_FOLDER/shared-audit-dataset"
+
+if ! commmand -v logrotate &> /dev/null; then
+    echo "logrotate could not be found, please install it."
+    exit 1
+fi
+
+if [[ ! -f "$LOGROTATE_FILE" ]]; then
+    echo "logrotate configuration file $LOGROTATE_FILE not found."
+    exit 1
+fi
+
+if [[ ! -d "$AUDIT_FOLDER" ]]; then
+    echo "Audit folder $AUDIT_FOLDER not found. Please create it and make sure audit logs are written there."
+fi
+
+if [[ ! -d "$DATASET_FOLDER" ]]; then
+    echo "Dataset folder $DATASET_FOLDER not found. Please create it."
+    exit 1
+fi
 
 echo "Make sure you are in the same folder as $LOGROTATE_FILE"
 echo "Press any key to continue when you want to start recording..."

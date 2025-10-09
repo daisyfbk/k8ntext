@@ -9,6 +9,10 @@ import math
 import datetime
 from log_parser import get_informative_dict
 from clusterizer_cp import is_control_plane_action
+import parameters as pm
+import logging as log
+
+from support.log import initialize_log
 
 ClusterDict = dict[str, list[int]]
 
@@ -79,7 +83,7 @@ def create_time_windows(lines: list[dict],
         line: dict = lines[idx]
         timestamp = get_timestamp_seconds(line)
         if timestamp is None:
-            print(
+            log.warning(
                 f"Warning: Line {idx} missing timestamp key '{TIMESTAMP_KEY}'. Skipping.")
             continue
 
@@ -115,8 +119,7 @@ def create_time_windows(lines: list[dict],
     if len(windows) == 0:
         raise Exception("Error: No windows created, something went wrong.")
 
-    # print(f"Created {len(windows)} time windows for {len(indices)} lines")
-    # print(windows)
+    log.debug(f"Created {len(windows)} time windows for {len(indices)} lines")
 
     return windows
 
@@ -460,16 +463,15 @@ def clusterize_labels(lines: list[dict],
     )
 
     # Check if no triggering actions in this label
-    # if len(tractionlist) == 0:
-    #     print(
-    #         f"Warning: No triggering actions found for label '{lines[indices[0]][label_key]}' with {len(indices)} lines.")
+    if len(tractionlist) == 0:
+        log.debug(
+             f"No triggering actions found for label '{lines[indices[0]][label_key]}' with {len(indices)} lines.")
 
     # Iterate through windows and assign lines to clusters
     for window in windows:
         start_idx, end_idx = window
         window_lines = [idx for idx in indices if start_idx <= idx <= end_idx]
-        # print(
-        #     f"Processing window from line {start_idx} to {end_idx} with {len(window_lines)} lines")
+        log.debug(f"Processing window from line {start_idx} to {end_idx} with {len(window_lines)} lines")
         if len(window_lines) == 0:
             raise Exception(
                 f"Warning: Empty window from {start_idx} to {end_idx}. What the heck?")
@@ -486,17 +488,16 @@ def clusterize_labels(lines: list[dict],
         for traction_idx in tractionlist:
             if start_idx <= traction_idx <= end_idx:
                 uuid = get_next_uuid(is_control_plane_action(get_informative_dict(lines[traction_idx])) is not None and merge_control_plane)
-                # print(f"Found triggering action at line {traction_idx} in window from {start_idx} to {end_idx}, assigning UUID {uuid}")
-                # print(f"Informative dict: {get_informative_dict(lines[traction_idx])}")
+                log.debug(f"Found triggering action at line {traction_idx} in window from {start_idx} to {end_idx}, assigning UUID {uuid}")
+                # (f"Informative dict: {get_informative_dict(lines[traction_idx])}")
                 lines[traction_idx][UUID] = uuid
                 candidate_clusters[uuid] = [traction_idx]
 
-        # if len(candidate_clusters) == 0:
-            # print(
-                # f"No triggering actions found in window from {start_idx} to {end_idx}")
-        # else:
-            # print(
-                # f"Found {len(candidate_clusters)} triggering actions in window from {start_idx} to {end_idx}")
+        if len(candidate_clusters) == 0:
+            log.debug(
+                f"No triggering actions found in window from {start_idx} to {end_idx}")
+        else:
+            log.debug(f"Found {len(candidate_clusters)} triggering actions in window from {start_idx} to {end_idx}")
         
         # Send the tentative clusters and the lines for aggregation
         result_clusters = clusterize_main_logic(
@@ -506,7 +507,7 @@ def clusterize_labels(lines: list[dict],
             max_cluster_size=max_cluster_size,
             merge_control_plane=merge_control_plane
         )
-        # print(f"Resulted in {len(result_clusters)} clusters from this window")
+        log.debug(f"Resulted in {len(result_clusters)} clusters from this window")
 
         # Merge resulting clusters into the main set
         # Check for UUID collisions (happens only if control plane merged)
@@ -516,7 +517,7 @@ def clusterize_labels(lines: list[dict],
             else:
                 clusters[uuid].extend(result_clusters[uuid])
         
-    print(f"Label: '{lines[indices[0]][label_key]}' clustered into {len(clusters)} clusters. Triggering actions: {len(tractionlist)}. Lines: {len(indices)}")
+    log.info(f"Label: '{lines[indices[0]][label_key]}' clustered into {len(clusters)} clusters. Triggering actions: {len(tractionlist)}. Lines: {len(indices)}")
     # input()
     return clusters
 
@@ -531,7 +532,7 @@ def clusterize_log(lines: list[dict],
         line = lines[i]
         label = line.get(label_key, None)
         if label is None:
-            # print(f"Skipping line {i} due to missing label key '{label_key}'")
+            log.error(f"Skipping line {i} due to missing label key '{label_key}'")
             continue
         if label not in label_clusters:
             label_clusters[label] = []
@@ -541,8 +542,8 @@ def clusterize_log(lines: list[dict],
                 triggering_actions[label] = []
             triggering_actions[label].append(i)
 
-    print(f"Total label_clusters formed: {len(label_clusters)}")
-    print(
+    log.info(f"Total label_clusters formed: {len(label_clusters)}")
+    log.info(
         f"Total triggering_actions found: {sum([len(triggering_actions[k]) for k in triggering_actions])}")
 
     final_clusters: ClusterDict = {}
@@ -555,18 +556,18 @@ def clusterize_log(lines: list[dict],
             final_clusters[uuid] = [indices[0]]
             continue
         if len(indices) == 0:
-            print(f"Warning: Empty cluster for label {label}. What the heck?")
+            log.fatal(f"Empty cluster for label {label}. This should not happen.")
             exit(1)
 
         tractionlist = triggering_actions.get(label, [])
-        # if len(tractionlist) == 0:
-        #     print(
-        #         f"Warning: No triggering actions found for label '{label}' with {len(indices)} lines.")
+        if len(tractionlist) == 0:
+            log.debug(
+                f"Warning: No triggering actions found for label '{label}' with {len(indices)} lines.")
 
         if len(tractionlist) == len(indices):
             # Health check to see if all the lines are triggering actions
             if set(tractionlist) != set(indices):
-                print(
+                log.fatal(
                     f"Warning: Mismatch in tractionlist and indices for label '{label}'")
                 exit(1)
             # All lines are triggering actions, we can cluster them trivially
@@ -606,7 +607,7 @@ def clusterize_log(lines: list[dict],
                 final_clusters[uuid].extend(output_clusters[uuid])
 
 
-    print(f"Total final clusters formed: {len(final_clusters)}")
+    log.info(f"Total overall clusters formed: {len(final_clusters)}")
     # Further processing can be done here for larger clusters
     # For example, checking for triggering actions
     # for idx in indices:
@@ -628,9 +629,11 @@ def main(args: argparse.Namespace) -> None:
         args (argparse.Namespace): Parsed command-line arguments
             from an argparse.ArgumentParser instance.
     """
+    initialize_log(log_level=args.log_level, application_type="cluster")
+
     log_file = args.file
     if not log_file:
-        print("Error: Log file is required.")
+        log.fatal("Error: Log file is required.")
         exit(1)
 
     lines: Sequence[dict[str, str]] = []
@@ -639,15 +642,40 @@ def main(args: argparse.Namespace) -> None:
         for i in range(len(read)):
             lines.append(json.loads(read[i]))
 
-        print(f"Processing log file: {log_file}")
+        log.info(f"Processing log file: {log_file}")
 
     if lines is None:
-        print("No lines read from the log file.")
+        log.fatal("No lines read from the log file.")
         exit(1)
 
     clusters: ClusterDict = clusterize_log(lines,
                                            label_key=args.key,
                                            merge_control_plane=args.merge_control_plane)
+    
+    # Output the full original log with assigned UUIDs if requested
+    if True: # args.output_full_log_with_uuid:
+        output_file = pm.OUT_FOLDER + "clusterized-log.json"
+        # output_file = args.output_file if args.output_file else log_file + ".with_uuid"
+        with open(output_file, 'w') as f:
+            for line in lines:
+                f.write(json.dumps(line) + '\n')
+        log.info(f"Log with UUIDs written to {output_file}")
+
+    # Output clusters information in JSON format if requested
+    if True: # args.output_clusters:
+        output_cluster_file = pm.OUT_FOLDER + "clusters.json"
+        with open(output_cluster_file, 'w') as f:
+            for uuid, indices in clusters.items():
+                json.dump(
+                {
+                    'uuid': uuid,
+                    'num_lines': len(indices),
+                    'label': lines[indices[0]].get(args.key, 'unknown') if len(indices) > 0 else 'unknown',
+                    'indices': indices,
+                    'lines': [get_informative_dict(lines[idx]) for idx in indices],
+                }, f, separators=(',', ':'))
+                f.write('\n')
+        log.info(f"Clusters information written to {output_cluster_file}")
 
 
 if __name__ == "__main__":
@@ -655,16 +683,20 @@ if __name__ == "__main__":
         prog='parseLog',
         description='This program clusterizes log files based on their structure and content.')
 
+    parser.add_argument('-l', '--log-level', help='Logging level', default='DEBUG')
     parser.add_argument('-f', '--file', required=True,
                         help='The log input file')
-    parser.add_argument(
-        '-k', '--key', help='The key to use as label', default=DEFAULT_LABEL_KEY)
-    parser.add_argument('-d', '--output-full-log-with-uuid', action='store_true',
-                        help='Output the full original log with assigned UUIDs', default=False)
+    parser.add_argument('-k', '--key', help='The key to use as label', default=DEFAULT_LABEL_KEY)
+    # parser.add_argument('-O', '--output-full-log-with-uuid', action='store_true',
+    #                     help='Whether to output the full original log with assigned UUIDs', default=False)
+    # parser.add_argument('-o', '--output-file', 
+    #                     help='Output file for the log with UUIDs')
+    # parser.add_argument('-A', '--output-clusters', 
+    #                     help='Whether to output clusters information in JSON format', action='store_true', default=False)
+    # parser.add_argument('-a', '--output-cluster-file',
+    #                     help='Output file for the clusters information in JSON format')
     parser.add_argument('-C', '--merge-control-plane', action='store_true',
                         help='Merge control plane actions into a single cluster', default=False)
-    # parser.add_argument('--cluster-timeout', type=int, help='Maximum time in seconds before splitting a cluster', default=DEFAULT_CLUSTER_TIMEOUT_SECONDS)
-    # parser.add_argument('--cluster-max-lines', type=int, help='Maximum number of lines in a cluster before splitting it', default=DEFAULT_CLUSTER_MAX_LINES)
     parsed_args = parser.parse_args()
 
     main(parsed_args)
