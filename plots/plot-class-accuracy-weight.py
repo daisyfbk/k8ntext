@@ -14,7 +14,7 @@ palette = {
     'grey': '#BBBBBB'
 }
 
-with open('/Users/matte/Library/CloudStorage/OneDrive-FondazioneBrunoKessler/projects/k8ntext/results/1_paper_tests/1_window_size/20240919_063020.311060__mfranzil-gpu/metrics.json') as f:
+with open('../models/1_paper_tests/1_window_size/20240919_063020.311060__mfranzil-gpu/metrics.json') as f:
     j = json.load(f)
     per_class_metrics = []
     for attempt in j:
@@ -89,4 +89,64 @@ plt.suptitle('Accuracy of each class against its weight')
 plt.tight_layout(rect=[0, 0, 1, 0.95])
 plt.savefig('class-accuracy.png')
 
-#print(condensed)
+# Generate TikZ code
+with open("class-accuracy.tex", "w") as f:
+    f.write(r"""% Class accuracy TikZ plot
+\documentclass{standalone}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usepackage{xcolor}
+\pgfplotsset{compat=1.18}
+
+% Define exact colors as requested
+\definecolor{plotblue}{HTML}{3070c8}
+\definecolor{plotred}{HTML}{EE6677}
+
+\begin{document}
+\begin{tikzpicture}
+\begin{axis}[
+    width=\linewidth,
+    height=4cm,
+    grid=major,
+    grid style={dashed, gray!30},
+    xlabel={Weight (\# of samples)},
+    ylabel={Accuracy},
+    title={Accuracy of each class against its weight},
+    xmode=log,
+    log basis x=10,
+    xmin=1, xmax=1e5,
+    ymin=0.95, ymax=1.005,
+    legend pos=south west,
+    legend style={font=\footnotesize}
+]
+
+% High weight or low accuracy points (red)
+\addplot[only marks, mark=*, mark size=1.5pt, color=plotred] coordinates {
+""")
+    
+    # Add red points
+    for i in range(len(x)):
+        if x[i] > 3 * 10**3 or y[i] < 0.96:
+            f.write(f"    ({x[i]}, {y[i]})\n")
+    
+    f.write(r"""
+};
+% \addlegendentry{Outliers}
+
+% Regular points (blue)
+\addplot[only marks, mark=*, mark size=1.5pt, color=plotblue] coordinates {
+""")
+    
+    # Add blue points
+    for i in range(len(x)):
+        if not (x[i] > 3 * 10**3 or y[i] < 0.96):
+            f.write(f"    ({x[i]}, {y[i]})\n")
+    
+    f.write(r"""
+};
+% \addlegendentry{Regular classes}
+
+\end{axis}
+\end{tikzpicture}
+\end{document}
+""")

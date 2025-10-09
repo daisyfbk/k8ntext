@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
+import matplotlib.colors as mcolors
 
 # Extract data from the table
 data = [
@@ -33,25 +33,53 @@ for d in data:
     tr_va_idx = tr_va_values.index(d["Tr/Va"])
     f1_matrix[tr_te_idx, tr_va_idx] = d["F1"]
 
-# luminance-based palette
-import matplotlib.colors as mcolors
+# Create a custom colormap (blue to white)
 cmap = mcolors.LinearSegmentedColormap.from_list("accuracy_cmap", 
-                                                     [
-                                                         (0.0, "#FFFFFF"),
-                                                         (1.0, "#3070c8")
-                                                     ], N=100)
-                                                     
-                                                     
-                                                #     ["#EE6677", "#EE6677", "#FFCC88", "#3070c8"], N=100)
-plt.rcParams.update({'font.size': 12})
-# Create heatmap
-plt.figure(figsize=(10, 4))
-ax = sns.heatmap(f1_matrix, annot=True, fmt=".4f", cmap=cmap, 
-                 xticklabels=tr_va_values, yticklabels=tr_te_values,
-                 vmin=0.93, vmax=0.99)  # Setting color scale to highlight differences
+                                               [(0.0, "#FFFFFF"),
+                                                (1.0, "#3070c8")], N=100)
 
+# Set up the plot
+plt.rcParams.update({'font.size': 12})
+fig, ax = plt.subplots(figsize=(10, 4))
+
+# Create heatmap using pcolormesh
+mesh = ax.pcolormesh(f1_matrix, cmap=cmap, vmin=0.93, vmax=0.99)
+
+# Add colorbar
+cbar = plt.colorbar(mesh)
+cbar.set_label('F1 Score')
+
+# Set ticks and labels
+ax.set_xticks(np.arange(len(tr_va_values)) + 0.5)
+ax.set_yticks(np.arange(len(tr_te_values)) + 0.5)
+ax.set_xticklabels(tr_va_values)
+ax.set_yticklabels(tr_te_values)
+
+# Adjust tick positions
+ax.set_xticks(np.arange(len(tr_va_values) + 1), minor=True)
+ax.set_yticks(np.arange(len(tr_te_values) + 1), minor=True)
+ax.grid(which="minor", color="w", linestyle='-', linewidth=2)
+ax.tick_params(which="minor", bottom=False, left=False)
+
+# Add text annotations with F1 values
+for i in range(len(tr_te_values)):
+    for j in range(len(tr_va_values)):
+        if not np.isnan(f1_matrix[i, j]):
+            ax.text(j + 0.5, i + 0.5, f"{f1_matrix[i, j]:.4f}",
+                    ha="center", va="center", 
+                    color="black" if f1_matrix[i, j] < 0.96 else "white")
+
+# Set title and labels
 plt.title("F1 Score by Train/Test and Train/Validation Splits")
 plt.xlabel("Train/Validation Split")
 plt.ylabel("Train/Test Split")
+
+# Invert y-axis to match seaborn's heatmap orientation
+plt.gca().invert_yaxis()
+
+# Adjust layout
 plt.tight_layout()
 plt.savefig("f1_score_heatmap.png", dpi=300)
+
+import matplot2tikz
+matplot2tikz.save("f1_score_heatmap.tex", axis_width='12cm', axis_height='6cm')

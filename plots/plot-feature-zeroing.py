@@ -1,7 +1,13 @@
 """
 find . -type d -name "*gpu" | while read folder; do cat $folder/main.log | cut -f 6- -d "-" | grep Features | uniq; jq -c '.[].core_metrics' $folder/metrics.json; echo; done > metrics
 
- INFO - Features: 38: ['annotations.authorization.k8s.io/decision', 'objectRef.apiGroup', 'objectRef.namespace', 'objectRef.resource', 'objectRef.subresource', 'requestObject.apiVersion', 'requestObject.kind', 'requestObject.metadata.namespace', 'requestObject.metadata.ownerReferences.apiVersion', 'requestObject.metadata.ownerReferences.blockOwnerDeletion', 'requestObject.metadata.ownerReferences.controller', 'requestObject.metadata.ownerReferences.kind', 'requestObject.spec.volumeMode', 'requestObject.volumeBindingMode', 'responseObject.count', 'responseObject.involvedObject.apiVersion', 'responseObject.involvedObject.kind', 'responseObject.involvedObject.namespace', 'responseObject.involvedObject.resource', 'responseObject.involvedObject.subresource', 'responseObject.kind', 'responseObject.metadata.ownerReferences.apiVersion', 'responseObject.metadata.ownerReferences.blockOwnerDeletion', 'responseObject.metadata.ownerReferences.controller', 'responseObject.metadata.ownerReferences.kind', 'responseObject.reason', 'responseObject.reportingComponent', 'responseObject.source.component', 'responseObject.spec.volumeMode', 'responseObject.type', 'responseStatus.code', 'user.groups[0]', 'user.groups[1]', 'user.groups[2]', 'userAgent.extra', 'userAgent.tool', 'userAgent.version', 'verb']
+ INFO - Features: 38: ['annotation    nodes near coords align={horizontal},
+    every node near coord/.append style={
+        font=\tiny,
+        /pgf/number format/precision=3,
+        /pgf/number format/fixed,
+        xshift=3pt
+    },rization.k8s.io/decision', 'objectRef.apiGroup', 'objectRef.namespace', 'objectRef.resource', 'objectRef.subresource', 'requestObject.apiVersion', 'requestObject.kind', 'requestObject.metadata.namespace', 'requestObject.metadata.ownerReferences.apiVersion', 'requestObject.metadata.ownerReferences.blockOwnerDeletion', 'requestObject.metadata.ownerReferences.controller', 'requestObject.metadata.ownerReferences.kind', 'requestObject.spec.volumeMode', 'requestObject.volumeBindingMode', 'responseObject.count', 'responseObject.involvedObject.apiVersion', 'responseObject.involvedObject.kind', 'responseObject.involvedObject.namespace', 'responseObject.involvedObject.resource', 'responseObject.involvedObject.subresource', 'responseObject.kind', 'responseObject.metadata.ownerReferences.apiVersion', 'responseObject.metadata.ownerReferences.blockOwnerDeletion', 'responseObject.metadata.ownerReferences.controller', 'responseObject.metadata.ownerReferences.kind', 'responseObject.reason', 'responseObject.reportingComponent', 'responseObject.source.component', 'responseObject.spec.volumeMode', 'responseObject.type', 'responseStatus.code', 'user.groups[0]', 'user.groups[1]', 'user.groups[2]', 'userAgent.extra', 'userAgent.tool', 'userAgent.version', 'verb']
 {"accuracy":0.999746652189649,"precision":0.9820577606862705,"recall":0.9981263035486602,"f1":0.98183111992232}
 {"accuracy":0.9998371335504886,"precision":0.9896819472318568,"recall":0.9973073864805495,"f1":0.989314372988677}
 {"accuracy":0.9997557003257329,"precision":0.9947236446344158,"recall":0.9979194630715634,"f1":0.9941887932031857}
@@ -92,29 +98,33 @@ for run in runs:
 sorted_data = sorted(data.items(), key=lambda x: x[1], reverse=True)
 
 convert = {
-    "responseObject.metadata": "(response)",
-    "requestObject.metadata": "(request)",
+    "responseObject.metadata": "response",
+    "requestObject.metadata": "request",
 }
 
-# replace long names with shorter ones
+# replace long names with shorter ones and handle square brackets
 for i in range(len(sorted_data)):
+    # Replace long prefixes
     for j in convert.keys():
         if sorted_data[i][0].startswith(j):
             sorted_data[i] = (sorted_data[i][0].replace(j, convert[j]), sorted_data[i][1])
+    
+    # Replace square brackets that cause issues in LaTeX symbolic coords
+    feature_name = sorted_data[i][0]
+    feature_name = feature_name.replace('[', '').replace(']', '')
+    sorted_data[i] = (feature_name, sorted_data[i][1])
 
 all_features_run = runs[ddel[0]]
 
-# Keep first 5, last 5, put the average of the rest
+    # Keep first 5, last 5, put the average of the rest
 offset = 5
+    # [("dotdotdot1", 0)] + \
+    # [("dotdotdot2", 0)] + \
+    # [("dotdotdot3", 0)] + \
 sorted_data = sorted_data[:offset] + \
-    [(" ...", 0)] + \
     [('All features', all_features_run['metrics']['precision'])] + \
-    [(" ... ", 0)] + \
     [('Average', np.mean([item[1] for item in sorted_data[offset:]]),)] + \
-    [("... ", 0)] + \
     sorted_data[-offset:]
-
-
 palette = {
     'blue': '#3070c8',
     'cyan': '#66CCEE',
@@ -161,5 +171,156 @@ plt.xticks(np.arange(0.97, 1, 0.005), rotation=45)
 plt.xlim(0.97, 1)
 
 # Show the plot
-plt.tight_layout(rect=[0, 0, 1, 0.95])
-plt.savefig("precision.png")
+plt.tight_layout(rect=(0, 0, 1, 0.95))
+plt.savefig("feature-zeroing.png")
+
+# import matplot2tikz
+
+# Save to TikZ/PGFPlots
+# matplot2tikz.save("feature-zeroing-tikz.tex", axis_width='12cm', axis_height='10cm')
+
+# exit(1)
+# Generate TikZ version
+def generate_tikz():
+    # Helper function to escape underscores for LaTeX
+    def escape_latex(text):
+        text = text.replace('_', r'\_')
+        return text
+    
+    # Create a list of all features with their indices
+    y_labels = [escape_latex(f) for f in features]
+    
+    tikz_header = r"""\documentclass[border=5pt]{standalone}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+\begin{document}
+
+\definecolor{myblue}{HTML}{3070c8}
+\definecolor{mygreen}{HTML}{228833}
+\definecolor{myred}{HTML}{EE6677}
+
+\begin{tikzpicture}
+\begin{axis}[
+    xbar,
+    width=0.9\linewidth,
+    height=10cm,
+    xlabel={F1 score},
+    xmin=0.97, xmax=1.0,
+    xtick={0.97, 0.975, 0.98, 0.985, 0.99, 0.995, 1.0},
+    xticklabel style={
+        /pgf/number format/fixed,
+        /pgf/number format/precision=3,
+    },"""
+            
+    yticks = ", ".join([str(i) for i in range(len(features))])
+    ylabels = ", ".join(["{" + label + "}" for label in y_labels])
+    
+    tikz_middle = f"""
+    ytick={{{yticks}}},
+    yticklabels={{{ylabels}}},
+    y dir=reverse,
+    bar width=8pt,
+    enlarge y limits=0.05,
+    nodes near coords,
+    nodes near coords align={{horizontal}},
+    every node near coord/.append style={{
+        %font=\\tiny,
+        /pgf/number format/precision=4,
+        /pgf/number format/fixed,
+        xshift=3pt
+    }},
+    title={{F1 score with Different Missing Features}},
+    %title style={{yshift=5pt}},
+    xticklabel style={{rotate=45, anchor=east}},
+]
+
+"""
+    
+    # Generate coordinates grouped by color
+    tikz_plots = ""
+    
+    # Top 5 (blue)
+    top5_coords = []
+    for i, (f, p) in enumerate(sorted_data[:5]):
+        # Format as (value, index)
+        top5_coords.append(f"({p:.4f},{i})")
+    
+    top5_coords_str = "\n    ".join(top5_coords)
+    tikz_plots += f"""% Top 5 bars (blue)
+\\addplot[fill=myblue, draw=none] coordinates {{
+    {top5_coords_str}
+}};
+
+"""
+    
+#    # Spacer (no need for symbolic coordinates now, just use the index)
+#    spacer_index = 5
+#    tikz_plots += f"""% Spacer
+# \\addplot[draw=none, forget plot] coordinates {{(0,{spacer_index})}}; 
+#"""
+    
+    # Average (green)
+    avg_index = 5 # 6
+    avg_data = [item for item in sorted_data if item[0] == "Average"][0]
+    tikz_plots += f"""% Average (green)
+\\addplot[fill=mygreen, draw=none] coordinates {{
+    ({avg_data[1]:.4f},{avg_index})
+}};
+
+"""
+    
+#     # Spacer
+#     spacer_index2 = 7
+#     tikz_plots += f"""% Spacer
+# \\addplot[draw=none, forget plot] coordinates {{(0,{spacer_index2})}};
+# 
+# """
+    
+    # All features (red)
+    all_feat_index = 6 # 8
+    all_feat_data = [item for item in sorted_data if item[0] == "All features"][0]
+    tikz_plots += f"""% All features (red)
+\\addplot[fill=myred, draw=none] coordinates {{
+    ({all_feat_data[1]:.4f},{all_feat_index})
+}};
+
+"""
+    
+#     # Spacer
+#     spacer_index3 = 9
+#     tikz_plots += f"""% Spacer
+# \\addplot[draw=none, forget plot] coordinates {{(0,{spacer_index3})}};
+# 
+# """
+    
+    # Bottom 5 (blue)
+    bottom5_coords = []
+    for i in range(7, 12): # 10, 15):
+        # Map to the correct sorted_data index (last 5 items)
+        data_index = i - 10 - 5 + len(sorted_data)
+        f, p = sorted_data[data_index]
+        # Format as (value, index)
+        bottom5_coords.append(f"({p:.4f},{i})")
+    
+    bottom5_coords_str = "\n    ".join(bottom5_coords)
+    tikz_plots += f"""% Bottom 5 bars (blue)
+\\addplot[fill=myblue, draw=none] coordinates {{
+    {bottom5_coords_str}
+}};
+
+"""
+    
+    tikz_footer = r"""\end{axis}
+\end{tikzpicture}
+
+\end{document}
+"""
+    
+    with open("feature-zeroing-tikz.tex", "w") as f:
+        f.write(tikz_header + tikz_middle + tikz_plots + tikz_footer)
+    
+    print("TikZ file generated: feature-zeroing-tikz.tex")
+
+generate_tikz()
