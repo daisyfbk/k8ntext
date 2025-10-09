@@ -22,6 +22,7 @@ libclang==18.1.1
 Markdown==3.6
 markdown-it-py==3.0.0
 MarkupSafe==2.1.5
+matplot2tikz==0.4.1
 matplotlib==3.9.0
 mdurl==0.1.2
 ml-dtypes==0.3.2
