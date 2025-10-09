@@ -3,6 +3,7 @@ import inspect
 import logging as log
 import os
 import sys
+from typing import Optional
 
 from tqdm.auto import tqdm
 
@@ -41,10 +42,19 @@ class CustomFormatter(log.Formatter):
 
 
 def initialize_log(
-        log_level: str = "DEBUG", name: str = "main", console_only: bool = False
+        log_level: str = "DEBUG",
+        name: str = "main",
+        console_only: bool = False,
+        application_type: Optional[str] = None,
 ) -> None:
     hostname = os.uname()[1]
-    uid = dt.datetime.now().strftime("%Y%m%d_%H%M%S.%f_") + "_" + hostname
+    uid = dt.datetime.now().strftime("%Y%m%d_%H%M%S.%f_") + "_"
+
+    if application_type is not None:
+        uid += f"_{application_type}"
+
+    uid += f"_{hostname}"
+
     if pm.CREATE_OUT_SUBFOLDERS:
         pm.OUT_FOLDER += f"/{uid}/"
         formatter = f"[{uid}] - %(asctime)s - %(levelname)s - %(message)s"
@@ -59,11 +69,13 @@ def initialize_log(
         log_level = getattr(log, log_level.upper())
     except AttributeError:
         log_level = log.DEBUG
-        print(f"Invalid log level. Using default: {log_level}", file=sys.stderr)
+        print(
+            f"Invalid log level. Using default: {log_level}", file=sys.stderr)
 
     log.basicConfig(level=log_level, stream=sys.stdout)
     log.getLogger().handlers[0].setFormatter(CustomFormatter(formatter))
-    log.getLogger().handlers[0].addFilter(lambda record: record.levelno < log.WARNING)
+    log.getLogger().handlers[0].addFilter(
+        lambda record: record.levelno < log.WARNING)
     # Send everything less than warning to stdout,
     # warnings and errors to stderr. Respect the chosen log level.
 
@@ -102,6 +114,6 @@ def tqdm_wrapper(iterable, **kwargs):
         desc=f"Function {inspect.stack()[1][3]} cycling over a {type(iterable).__name__}",
         leave=True,
         file=sys.stdout,
-        position=0
-                 ** kwargs,
+        position=0,
+        **kwargs,
     )

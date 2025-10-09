@@ -5,6 +5,7 @@ import json
 import re
 import subprocess
 from enum import Enum
+from typing import Optional
 
 from termcolor import colored
 
@@ -56,9 +57,12 @@ def take_a_decision_about_log_line(json_data):
     objectref_name = json_data.get('objectRef').get('name')
     objectref_resource = json_data.get('objectRef').get('resource')
 
+    if json_data.get('stage') != "ResponseComplete":
+        return Decision.removed
+
     # Remove ResponseStarted watch logs
     if config.getboolean('ignore_log', 'response_started_watch'):
-        if verb == 'watch' and json_data.get('stage') == "ResponseStarted":
+        if verb != 'watch' and json_data.get('stage') == "ResponseStarted":
             return Decision.removed
 
     # Remove CNI and external namespaces
@@ -156,8 +160,9 @@ def get_informative_dict(json_data):
         objectref_name = json_data.get('objectRef').get('name')
         objectref_namespace = json_data.get('objectRef').get('namespace')
     else:
-        raise ValueError("Attempted to get objectRef from a log line without objectRef. Did you light-reduce the logs?")
-        
+        raise ValueError(
+            "Attempted to get objectRef from a log line without objectRef. Did you light-reduce the logs?")
+
     request_received_timestamp = json_data.get('requestReceivedTimestamp')
     stage_timestamp = json_data.get('stageTimestamp')
 
@@ -175,7 +180,8 @@ def get_informative_dict(json_data):
 
     # ownerReference
     if exists_subkey(json_data, 'responseObject', 'metadata', 'ownerReferences'):
-        owner_references = json_data.get('responseObject').get('metadata').get('ownerReferences')
+        owner_references = json_data.get('responseObject').get(
+            'metadata').get('ownerReferences')
         res['ownerReferences'] = owner_references
 
     if exists_subkey(json_data, 'responseObject', 'involvedObject'):
@@ -206,7 +212,8 @@ def label_whitelisted_log_line(whitelisted_lines):
     next_line = ""
     previous_label = ""
 
-    temporary_backup_filename = subprocess.check_output("mktemp", shell=True).decode().strip()
+    temporary_backup_filename = subprocess.check_output(
+        "mktemp", shell=True).decode().strip()
 
     for x in range(len(whitelisted_lines)):
         line = whitelisted_lines[x]
@@ -220,11 +227,13 @@ def label_whitelisted_log_line(whitelisted_lines):
             next_line = None
 
         print("\033[H\033[J")
-        print(colored("previous ->", 'dark_grey'), colored(previous_line, 'dark_grey'))
+        print(colored("previous ->", 'dark_grey'),
+              colored(previous_line, 'dark_grey'))
         print("current -> {", end="")
         for key, value in current_line.items():
             print(f"'{key}': '", end="")
-            print(colored(value, 'light_yellow', 'on_magenta', ['bold']), end="', ")
+            print(colored(value, 'light_yellow',
+                          'on_magenta', ['bold']), end="', ")
         print("}")
         print(colored("next ->", 'dark_grey'), colored(next_line, 'dark_grey'))
         print("\n")
@@ -264,7 +273,8 @@ def label_whitelisted_log_line(whitelisted_lines):
         for i in range(1, min(20, len(whitelisted_lines) - x)):
             next_line = get_informative_dict(whitelisted_lines[x + i])
             if next_line['verb'] == 'watch':
-                next_watch = label_proposer.propose_label(whitelisted_lines[x + i])
+                next_watch = label_proposer.propose_label(
+                    whitelisted_lines[x + i])
                 next_watch_info += f" after {i} lines, "
                 next_watch_info += f"{{'verb': '{next_line['verb']}', 'resource': '{next_line['resource']}'}}"
                 break
@@ -274,7 +284,8 @@ def label_whitelisted_log_line(whitelisted_lines):
         for i in range(1, min(20, len(whitelisted_lines) - x)):
             next_line = get_informative_dict(whitelisted_lines[x + i])
             if next_line['verb'] == 'create':
-                next_create = label_proposer.propose_label(whitelisted_lines[x + i])
+                next_create = label_proposer.propose_label(
+                    whitelisted_lines[x + i])
                 next_create_info += f" after {i} lines, "
                 next_create_info += f"{{'verb': '{next_line['verb']}', 'resource': '{next_line['resource']}'}}"
                 break
@@ -284,7 +295,8 @@ def label_whitelisted_log_line(whitelisted_lines):
         for i in range(1, min(20, len(whitelisted_lines) - x)):
             next_line = get_informative_dict(whitelisted_lines[x + i])
             if next_line['verb'] in ('patch', 'update'):
-                next_patch = label_proposer.propose_label(whitelisted_lines[x + i])
+                next_patch = label_proposer.propose_label(
+                    whitelisted_lines[x + i])
                 next_patch_info += f" after {i} lines, "
                 next_patch_info += f"{{'verb': '{next_line['verb']}', 'resource': '{next_line['resource']}'}}"
                 break
@@ -294,7 +306,8 @@ def label_whitelisted_log_line(whitelisted_lines):
         for i in range(1, min(20, len(whitelisted_lines) - x)):
             next_line = get_informative_dict(whitelisted_lines[x + i])
             if next_line['verb'] in ('delete', 'deletecollection'):
-                next_delete = label_proposer.propose_label(whitelisted_lines[x + i])
+                next_delete = label_proposer.propose_label(
+                    whitelisted_lines[x + i])
                 next_delete_info += f" after {i} lines, "
                 next_delete_info += f"{{'verb': '{next_line['verb']}', 'resource': '{next_line['resource']}'}}"
                 break
@@ -308,7 +321,8 @@ def label_whitelisted_log_line(whitelisted_lines):
             username = next_line['username']
             if username.startswith("system:"):
                 continue
-            next_noncp_action = label_proposer.propose_label(whitelisted_lines[x + i])
+            next_noncp_action = label_proposer.propose_label(
+                whitelisted_lines[x + i])
             next_noncp_action_info += f" after {i} lines, "
             next_noncp_action_info += f"{{'verb': '{next_line['verb']}', 'resource': '{next_line['resource']}'}}"
             break
@@ -328,7 +342,8 @@ def label_whitelisted_log_line(whitelisted_lines):
 
         for i in range(1, min(5, len(whitelisted_lines) - x)):
             ai = whitelisted_lines[x + i]['requestReceivedTimestamp']
-            deltas.append(parse_ts(ai, current_line['requestReceivedTimestamp']))
+            deltas.append(
+                parse_ts(ai, current_line['requestReceivedTimestamp']))
         for i in range(min(5, len(whitelisted_lines) - x), 5):
             deltas.append("-")
 
@@ -340,7 +355,8 @@ def label_whitelisted_log_line(whitelisted_lines):
         print()
 
         print("Progress: ", x + 1, "/", len(whitelisted_lines))
-        print("Last 5 labels: ", [x['label'] for x in whitelisted_lines[x - min(5, x):x]])
+        print("Last 5 labels: ", [x['label']
+                                  for x in whitelisted_lines[x - min(5, x):x]])
         print()
 
         print("Labels: ")
@@ -354,7 +370,8 @@ def label_whitelisted_log_line(whitelisted_lines):
         print("[ew]      equivalent watch:\t", watch_proposal)
         print("[ep]      equivalent patch:\t", patch_proposal)
         print("[ed]      equivalent delete:\t", delete_proposal)
-        print("[m]       next non-cp action:\t", next_noncp_action, next_noncp_action_info)
+        print("[m]       next non-cp action:\t",
+              next_noncp_action, next_noncp_action_info)
         print("[s]       skip")
         print("[q]       quit")
         print("[number]  type it directly")
@@ -398,7 +415,8 @@ def label_whitelisted_log_line(whitelisted_lines):
                     if case == "":
                         input_label = previous_label
                         if previous_label is None or previous_label == "":
-                            print("Previous label is empty, please choose another one")
+                            print(
+                                "Previous label is empty, please choose another one")
                             continue
                     else:
                         try:
@@ -425,8 +443,11 @@ def label_whitelisted_log_line(whitelisted_lines):
         previous_label = input_label
 
 
-def parse(mode: ParsingMode, input_filename: str = None):
-    config.read('config.ini')
+def parse(mode: ParsingMode, input_filename: Optional[str] = None):
+    config.read('config/config.ini')
+
+    if input_filename is None:
+        raise ValueError("Input filename is required")
 
     if mode == ParsingMode.labelling:
         output_filename = input_filename + "_labelled"
@@ -461,8 +482,10 @@ def parse(mode: ParsingMode, input_filename: str = None):
     if mode == ParsingMode.labelling:
         whitelisted_lines.sort(key=lambda x: x['requestReceivedTimestamp'])
         # Filter out lines already labelled
-        whitelisted_already_labelled = [x for x in whitelisted_lines if 'label' in x and x['label'] != LABEL_UNKNOWN]
-        whitelisted_to_label = [x for x in whitelisted_lines if 'label' not in x or x['label'] == LABEL_UNKNOWN]
+        whitelisted_already_labelled = [
+            x for x in whitelisted_lines if 'label' in x and x['label'] != LABEL_UNKNOWN]
+        whitelisted_to_label = [
+            x for x in whitelisted_lines if 'label' not in x or x['label'] == LABEL_UNKNOWN]
 
         label_whitelisted_log_line(whitelisted_to_label)
         whitelisted_lines = whitelisted_already_labelled + whitelisted_to_label

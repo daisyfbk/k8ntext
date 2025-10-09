@@ -3,10 +3,7 @@ import csv
 import functools
 import json
 
-from common import IGNORED_NAMESPACES, LABEL_UNKNOWN, LABEL_IGNORE
-
-LABELS_FILE = 'labels.csv'
-VERBS_FILE = 'verbs.csv'
+from common import IGNORED_NAMESPACES, LABEL_UNKNOWN, LABEL_IGNORE, LABELS_FILE, VERBS_FILE
 
 
 def load_labels():
@@ -272,9 +269,9 @@ def propose_label(j: dict) -> int:
     uri = j['requestURI']
 
     try:
-        objectRef = j['objectRef']
+        objectRef: dict = j['objectRef']
     except KeyError:
-        objectRef = None
+        return LABEL_UNKNOWN
 
     verb = j['verb']
 

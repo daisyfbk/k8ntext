@@ -1,3 +1,6 @@
+LABELS_FILE = 'config/labels.csv'
+VERBS_FILE = 'config/verbs.csv'
+
 IGNORED_NAMESPACES = {
     "falco",
     "kube-flannel"
@@ -15,6 +18,7 @@ def exists_subkey(__object, *keys):
         __object = __object[key]
 
     return exists
+
 
 def flatten_object(_object: dict) -> dict:
     keys = _object.keys()
