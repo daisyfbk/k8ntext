@@ -1,3 +1,6 @@
+LABELS_FILE = 'config/labels.csv'
+VERBS_FILE = 'config/verbs.csv'
+
 IGNORED_NAMESPACES = {
     "falco",
     "kube-flannel"

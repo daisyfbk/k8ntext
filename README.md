@@ -10,6 +10,7 @@ The following files are available:
 - `data-collection`: scripts used to collect the dataset from a Kubernetes cluster;
 - `plots`: scripts for generating plots and visualizations from the results;
 - `tests`: some shell scripts for evaluating K8NTEXT. The data is then fed to the `plots` scripts.
+- `scripts`: miscellaneous scripts used for various tasks. Not fundamental to the project.
 
 ## Getting started
 
@@ -34,44 +35,139 @@ To get started with K8NTEXT, follow these steps:
     # If on macOS, use requirements-macos.txt instead
     ```
 
-The dataset is in the `audit-log` directory. In order to use K8NTEXT, `cd` into `parseLog` and use `model.py`:
+## Use cases
 
-- by doing `python3 model.py -f (already split dataset)`, you will get the model along with some statistics in the `out` directory,
-- by doing `python3 model.py -m (model.keras path) -f (inference dataset)`, you will get the inference results in the `out` directory.
+### Training a model
 
-### Model Explainability with Trustee
+The dataset is in the `audit-log` directory. In order to train a model:
+
+1. `cd` into `parseLog`:
+
+   ```bash
+   cd parseLog
+   ```
+
+2. Use `model.py` to train a model:
+
+   ```bash
+   python3 model.py -f $DATASET_FILE
+   ```
+
+    where `$DATASET_FILE` is a JSON file containing a labeled dataset. The dataset can be created using the `data-collection` scripts (see below). The trained model and some statistics will be saved in the `out` directory.
+
+The model can be deeply customized by editing the `parameters.py` file. The features used for training are in `model_features.py`. For example, in `parameters.py`, the key of the label can be changed by modifying the `LABEL_KEY` variable, which is set to `label` by default.
+
+For convenience, our dataset is available in the `audit-log` directory. The train-test-validation split is automatically done by `model.py`.
+
+### Running a pre-trained model
+
+Once a model has been trained, it can be used to make predictions on new data.
+
+1. `cd` into `parseLog`:
+
+   ```bash
+   cd parseLog
+   ```
+
+2. Use `model.py` to make predictions:
+
+   ```bash
+   python3 model.py -m $MODEL_FILE -f $DATASET_FILE
+    ```
+
+    where `$MODEL_FILE` is the path to the trained model (e.g., `out/model.keras`) and `$DATASET_FILE` is a JSON file containing the dataset to be used for inference. The predictions will be saved in the `out` directory. The same dataset format used for training is used for inference.
+
+### Clustering the model results
+
+Once predictions have been made, the results can be clustered using the `cluster.py` script.
+
+1. `cd` into `parseLog`:
+
+   ```bash
+   cd parseLog
+   ```
+
+2. Use `cluster.py` to cluster the results:
+
+   ```bash
+   python3 cluster.py -f $DATASET_FILE [-k $LABEL_KEY]
+   ```
+
+   where `$DATASET_FILE` is the JSON file containing the dataset with predictions, `-k $LABEL_KEY` is an optional argument to specify the key used for labels (default is `label`, but if you are running it on a labeled dataset, you might want to set it to `predicted_label`).
+   The results are output to the `out` directory.
+
+### Gathering and labeling data from a Kubernetes cluster
+
+The dataset provided with this project has been collected as following.
+
+1. Set up your Kubernetes cluster and ensure you have access to it via `kubectl`.
+2. Make sure auditing has been enabled in your cluster. You can follow the [official Kubernetes documentation](https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/) to enable auditing. In our case, a permissive audit policy has been used, in the `audit-policy.yaml` file.
+3. `cd` to the `data-collection` directory:
+
+   ```bash
+   cd data-collection
+   ```
+
+4. Run the `move-logs.sh` script to start collecting audit logs. The script will guide you through the process, allowing you to cut pieces of the audit log file as needed. The collected logs will be stored in the `$DATASET_FOLDER` directory.
+5. Once you have collected the logs, cd to the `parseLog` directory:
+
+   ```bash
+   cd ../parseLog
+   ```
+
+6. Use the `labeler.py` script to label the collected logs. The script will process the logs, automatically label control plane events, and prompt you to label user events.
+
+
+### Testing the labeling process
+
+The `tests` directory contains some shell scripts that can be used to test the labeling process. In particular:
+
+- `feature-zeroing.sh`: tests the features by zeroing them one at a time and checking the impact on the model's performance.
+- `kfolds.sh`: performs k-fold cross-validation on the dataset to evaluate the model's performance.
+- `train-test-split.sh`: splits the dataset into training and testing sets and evaluates the model's performance as the ratio of the split changes.
+- `window-size.sh`: evaluates the model's performance as the size of the window changes.
+
+### Plotting results
+
+Once you have the results of your model and have executed the tests described in the previous section, you can use the scripts in the `plots` directory to generate visualizations. In particular:
+
+- `plot-feature-zeroing.py`: generates a bar plot showing the impact of zeroing each feature on the model's performance.
+- `plot-kfolds.py`: shows the results of the k-fold cross-validation as a multiple heatmap.
+- `plot-train-test-split.py`: generates a heatmap showing the model's performance as the train-test split ratio changes.
+
+Window tests do not have a dedicated plot script, as the results are shown in table format in the paper.
+
+Some other scripts do not rely on the tests, but can be used to visualize the results of the model:
+
+- `plot-average-cluster-sizes.py`: generates a bar plot showing the average size of each cluster once the results have been clustered.
+- `plot-class-accuracy-weighted.py`: generates a scatterplot showing the accuracy of each class weighted by its frequency in the dataset.
+- `plot-
+
+ All the plots presented in the paper can be generated using these scripts.
+
+### Explainability with Trustee
 
 K8NTEXT now supports model explainability using the [Trustee framework](https://trusteeml.github.io/). Trustee extracts decision tree explanations from black-box ML models, providing interpretable insights into model behavior.
 
 To generate model explanations:
 
-```bash
-python3 model.py -f (dataset) --trustee
-```
+1. `cd` into `parseLog`:
 
-You can also generate explanations for a pre-trained model:
+   ```bash
+   cd parseLog
+   ```
 
-```bash
-python3 model.py -m (model.keras path) -f (dataset) --trustee
-```
+2. Use `model.py` with the `--trustee` flag to train a model and generate explanations:
 
-Additional Trustee options:
+    ```bash
+    python3 model.py -f $DATASET_FILE --trustee
+    ```
 
-- `--trustee-iter`: Number of iterations for explanation generation (default: 100)
-- `--trustee-stability-iter`: Number of stability iterations (default: 20)  
-- `--trustee-sample-size`: Sample size for explanation generation (default: 0.5)
+    You can also generate explanations for a pre-trained model:
 
-Example with custom parameters:
-
-```bash
-python3 model.py -f dataset.json --trustee --trustee-iter 100 --trustee-stability-iter 20 --trustee-sample-size 0.5
-```
-
-Example with pre-trained model and custom parameters:
-
-```bash
-python3 model.py -m out/model.keras -f dataset.json --trustee --trustee-iter 150 --trustee-stability-iter 25
-```
+    ```bash
+    python3 model.py -m $MODEL_FILE  -f $DATASET_FILE --trustee
+    ```
 
 The explanation results will be saved in the output directory as:
 
@@ -80,11 +176,7 @@ The explanation results will be saved in the output directory as:
 - `trustee_explanation.json`: Fidelity metrics, explanation accuracy, and feature information
 - `trustee_predictions.json`: Detailed prediction comparisons
 
-**Feature Naming**: Since K8NTEXT uses sequence models, features are flattened for Trustee analysis. Feature names in the decision tree follow the pattern `feature_name_t0`, `feature_name_t1`, etc., where `t0`, `t1` represent different time steps in the sequence window.
-
-To edit the parameters of the model, you can modify the `parameters.py` file. The features are in `model_features.py`.
-
-Finally, labeled logs can be visualized using the `visualizer.py` script. Run `visualizer.py --help` to see the available options.
+Features are flattened for Trustee analysis. Feature names in the decision tree follow the pattern `feature_name_t0`, `feature_name_t1`, etc., where `t0`, `t1` represent different time steps in the sequence window.
 
 ## License
 
@@ -100,7 +192,7 @@ M. Franzil, V. Armani, L. A. D. Knob, and D. Siracusa, ‘Sharpening Kubernetes 
 
 The authors of this project are:
 
-- [Matteo Franzil](https://github.com/mfranzil), Fondazione Bruno Kessler - `matteo.franzil@fbk.eu`
+- [Matteo Franzil](https://github.com/mfranzil), University of Trento and Fondazione Bruno Kessler - `matteo.franzil@unitn.it`
 - Valentino Armani, Fondazione Bruno Kessler - `varmani@fbk.eu`
 - [Luis Augusto Dias Knob](https://github.com/luisdknob), Fondazione Bruno Kessler - `l.diasknob@fbk.eu`
-- Domenico Siracusa, Fondazione Bruno Kessler - `domenico.siracusa@fbk.eu`
+- [Domenico Siracusa](https://github.com/custoz), University of Trento and Fondazione Bruno Kessler - `domenico.siracusa@unitn.it`

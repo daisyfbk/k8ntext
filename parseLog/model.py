@@ -1112,7 +1112,7 @@ if __name__ == '__main__':
 
     __args = parser.parse_args()
 
-    initialize_log(log_level=__args.log_level)
+    initialize_log(log_level=__args.log_level, application_type="train" if not __args.model else "inference")
 
     if pm.KERAS_BACKEND == 'tensorflow':
         import tensorflow as tf
