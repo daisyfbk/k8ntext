@@ -3,8 +3,8 @@ import inspect
 import logging as log
 import os
 import sys
-
 from typing import Optional
+
 from tqdm.auto import tqdm
 
 import parameters as pm
@@ -48,8 +48,8 @@ def initialize_log(
         application_type: Optional[str] = None,
 ) -> None:
     hostname = os.uname()[1]
-    uid = dt.datetime.now().strftime("%Y%m%d_%H%M%S.%f_") + "_" 
-    
+    uid = dt.datetime.now().strftime("%Y%m%d_%H%M%S.%f_") + "_"
+
     if application_type is not None:
         uid += f"_{application_type}"
 

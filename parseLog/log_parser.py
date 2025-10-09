@@ -233,7 +233,7 @@ def label_whitelisted_log_line(whitelisted_lines):
         for key, value in current_line.items():
             print(f"'{key}': '", end="")
             print(colored(value, 'light_yellow',
-                  'on_magenta', ['bold']), end="', ")
+                          'on_magenta', ['bold']), end="', ")
         print("}")
         print(colored("next ->", 'dark_grey'), colored(next_line, 'dark_grey'))
         print("\n")
@@ -356,7 +356,7 @@ def label_whitelisted_log_line(whitelisted_lines):
 
         print("Progress: ", x + 1, "/", len(whitelisted_lines))
         print("Last 5 labels: ", [x['label']
-              for x in whitelisted_lines[x - min(5, x):x]])
+                                  for x in whitelisted_lines[x - min(5, x):x]])
         print()
 
         print("Labels: ")

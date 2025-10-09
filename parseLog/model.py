@@ -1,17 +1,16 @@
 import argparse
+import collections
 import functools
 import json
 import logging as log
 import os
-import time
 from concurrent.futures import ProcessPoolExecutor
 from typing import Any
-import collections
 
 import joblib
 import numpy as np
 import sklearn.preprocessing as preprocessing
-from keras import callbacks, losses, metrics as keras_metrics, models, layers, regularizers
+from keras import callbacks, losses, metrics as keras_metrics, models, layers
 from keras.api.optimizers import Adam
 from keras.api.utils import to_categorical
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
@@ -31,13 +30,12 @@ def dump_features_statistics(flattened_data: list[dict[any, dict]]) -> dict:
     # Generate the feature list
     mapped_data: dict[any, set] = {}
     for d in flattened_data:
-        for k in d:    
+        for k in d:
             if k not in mapped_data:
                 mapped_data[k] = set()
             mapped_data[k].add(d[k])
     with open(pm.OUT_FOLDER + '/features.json', 'w') as f:
         json.dump({k: list(v) for k, v in mapped_data.items()}, f, indent=4)
-
 
     # Group by feature in mapped_data
     stats = {}
@@ -54,9 +52,9 @@ def dump_features_statistics(flattened_data: list[dict[any, dict]]) -> dict:
             }
     with open(pm.OUT_FOLDER + '/features_stats.json', 'w') as f:
         json.dump(sorted([stats[i] for i in stats], key=lambda x: x["count"])
-            , f, indent=2)
-        
-    return stats 
+                  , f, indent=2)
+
+    return stats
 
 
 def preprocess_data(__data: list[dict],
@@ -159,6 +157,7 @@ def generate_model_wrapper(X_shape: int, y_shape: int | tuple, version: int = 1)
 
     return model
 
+
 def generate_multiclass_model(X_shape: int, y_shape: int | tuple) -> models.Model:
     """
     Version 0 of the model that is used for multi-class classification.
@@ -219,7 +218,6 @@ def get_model_callbacks(monitor: str = 'val_loss',
                                     patience=pm.REDUCE_LR_PATIENCE,
                                     verbose=1),
     ]
-
 
     if backup_models:
         log.warning(f"Backup models enabled, saving to {pm.OUT_FOLDER + '/backup'}. Make"
@@ -400,12 +398,11 @@ def model_training(data: list[dict],
             # Binary classification
             y_pred_decoded = np.argmax(y_pred, axis=-1)
             y_test_decoded = np.argmax(y_test, axis=-1)
-    
 
     metrics = calculate_metrics_wrapper(y_test_decoded,
-                                y_pred_decoded,
-                                include_per_class=True,
-                                include_confusion_matrix=True)
+                                        y_pred_decoded,
+                                        include_per_class=True,
+                                        include_confusion_matrix=True)
 
     log.info(f"Model metrics (core, adjusted using macro averaging): {metrics['core_metrics']}")
 
@@ -427,7 +424,7 @@ def kfold_training(data: list[dict],
                    randomize_data: bool = False) -> dict:
     if pm.MODEL_VERSION != 0:
         raise ValueError("K-fold training is only supported for model version 0.")
-    
+
     flattened_data, total_features = preprocess_data(data, randomize_data=randomize_data)
 
     training_data = encode_data(flattened_data, total_features, model_version=pm.MODEL_VERSION)
@@ -473,9 +470,9 @@ def kfold_training(data: list[dict],
         maj = calculate_majorities(data_test, y_pred_decoded)
 
         metrics = calculate_class_metrics(y_test_decoded,
-                                    y_pred_decoded,
-                                    include_per_class=True,
-                                    include_confusion_matrix=True)
+                                          y_pred_decoded,
+                                          include_per_class=True,
+                                          include_confusion_matrix=True)
 
         res[i] = {
             'index': i,
@@ -487,7 +484,7 @@ def kfold_training(data: list[dict],
             'history': history,
             'maj_result': maj
         }
-        
+
     return res
 
 
@@ -520,9 +517,9 @@ def calculate_binary_metrics(y_true, y_pred, **kwargs) -> dict:
 
 
 def calculate_class_metrics(y_true, y_pred,
-                      include_majority_accuracy=False,
-                      include_per_class=False,
-                      include_confusion_matrix=False) -> dict:
+                            include_majority_accuracy=False,
+                            include_per_class=False,
+                            include_confusion_matrix=False) -> dict:
     if y_true.shape != y_pred.shape:
         raise ValueError("Shapes of y_true and y_pred do not match.")
 
@@ -637,7 +634,8 @@ def model_inference(model: models.Model,
                     data: list[dict],
                     model_version: int = 0) -> dict:
     flattened_data, total_features = preprocess_data(data, features, randomize_data=False)
-    training_data = encode_data(flattened_data, total_features, include_y=False, previous_xenc=x_encoders, model_version=pm.MODEL_VERSION)
+    training_data = encode_data(flattened_data, total_features, include_y=False, previous_xenc=x_encoders,
+                                model_version=pm.MODEL_VERSION)
     X = training_data['X']
     # Measure total time for prediction
     import time
@@ -656,10 +654,11 @@ def model_inference(model: models.Model,
         y_pred_decoded = decode_labels(y_pred_labels, yle)
     else:
         raise ValueError(f"Unknown model version {model_version}")
-    
+
     timer = time.time() - timer
-    log.info(f"Total prediction time: {timer:.2f} seconds. Intermediate decoding time: {intermediate:.2f} seconds. Total sequences: {len(X)}. Average time per sequence: {timer / len(X):.4f} seconds. WINDOW_SIZE={pm.WINDOW_LENGTH}")
-    
+    log.info(
+        f"Total prediction time: {timer:.2f} seconds. Intermediate decoding time: {intermediate:.2f} seconds. Total sequences: {len(X)}. Average time per sequence: {timer / len(X):.4f} seconds. WINDOW_SIZE={pm.WINDOW_LENGTH}")
+
     return calculate_majorities(data, y_pred_decoded)
 
 
@@ -700,9 +699,11 @@ def calculate_majorities(data: list[dict],
         predicted_sequence[int(k)] = int(most_weighted)
 
     if len(predicted_sequence) > len(data):
-        raise ValueError(f"Predicted sequence length does not match data length: {len(predicted_sequence)} != {len(data)}. Cannot reshape.")
+        raise ValueError(
+            f"Predicted sequence length does not match data length: {len(predicted_sequence)} != {len(data)}. Cannot reshape.")
     elif len(predicted_sequence) < len(data):
-        log.warning(f"Shorter predicted sequence than data: {len(predicted_sequence)} != {len(data)}. Reshaping to match.")
+        log.warning(
+            f"Shorter predicted sequence than data: {len(predicted_sequence)} != {len(data)}. Reshaping to match.")
 
     correct = 0
     accounted = 0
@@ -799,7 +800,7 @@ def calculate_majorities(data: list[dict],
             "predicted_sequence": ret_predicted_sequence,
             "sequence_weights": sequence_weights
         }
-    
+
     else:
         log.info(f"Accuracy on labeled: {correct / accounted} (errors: {accounted - correct} / {accounted})")
 
@@ -855,8 +856,8 @@ def save_model(result: dict, base_path: str, model_basename: str = "model.keras"
         json.dump(result['features'], f)
 
 
-def generate_trustee_for_inference(model, features, x_encoders, y_encoders, data, 
-                                   model_version=0, num_iter=100, num_stability_iter=20, 
+def generate_trustee_for_inference(model, features, x_encoders, y_encoders, data,
+                                   model_version=0, num_iter=100, num_stability_iter=20,
                                    samples_size=0.5):
     """
     Generate Trustee explanations for a pre-trained model using inference data.
@@ -867,21 +868,21 @@ def generate_trustee_for_inference(model, features, x_encoders, y_encoders, data
     try:
         # Preprocess the data using the same pipeline as during training
         flattened_data, total_features = preprocess_data(data, features)
-        
+
         # Encode the data using the saved encoders
-        encoded_data = encode_data(flattened_data, total_features, include_y=True, 
+        encoded_data = encode_data(flattened_data, total_features, include_y=True,
                                    model_version=model_version, previous_xenc=x_encoders)
-        
+
         X = encoded_data['X']
         y = encoded_data['y']
-        
+
         # Create train/test split for Trustee (similar to training)
         x_train, x_test, y_train, y_test = train_test_split(
             X, y, test_size=pm.TEST_TRAIN_SPLIT, random_state=42
         )
-        
+
         log.info(f"Prepared data for Trustee: X_train: {x_train.shape}, X_test: {x_test.shape}")
-        
+
         # Generate Trustee explanations
         from model_trustee import generate_trustee_explanation
         return generate_trustee_explanation(
@@ -896,7 +897,7 @@ def generate_trustee_for_inference(model, features, x_encoders, y_encoders, data
             num_stability_iter=num_stability_iter,
             samples_size=samples_size
         )
-        
+
     except Exception as e:
         log.error(f"Failed to generate Trustee explanations for pre-trained model: {str(e)}")
         return None
@@ -940,9 +941,9 @@ def main(args):
                     losses.append(result[i]['history'])
                     metrics.append(result[i]['metrics'])
 
-                    if 'save' in args.stats_mode: 
+                    if 'save' in args.stats_mode:
                         save_model(result[i], pm.OUT_FOLDER + f'/attempt_{i}', model_basename=f'model_{i}.keras')
-                        
+
                         y_pred = result[i]['maj_result']['predicted_sequence']
                         for log_line, label in zip(data, y_pred):
                             log_line["predicted_label"] = label
@@ -963,7 +964,7 @@ def main(args):
                     if save_models:
                         os.makedirs(pm.OUT_FOLDER + f'/attempt_{i}', exist_ok=True)
                         save_model(result, pm.OUT_FOLDER + f'/attempt_{i}', model_basename=f'model_{i}.keras')
-                        
+
                     if args.trustee:
                         log.info(f"Generating Trustee explanations for attempt {i + 1}...")
                         from model_trustee import generate_trustee_explanation, save_trustee_explanation
@@ -979,7 +980,7 @@ def main(args):
                             num_stability_iter=args.trustee_stability_iter,
                             samples_size=args.trustee_sample_size
                         )
-                        
+
                         if trustee_result:
                             save_trustee_explanation(trustee_result, pm.OUT_FOLDER + f'/attempt_{i}')
                             log.info(f"Trustee explanations for attempt {i + 1} saved successfully.")
@@ -1013,7 +1014,7 @@ def main(args):
                     num_stability_iter=args.trustee_stability_iter,
                     samples_size=args.trustee_sample_size
                 )
-                
+
                 if trustee_result:
                     save_trustee_explanation(trustee_result, pm.OUT_FOLDER)
                     log.info("Trustee explanations saved successfully.")
@@ -1057,7 +1058,7 @@ def main(args):
                 num_stability_iter=args.trustee_stability_iter,
                 samples_size=args.trustee_sample_size
             )
-            
+
             if trustee_result:
                 from model_trustee import save_trustee_explanation
                 save_trustee_explanation(trustee_result, pm.OUT_FOLDER)
@@ -1065,7 +1066,7 @@ def main(args):
             else:
                 log.warning("Trustee explanation generation failed for pre-trained model.")
 
-        if 'save' in args.stats_mode: 
+        if 'save' in args.stats_mode:
             y_pred = result['predicted_sequence']
             for log_line, label in zip(data, y_pred):
                 log_line["predicted_label"] = label
@@ -1084,8 +1085,8 @@ def main(args):
 
 if __name__ == '__main__':
     stats_mode_help = "Turns on statistics mode and accepts a comma-separated list of options: " \
-                        "save: saves the models generated during the process, else only statistics are saved. " \
-                        "kfolds: uses k-fold cross-validation instead of random splits. "
+                      "save: saves the models generated during the process, else only statistics are saved. " \
+                      "kfolds: uses k-fold cross-validation instead of random splits. "
 
     parser = argparse.ArgumentParser(prog='model')
     parser.add_argument('-f', '--file', type=str, help='Path to the files, one or many', nargs='+', required=True)
@@ -1101,7 +1102,7 @@ if __name__ == '__main__':
     parser.add_argument('--mirroring', action='store_true', help='Use mirrored strategy for multi-GPU training')
     parser.add_argument('-r', '--randomize', action='store_true',
                         help='Randomize the data before training (only in non-statistics mode)')
-    parser.add_argument('--trustee', action='store_true', 
+    parser.add_argument('--trustee', action='store_true',
                         help='Generate model explanations using Trustee framework')
     parser.add_argument('--trustee-iter', type=int, default=100,
                         help='Number of iterations for Trustee explanation generation (default: 100)')

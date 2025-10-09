@@ -145,6 +145,10 @@ Some other scripts do not rely on the tests, but can be used to visualize the re
 
  All the plots presented in the paper can be generated using these scripts.
 
+### Querying functionality
+
+The querying functionality described in the paper has not been ported to the new clustering algorithm yet. It will be added in a future release. For the moment, it can be used by using the files in the `trash` directory, which contains the old implementation of the clusterizer/visualizer. The code is not maintained and might not work with the current version of the project.
+
 ### Explainability with Trustee
 
 K8NTEXT now supports model explainability using the [Trustee framework](https://trusteeml.github.io/). Trustee extracts decision tree explanations from black-box ML models, providing interpretable insights into model behavior.

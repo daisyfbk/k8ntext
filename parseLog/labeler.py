@@ -70,7 +70,7 @@ with open(temp_file, 'w') as f:
             o['objectRef']['namespace'] = None
 
         # generic someone updating/watching leases
-        #elif "system:serviceaccounts" in o['user']['groups'] \
+        # elif "system:serviceaccounts" in o['user']['groups'] \
         #        and o['objectRef']['resource'] == 'storageclasses' \
         #        and o['verb'] in ('watch',) \
         #        and ('namespace' not in o['objectRef'] or o['objectRef']['namespace'] is None):
@@ -81,7 +81,7 @@ with open(temp_file, 'w') as f:
                 and o['objectRef']['namespace'] == 'kube-system':
             # Service account renewing leases
             proposal = 119232
-        
+
         # Kube-Scheduler
         elif o['user']['username'] == 'system:kube-scheduler' \
                 and o['objectRef']['resource'] == 'leases' \
@@ -213,7 +213,7 @@ with open(temp_file, 'w') as f:
                 continue
             print("\nOverwriting existing label. ", o['label'], " -> ", proposal)
             print(get_informative_dict(o))
-            if args.relabel is not None and args.relabel.lower() == 'force':            
+            if args.relabel is not None and args.relabel.lower() == 'force':
                 print("Forcing relabel.")
                 user_response = 'y'
             else:
