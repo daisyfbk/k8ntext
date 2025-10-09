@@ -52,7 +52,7 @@ import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 
 lines = []
-with open('/Users/matte/Library/CloudStorage/OneDrive-FondazioneBrunoKessler/projects/k8ntext/results/1_paper_tests/3_kfold_tests/metrics', 'r') as f:
+with open('../models/1_paper_tests/3_kfold_tests/metrics', 'r') as f:
     lines = f.readlines()
 
 runs = []
@@ -216,7 +216,13 @@ plt.gca().spines['right'].set_visible(False)
 plt.tight_layout()
 plt.savefig('kfolds_heatmap_absolute.png')
 
+import matplot2tikz
+matplot2tikz.save("kfolds_heatmap_absolute.tex", axis_width='12cm', axis_height='6cm')
+
+
 exit(1)
+
+### NOT USED
 
 
 # colourblind-friendly colours
