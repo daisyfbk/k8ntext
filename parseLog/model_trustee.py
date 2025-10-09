@@ -1,22 +1,21 @@
 import json
+import logging as log
 
 import numpy as np
 from keras import models
 from trustee import ClassificationTrustee
 
-import logging as log
-
 
 def generate_trustee_explanation(model: models.Model,
-                                x_train: np.ndarray,
-                                y_train: np.ndarray,
-                                x_test: np.ndarray,
-                                y_test: np.ndarray,
-                                feature_names: list = None,
-                                model_version: int = 0,
-                                num_iter: int = 50,
-                                num_stability_iter: int = 10,
-                                samples_size: float = 0.3) -> dict:
+                                 x_train: np.ndarray,
+                                 y_train: np.ndarray,
+                                 x_test: np.ndarray,
+                                 y_test: np.ndarray,
+                                 feature_names: list = None,
+                                 model_version: int = 0,
+                                 num_iter: int = 50,
+                                 num_stability_iter: int = 10,
+                                 samples_size: float = 0.3) -> dict:
     """
     Generate model explanations using Trustee framework.
 
@@ -60,7 +59,7 @@ def generate_trustee_explanation(model: models.Model,
         x_train_flat = x_train.reshape(x_train.shape[0], -1)
         x_test_flat = x_test.reshape(x_test.shape[0], -1)
         log.debug(f"Flattened X shapes - x_train_flat: {x_train_flat.shape}, x_test_flat: {x_test_flat.shape}")
-        
+
         # Generate meaningful feature names for flattened sequence data
         if feature_names is not None:
             flattened_feature_names = []
@@ -103,11 +102,14 @@ def generate_trustee_explanation(model: models.Model,
             y_test_flat = np.argmax(y_test, axis=-1)
 
     log.debug(f"Flattened Y shapes - y_train_flat: {y_train_flat.shape}, y_test_flat: {y_test_flat.shape}")
-    log.debug(f"Y label value ranges - y_train: [{y_train_flat.min()}, {y_train_flat.max()}], y_test: [{y_test_flat.min()}, {y_test_flat.max()}]")
+    log.debug(
+        f"Y label value ranges - y_train: [{y_train_flat.min()}, {y_train_flat.max()}], y_test: [{y_test_flat.min()}, {y_test_flat.max()}]")
 
     # Verify that X and y have the same number of samples
-    assert x_train_flat.shape[0] == y_train_flat.shape[0], f"Training data shape mismatch: X={x_train_flat.shape[0]}, y={y_train_flat.shape[0]}"
-    assert x_test_flat.shape[0] == y_test_flat.shape[0], f"Test data shape mismatch: X={x_test_flat.shape[0]}, y={y_test_flat.shape[0]}"
+    assert x_train_flat.shape[0] == y_train_flat.shape[
+        0], f"Training data shape mismatch: X={x_train_flat.shape[0]}, y={y_train_flat.shape[0]}"
+    assert x_test_flat.shape[0] == y_test_flat.shape[
+        0], f"Test data shape mismatch: X={x_test_flat.shape[0]}, y={y_test_flat.shape[0]}"
 
     # Create a wrapper for the model to handle sequence prediction
     class ModelWrapper:
@@ -185,10 +187,10 @@ def generate_trustee_explanation(model: models.Model,
         # Fit Trustee
         log.info(f"Fitting Trustee with {num_iter} iterations...")
         trustee.fit(x_train_flat, y_train_flat,
-                   num_iter=num_iter,
-                   num_stability_iter=num_stability_iter,
-                   samples_size=samples_size,
-                   verbose=True)
+                    num_iter=num_iter,
+                    num_stability_iter=num_stability_iter,
+                    samples_size=samples_size,
+                    verbose=True)
 
         # Generate explanation
         log.info("Generating decision tree explanation...")
@@ -202,8 +204,10 @@ def generate_trustee_explanation(model: models.Model,
         dt_y_pred = dt.predict(x_test_flat)
 
         # Ensure both predictions have the same shape
-        log.info(f"Original model predictions shape: {y_pred_original.shape if hasattr(y_pred_original, 'shape') else len(y_pred_original)}")
-        log.info(f"Decision tree predictions shape: {dt_y_pred.shape if hasattr(dt_y_pred, 'shape') else len(dt_y_pred)}")
+        log.info(
+            f"Original model predictions shape: {y_pred_original.shape if hasattr(y_pred_original, 'shape') else len(y_pred_original)}")
+        log.info(
+            f"Decision tree predictions shape: {dt_y_pred.shape if hasattr(dt_y_pred, 'shape') else len(dt_y_pred)}")
         log.info(f"Test labels shape: {y_test_flat.shape if hasattr(y_test_flat, 'shape') else len(y_test_flat)}")
 
         # Convert to numpy arrays if needed and ensure all arrays are 1D and of the same length
@@ -272,7 +276,7 @@ def save_trustee_explanation(explanation_result: dict, base_path: str):
             else:
                 tree_rules = export_text(explanation_result["decision_tree"])
                 log.info("Exported decision tree without feature names")
-            
+
             with open(base_path + '/trustee_decision_tree.txt', 'w') as f:
                 f.write(tree_rules)
         except Exception as e:
@@ -283,7 +287,7 @@ def save_trustee_explanation(explanation_result: dict, base_path: str):
         try:
             from sklearn.tree import export_graphviz
             feature_names = explanation_result.get("feature_names", None)
-            
+
             dot_data = export_graphviz(
                 explanation_result["decision_tree"],
                 feature_names=feature_names,
@@ -292,10 +296,10 @@ def save_trustee_explanation(explanation_result: dict, base_path: str):
                 special_characters=True,
                 max_depth=10  # Limit depth for readability
             )
-            
+
             with open(base_path + '/trustee_decision_tree.dot', 'w') as f:
                 f.write(dot_data)
-            
+
             log.info("Decision tree saved as DOT file (can be converted to PNG/PDF with Graphviz)")
         except Exception as e:
             log.debug(f"Could not save decision tree as DOT file: {str(e)}")

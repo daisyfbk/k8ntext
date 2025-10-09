@@ -1,4 +1,5 @@
 import datetime
+
 from label_proposer import load_verbs
 
 
@@ -50,7 +51,7 @@ def parse_user_agent(user_agent: str) -> dict:
 def parse_user_agent_wrapper(user_agent: str) -> dict:
     try:
         return parse_user_agent(user_agent)
-    except Exception :
+    except Exception:
         return {
             "tool": None,
             "version": None,

@@ -1,17 +1,17 @@
 import argparse
+import datetime
+import json
+import logging as log
+import math
+import uuid
+from typing import Sequence, Optional
+
+import parameters as pm
+from clusterizer_cp import is_control_plane_action
 from common import LABEL_UNKNOWN, LABEL_IGNORE
 from label_proposer import propose_label
-from model_features import FEATURES as model_features
-from typing import Sequence, Optional
-import uuid
-import json
-import math
-import datetime
 from log_parser import get_informative_dict
-from clusterizer_cp import is_control_plane_action
-import parameters as pm
-import logging as log
-
+from parameters import DEFAULT_CLUSTER_TIMEOUT_SECONDS, DEFAULT_CLUSTER_MAX_LINES, TIMESTAMP_KEY
 from support.log import initialize_log
 
 ClusterDict = dict[str, list[int]]
@@ -20,20 +20,12 @@ ClusterDict = dict[str, list[int]]
 # ACTION_KEY_SEPARATOR = "%"
 UUID = "uuid_new"
 DEFAULT_LABEL_KEY = "label"
-BASE_LABEL = "1010"
 DEFAULT_UUID_CONTROL_PLANE = "2020"
-
-# Cluster limits
-DEFAULT_CLUSTER_TIMEOUT_SECONDS = 300  # 5 minutes
-DEFAULT_CLUSTER_MAX_LINES = 1000
-TIMESTAMP_KEY = "requestReceivedTimestamp"
-
-Unknown = dict | list | str | int | float | None  # Placeholder for actual type
 
 
 def get_next_uuid(
         force_control_plane: bool
-    ) -> str:
+) -> str:
     if force_control_plane:
         return DEFAULT_UUID_CONTROL_PLANE
     return str(uuid.uuid4())
@@ -144,29 +136,29 @@ def clusterize_main_logic(lines: list[dict],
             "Error: Empty or single window_lines passed to clusterize_main_logic")
 
     clusters.update(candidate_clusters)
-    
+
     # Build a mapping from line index to cluster UUID for already clustered lines
     idx_to_cluster: dict[int, str] = {}
     for uuid, indices in clusters.items():
         for idx in indices:
             idx_to_cluster[idx] = uuid
-    
-    cluster_metadata: dict[str, dict] = {} 
+
+    cluster_metadata: dict[str, dict] = {}
     for uuid in clusters:
         cluster_metadata[uuid] = _create_empty_cluster_metadata()
-        
+
         # Initialize with triggering action metadata
         for idx in clusters[uuid]:
             _update_cluster_metadata(cluster_metadata[uuid], lines[idx])
-    
+
     # Process remaining lines in order (round-robin assignment)
     unassigned_lines = [idx for idx in window_lines if idx not in idx_to_cluster]
-    
+
     for idx in unassigned_lines:
         line = lines[idx]
         informative_dict = get_informative_dict(line)
         # print(informative_dict)
-        
+
         # Control plane action trigger for keeping them separate or not
         cp = is_control_plane_action(informative_dict)
         # print(cp, merge_control_plane, idx)
@@ -189,12 +181,12 @@ def clusterize_main_logic(lines: list[dict],
             #     cluster_metadata[cp_uuid] = _create_empty_cluster_metadata()
             #     _update_cluster_metadata(cluster_metadata[cp_uuid], line)
             #     continue
-        
+
         # Try to match this line to an existing cluster
         best_cluster = _find_best_cluster_match(
             line, informative_dict, clusters, cluster_metadata, max_cluster_size
         )
-        
+
         if best_cluster is not None:
             # Assign to existing cluster
             line[UUID] = best_cluster
@@ -229,11 +221,11 @@ def _create_empty_cluster_metadata() -> dict:
 def _update_cluster_metadata(metadata: dict, line: dict) -> None:
     """Update cluster metadata with information from a log line."""
     info = get_informative_dict(line)
-    
+
     # Add username
     if 'username' in info and info['username']:
         metadata['usernames'].add(info['username'])
-    
+
     # Add resource signature
     resource_sig = (
         info.get('resource'),
@@ -241,11 +233,11 @@ def _update_cluster_metadata(metadata: dict, line: dict) -> None:
         info.get('name')
     )
     metadata['resources'].add(resource_sig)
-    
+
     # Add metadata UID if present
     if 'metadata/uid' in info and info['metadata/uid']:
         metadata['uids'].add(info['metadata/uid'])
-    
+
     # Add ownerReferences UIDs
     if 'ownerReferences' in info and info['ownerReferences']:
         owner_refs = info['ownerReferences']
@@ -255,7 +247,7 @@ def _update_cluster_metadata(metadata: dict, line: dict) -> None:
                     metadata['owner_uids'].add(owner['uid'])
         elif isinstance(owner_refs, dict) and 'uid' in owner_refs:
             metadata['owner_uids'].add(owner_refs['uid'])
-    
+
     # Add involvedObject signature
     if 'involvedObject' in info and info['involvedObject']:
         involved = info['involvedObject']
@@ -267,7 +259,7 @@ def _update_cluster_metadata(metadata: dict, line: dict) -> None:
                 involved.get('resource')
             )
             metadata['involved_objects'].add(involved_sig)
-    
+
     # Add claimRef signature
     if 'claimRef' in info and info['claimRef']:
         claim = info['claimRef']
@@ -298,15 +290,15 @@ def _update_cluster_metadata(metadata: dict, line: dict) -> None:
 
 
 def _find_best_cluster_match(
-    line: dict,
-    info: dict,
-    clusters: ClusterDict,
-    cluster_metadata: dict[str, dict],
-    max_cluster_size: int | float
+        line: dict,
+        info: dict,
+        clusters: ClusterDict,
+        cluster_metadata: dict[str, dict],
+        max_cluster_size: int | float
 ) -> Optional[str]:
     username = info.get('username')
     resource_sig = (info.get('resource'), info.get('namespace'), info.get('name'))
-    
+
     line_uid = info.get('metadata/uid')
     line_owner_uids = set()
     if 'ownerReferences' in info and info['ownerReferences']:
@@ -317,7 +309,7 @@ def _find_best_cluster_match(
                     line_owner_uids.add(owner['uid'])
         elif isinstance(owner_refs, dict) and 'uid' in owner_refs:
             line_owner_uids.add(owner_refs['uid'])
-    
+
     line_involved_sig = None
     if 'involvedObject' in info and info['involvedObject']:
         involved = info['involvedObject']
@@ -328,7 +320,7 @@ def _find_best_cluster_match(
                 involved.get('name'),
                 involved.get('resource')
             )
-    
+
     line_claim_sig = None
     if 'claimRef' in info and info['claimRef']:
         claim = info['claimRef']
@@ -338,39 +330,39 @@ def _find_best_cluster_match(
                 claim.get('namespace'),
                 claim.get('name')
             )
-    
+
     # Score each cluster
     best_cluster = None
     best_score = 0
-    
+
     for uuid, metadata in cluster_metadata.items():
         # Skip if cluster is at max size
         if len(clusters[uuid]) >= max_cluster_size:
             continue
-        
+
         score = 0
-        
+
         # Priority 1: Username match (weight: 100)
         if username and username in metadata['usernames']:
             score += 50
-        
+
         # Priority 2: ObjectRef match (weight: 50)
         if resource_sig in metadata['resources']:
             score += 100
-        
+
         # Priority 3: UID relationships
         # Check if this line's UID is referenced as an owner in the cluster
         if line_uid and line_uid in metadata['owner_uids']:
             score += 80  # This line created something in the cluster
-        
+
         # Check if this line references an owner that's in the cluster
         if line_owner_uids and line_owner_uids & metadata['uids']:
-            score += 80  
-        
-        # Check involvedObject matches
+            score += 80
+
+            # Check involvedObject matches
         if line_involved_sig and line_involved_sig in metadata['involved_objects']:
             score += 60
-        
+
         # Check if involvedObject points to a resource in the cluster
         if line_involved_sig:
             involved_resource_sig = (
@@ -380,11 +372,11 @@ def _find_best_cluster_match(
             )
             if involved_resource_sig in metadata['resources']:
                 score += 70
-        
+
         # Check claimRef matches
         if line_claim_sig and line_claim_sig in metadata['claim_refs']:
             score += 60
-        
+
         # Check if claimRef points to a resource in the cluster
         if line_claim_sig:
             claim_resource_sig = (
@@ -393,18 +385,18 @@ def _find_best_cluster_match(
                 line_claim_sig[2],  # name
             )
             # This is approximate - claimRef may point to PVC/PV
-            if any(claim_resource_sig[1] == r[1] and claim_resource_sig[2] == r[2] 
+            if any(claim_resource_sig[1] == r[1] and claim_resource_sig[2] == r[2]
                    for r in metadata['resources']):
                 score += 60
-        
+
         # Hard-coded behaviors:
         # When system:apiserver lists limitranges in a namespace,
         # it should be clustered with user actions in that namespace
         # This is a system reaction that happens when users create resources in a namespace
-        if (username == 'system:apiserver' and 
-            info.get('verb') == 'list' and 
-            info.get('resource') == 'limitranges' and 
-            info.get('namespace')):
+        if (username == 'system:apiserver' and
+                info.get('verb') == 'list' and
+                info.get('resource') == 'limitranges' and
+                info.get('namespace')):
             namespace_name = info.get('namespace')
             # Check if this cluster has any user action (non-system) in the same namespace
             for username_in_cluster in metadata['usernames']:
@@ -412,7 +404,7 @@ def _find_best_cluster_match(
                     for resource_tuple in metadata['resources']:
                         resource, ns, name = resource_tuple
                         if ns == namespace_name:
-                            score += 90  
+                            score += 90
                             break
                     break
 
@@ -421,22 +413,22 @@ def _find_best_cluster_match(
         current_verb = info.get('verb')
         current_resource = info.get('resource')
         current_namespace = info.get('namespace')
-        
-        if (current_verb in ('deletecollection', 'get') and 
-            current_namespace and
-            current_resource not in ('namespaces',)): 
+
+        if (current_verb in ('deletecollection', 'get') and
+                current_namespace and
+                current_resource not in ('namespaces',)):
             # Check if this cluster has a namespace deletion for this namespace
             namespace_delete_sig = ('namespaces', current_namespace, None)
             if namespace_delete_sig in metadata['resources']:
-                score += 95  
-        
+                score += 95
+
         if score > best_score:
             best_score = score
             best_cluster = uuid
-    
-    if best_score >= 50: 
+
+    if best_score >= 50:
         return best_cluster
-    
+
     return None
 
 
@@ -465,7 +457,7 @@ def clusterize_labels(lines: list[dict],
     # Check if no triggering actions in this label
     if len(tractionlist) == 0:
         log.debug(
-             f"No triggering actions found for label '{lines[indices[0]][label_key]}' with {len(indices)} lines.")
+            f"No triggering actions found for label '{lines[indices[0]][label_key]}' with {len(indices)} lines.")
 
     # Iterate through windows and assign lines to clusters
     for window in windows:
@@ -477,7 +469,8 @@ def clusterize_labels(lines: list[dict],
                 f"Warning: Empty window from {start_idx} to {end_idx}. What the heck?")
         if len(window_lines) == 1:
             # Trivially create one cluster
-            uuid = get_next_uuid(is_control_plane_action(get_informative_dict(lines[window_lines[0]])) is not None and merge_control_plane)
+            uuid = get_next_uuid(is_control_plane_action(
+                get_informative_dict(lines[window_lines[0]])) is not None and merge_control_plane)
             lines[window_lines[0]][UUID] = uuid
             clusters[uuid] = [window_lines[0]]
             continue
@@ -487,8 +480,10 @@ def clusterize_labels(lines: list[dict],
         candidate_clusters: ClusterDict = {}
         for traction_idx in tractionlist:
             if start_idx <= traction_idx <= end_idx:
-                uuid = get_next_uuid(is_control_plane_action(get_informative_dict(lines[traction_idx])) is not None and merge_control_plane)
-                log.debug(f"Found triggering action at line {traction_idx} in window from {start_idx} to {end_idx}, assigning UUID {uuid}")
+                uuid = get_next_uuid(is_control_plane_action(
+                    get_informative_dict(lines[traction_idx])) is not None and merge_control_plane)
+                log.debug(
+                    f"Found triggering action at line {traction_idx} in window from {start_idx} to {end_idx}, assigning UUID {uuid}")
                 # (f"Informative dict: {get_informative_dict(lines[traction_idx])}")
                 lines[traction_idx][UUID] = uuid
                 candidate_clusters[uuid] = [traction_idx]
@@ -498,7 +493,7 @@ def clusterize_labels(lines: list[dict],
                 f"No triggering actions found in window from {start_idx} to {end_idx}")
         else:
             log.debug(f"Found {len(candidate_clusters)} triggering actions in window from {start_idx} to {end_idx}")
-        
+
         # Send the tentative clusters and the lines for aggregation
         result_clusters = clusterize_main_logic(
             lines,
@@ -516,13 +511,14 @@ def clusterize_labels(lines: list[dict],
                 clusters[uuid] = result_clusters[uuid]
             else:
                 clusters[uuid].extend(result_clusters[uuid])
-        
-    log.info(f"Label: '{lines[indices[0]][label_key]}' clustered into {len(clusters)} clusters. Triggering actions: {len(tractionlist)}. Lines: {len(indices)}")
+
+    log.info(
+        f"Label: '{lines[indices[0]][label_key]}' clustered into {len(clusters)} clusters. Triggering actions: {len(tractionlist)}. Lines: {len(indices)}")
     # input()
     return clusters
 
 
-def clusterize_log(lines: list[dict],
+def clusterize_log(lines: list[dict[str, str]],
                    label_key: str = DEFAULT_LABEL_KEY,
                    merge_control_plane: bool = False) -> ClusterDict:
     label_clusters: ClusterDict = {}
@@ -551,7 +547,8 @@ def clusterize_log(lines: list[dict],
     for label, indices in label_clusters.items():
         # Clusters with 1 element are trivially kept as they are
         if len(indices) == 1:
-            uuid = get_next_uuid(is_control_plane_action(get_informative_dict(lines[indices[0]])) is not None and merge_control_plane)
+            uuid = get_next_uuid(
+                is_control_plane_action(get_informative_dict(lines[indices[0]])) is not None and merge_control_plane)
             lines[indices[0]][UUID] = uuid
             final_clusters[uuid] = [indices[0]]
             continue
@@ -572,14 +569,16 @@ def clusterize_log(lines: list[dict],
                 exit(1)
             # All lines are triggering actions, we can cluster them trivially
             for idx in indices:
-                uuid = get_next_uuid(is_control_plane_action(get_informative_dict(lines[idx])) is not None and merge_control_plane)
+                uuid = get_next_uuid(
+                    is_control_plane_action(get_informative_dict(lines[idx])) is not None and merge_control_plane)
                 lines[idx][UUID] = uuid
                 final_clusters[uuid] = [idx]
             continue
 
         # If a triggering action is alone, we cluster it alone
         if len(tractionlist) == 1 and len(indices) > 1:
-            uuid = get_next_uuid(is_control_plane_action(get_informative_dict(lines[tractionlist[0]])) is not None and merge_control_plane)
+            uuid = get_next_uuid(is_control_plane_action(
+                get_informative_dict(lines[tractionlist[0]])) is not None and merge_control_plane)
             for idx in indices:
                 lines[idx][UUID] = uuid
             final_clusters[uuid] = indices
@@ -605,7 +604,6 @@ def clusterize_log(lines: list[dict],
                 final_clusters[uuid] = output_clusters[uuid]
             else:
                 final_clusters[uuid].extend(output_clusters[uuid])
-
 
     log.info(f"Total overall clusters formed: {len(final_clusters)}")
     # Further processing can be done here for larger clusters
@@ -636,7 +634,7 @@ def main(args: argparse.Namespace) -> None:
         log.fatal("Error: Log file is required.")
         exit(1)
 
-    lines: Sequence[dict[str, str]] = []
+    lines: list[dict[str, str]] = []
     with open(log_file, 'r') as f:
         read: Sequence[str] = f.readlines()
         for i in range(len(read)):
@@ -651,9 +649,9 @@ def main(args: argparse.Namespace) -> None:
     clusters: ClusterDict = clusterize_log(lines,
                                            label_key=args.key,
                                            merge_control_plane=args.merge_control_plane)
-    
+
     # Output the full original log with assigned UUIDs if requested
-    if True: # args.output_full_log_with_uuid:
+    if True:  # args.output_full_log_with_uuid:
         output_file = pm.OUT_FOLDER + "clusterized-log.json"
         # output_file = args.output_file if args.output_file else log_file + ".with_uuid"
         with open(output_file, 'w') as f:
@@ -662,18 +660,18 @@ def main(args: argparse.Namespace) -> None:
         log.info(f"Log with UUIDs written to {output_file}")
 
     # Output clusters information in JSON format if requested
-    if True: # args.output_clusters:
+    if True:  # args.output_clusters:
         output_cluster_file = pm.OUT_FOLDER + "clusters.json"
         with open(output_cluster_file, 'w') as f:
             for uuid, indices in clusters.items():
                 json.dump(
-                {
-                    'uuid': uuid,
-                    'num_lines': len(indices),
-                    'label': lines[indices[0]].get(args.key, 'unknown') if len(indices) > 0 else 'unknown',
-                    'indices': indices,
-                    'lines': [get_informative_dict(lines[idx]) for idx in indices],
-                }, f, separators=(',', ':'))
+                    {
+                        'uuid': uuid,
+                        'num_lines': len(indices),
+                        'label': lines[indices[0]].get(args.key, 'unknown') if len(indices) > 0 else 'unknown',
+                        'indices': indices,
+                        'lines': [get_informative_dict(lines[idx]) for idx in indices],
+                    }, f, separators=(',', ':'))
                 f.write('\n')
         log.info(f"Clusters information written to {output_cluster_file}")
 

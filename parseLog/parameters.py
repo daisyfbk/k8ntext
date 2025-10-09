@@ -13,7 +13,8 @@ TRAIN_VALID_SPLIT = float(os.getenv('TRAIN_VALID_SPLIT', 0.1))  # Percentage of 
 TUNER_EXECUTIONS_PER_TRIAL = int(os.getenv('TUNER_EXECUTIONS_PER_TRIAL', 5))
 # Top % of classes to show in confusion matrix
 LABEL_FEATURE = str(os.getenv('LABEL_FEATURE', 'label'))  # Name of the feature that contains the label
-LABEL_CP_FEATURE = str(os.getenv('LABEL_CP_FEATURE', 'cplabel'))  # Name of the feature that contains the label for control plane
+LABEL_CP_FEATURE = str(
+    os.getenv('LABEL_CP_FEATURE', 'cplabel'))  # Name of the feature that contains the label for control plane
 
 OUT_FOLDER = os.getenv('OUT_FOLDER', 'out')
 CREATE_OUT_SUBFOLDERS = os.getenv('CREATE_OUT_SUBFOLDERS', 1)
@@ -26,7 +27,7 @@ MODEL_VERSION = int(os.getenv('MODEL_VERSION', 0))
 FILTER_FEATURES = os.getenv('FILTER_FEATURES', None)
 if FILTER_FEATURES is not None and FILTER_FEATURES != "":
     FILTER_FEATURES = list(map(int, FILTER_FEATURES.split(',')))
- # Selectively remove features (by index on model_features.py) 
+# Selectively remove features (by index on model_features.py)
 
 # The following variables are used by model_visualize, change them as you change the model
 
@@ -53,3 +54,9 @@ METRICS_YRANGES = {
     "categorical_accuracy": lambda _: METRICS_YRANGE_TEMPLATES["acclike"],
     "val_categorical_accuracy": lambda _: METRICS_YRANGE_TEMPLATES["acclike"]
 }
+
+# Clusterization parameters, used by clusterizer.py
+
+DEFAULT_CLUSTER_TIMEOUT_SECONDS = 300  # 5 minutes
+DEFAULT_CLUSTER_MAX_LINES = 1000
+TIMESTAMP_KEY = "requestReceivedTimestamp"

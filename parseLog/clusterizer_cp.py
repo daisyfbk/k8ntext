@@ -1,7 +1,8 @@
 CONTROL_PLANE_UUID = [
     i for i in range(2000, 2030)
 ]
-     
+
+
 def is_control_plane_action(log_line: dict) -> int | None:
     # Control plane actions
     # ** API Server watching objects
@@ -211,7 +212,7 @@ def is_control_plane_action(log_line: dict) -> int | None:
     if log_line.get('verb') == 'patch' and log_line.get('resource') == 'nodes':
         if log_line.get('username') == 'system:serviceaccount:kube-system:node-controller':
             return CONTROL_PLANE_UUID[19]
-        
+
     # Informative dict: {'username': 'system:kube-scheduler', 'verb': 'update', 'resource': 'leases', 'subresource': None, 'namespace': 'kube-system', 'name': 'kube-scheduler', 'requestURI': '/apis/coordination.k8s.io/v1/namespaces/kube-system/leases/kube-scheduler', 'requestReceivedTimestamp': '2024-05-28T09:24:17.889294Z', 'stageTimestamp': '2024-05-28T09:24:17.896166Z', 'metadata/uid': '76cad05e-fbec-4503-88ab-21e9ec9d38fa'}
     # Informative dict: {'username': 'system:kube-scheduler', 'verb': 'update', 'resource': 'leases', 'subresource': None, 'namespace': 'kube-system', 'name': 'kube-scheduler', 'requestURI': '/apis/coordination.k8s.io/v1/namespaces/kube-system/leases/kube-scheduler', 'requestReceivedTimestamp': '2024-05-28T09:24:19.904287Z', 'stageTimestamp': '2024-05-28T09:24:19.911503Z', 'metadata/uid': '76cad05e-fbec-4503-88ab-21e9ec9d38fa'}
     if log_line.get('verb') == 'update' and log_line.get('resource') == 'leases' and \
@@ -219,7 +220,7 @@ def is_control_plane_action(log_line: dict) -> int | None:
             log_line.get('name') == 'kube-scheduler':
         if log_line.get('username') in ['system:kube-scheduler']:
             return CONTROL_PLANE_UUID[20]
-        
+
     # Informative dict: {'username': 'system:apiserver',      'verb': 'update', 'resource': 'leases', 'subresource': None, 'namespace': 'kube-system', 'name': 'apiserver-adpx6exqq66lc64z7ri5spi2yq', 'requestURI': '/apis/coordination.k8s.io/v1/namespaces/kube-system/leases/apiserver-adpx6exqq66lc64z7ri5spi2yq', 'requestReceivedTimestamp': '2024-05-28T09:24:34.384599Z', 'stageTimestamp': '2024-05-28T09:24:34.394065Z', 'metadata/uid': '8d923080-040e-46e2-8a07-924831e68898'}
     if log_line.get('verb') == 'update' and log_line.get('resource') == 'leases' and \
             log_line.get('namespace') == 'kube-system' and \
