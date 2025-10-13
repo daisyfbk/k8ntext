@@ -11,8 +11,8 @@ import joblib
 import numpy as np
 import sklearn.preprocessing as preprocessing
 from keras import callbacks, losses, metrics as keras_metrics, models, layers
-from keras.api.optimizers import Adam
-from keras.api.utils import to_categorical
+from keras.optimizers import Adam
+from keras.utils import to_categorical
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split, KFold
