@@ -46,6 +46,7 @@ def initialize_log(
         name: str = "main",
         console_only: bool = False,
         application_type: Optional[str] = None,
+        create_out_subfolders: bool = True,
 ) -> None:
     hostname = os.uname()[1]
     uid = dt.datetime.now().strftime("%Y%m%d_%H%M%S.%f_") + "_"
@@ -55,7 +56,7 @@ def initialize_log(
 
     uid += f"_{hostname}"
 
-    if pm.CREATE_OUT_SUBFOLDERS:
+    if pm.CREATE_OUT_SUBFOLDERS or create_out_subfolders:
         pm.OUT_FOLDER += f"/{uid}/"
         formatter = f"[{uid}] - %(asctime)s - %(levelname)s - %(message)s"
     else:
