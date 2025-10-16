@@ -1,5 +1,8 @@
-LABELS_FILE = 'config/labels.csv'
-VERBS_FILE = 'config/verbs.csv'
+from pathlib import Path
+
+_this_folder = Path(__file__).parent
+LABELS_FILE = _this_folder / 'config/labels.csv'
+VERBS_FILE = _this_folder / 'config/verbs.csv'
 
 IGNORED_NAMESPACES = {
     "falco",
