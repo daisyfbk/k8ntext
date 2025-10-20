@@ -6,7 +6,7 @@ The following files are available:
 
 - `README.md`: this file;
 - `parseLog`: the source code for K8NTEXT, which includes the logic for parsing and correlating audit logs;
-- `analysis`: contains scripts for comparing the results of the prediction process, including an HTML visualizer;
+- `analysis`: contains a script for comparing the results of the clustering process, including an HTML visualizer;
 - `data-collection`: scripts used to collect the dataset from a Kubernetes cluster;
 - `plots`: scripts for generating plots and visualizations from the results;
 - `tests`: some shell scripts for evaluating K8NTEXT. The data is then fed to the `plots` scripts.
