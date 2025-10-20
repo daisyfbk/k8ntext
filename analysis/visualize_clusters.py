@@ -12,15 +12,28 @@ parent_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(parent_dir))
 sys.path.insert(0, str(parent_dir / "parseLog"))
 
+from visualize_clusters_html import visualize_clusters_html
 import parseLog.parameters as pm
 from parseLog.label_proposer import propose_label
 from parseLog.log_parser import get_informative_dict
 from parseLog.support.log import initialize_log
 from parseLog.parameters import LABEL_FEATURE as DEFAULT_LABEL_KEY
 
+TRIGGER_MARKER = "🎯"
+NONE_MARKER = "N/A"
+
 
 def is_triggering_action(line: dict, label_key: str = DEFAULT_LABEL_KEY) -> bool:
-    """Check if a line is a triggering action."""
+    """
+    Determine if a log line is a triggering action based on its label.
+
+    Args:
+        line (dict): The log line to evaluate.
+        label_key (str, optional): The key used to retrieve the label from the line. Defaults to DEFAULT_LABEL_KEY.
+
+    Returns:
+        bool: True if the line is a triggering action, False otherwise.
+    """
     if label_key not in line:
         log.debug(f"Label key '{label_key}' not found in line. Available keys: {list(line.keys())}")
         return False
@@ -34,26 +47,36 @@ def is_triggering_action(line: dict, label_key: str = DEFAULT_LABEL_KEY) -> bool
 
 
 def format_line_info(line: dict, index: int, is_trigger: bool = False) -> str:
-    """Format a line for display."""
+    """
+    Format a log line's information into a string for display.
+
+    Args:
+        line (dict): The log line (an informative dict passed through get_informative_dict()).
+        index (int): The index of the line in the original log.
+        is_trigger (bool, optional): Whether this line is a triggering action. Defaults to False.
+
+    Returns:
+        str: Formatted string representing the log line.
+    """
     info = get_informative_dict(line)
     
-    trigger_marker = "🎯 " if is_trigger else "   "
+    trigger_marker = f"{TRIGGER_MARKER} " if is_trigger else "   "
     
     # Extract key information
-    username = info.get('username', 'N/A')
-    verb = info.get('verb', 'N/A')
-    resource = info.get('resource', 'N/A')
-    namespace = info.get('namespace', 'N/A')
-    name = info.get('name', 'N/A')
-    timestamp = line.get('requestReceivedTimestamp', line.get('stageTimestamp', 'N/A'))
+    username = info.get('username', NONE_MARKER)
+    verb = info.get('verb', NONE_MARKER)
+    resource = info.get('resource', NONE_MARKER)
+    namespace = info.get('namespace', NONE_MARKER)
+    name = info.get('name', NONE_MARKER)
+    timestamp = line.get('requestReceivedTimestamp', line.get('stageTimestamp', NONE_MARKER))
     
     # Format the output
     line_str = f"{trigger_marker}[{index:5d}] {timestamp[:23] if len(timestamp) > 23 else timestamp:23s} | "
     line_str += f"{username:30s} | {verb:15s} | {resource:20s}"
     
-    if namespace != 'N/A':
+    if namespace != NONE_MARKER:
         line_str += f" | ns:{namespace}"
-    if name != 'N/A':
+    if name != NONE_MARKER:
         line_str += f" | name:{name}"
     
     return line_str
@@ -61,7 +84,14 @@ def format_line_info(line: dict, index: int, is_trigger: bool = False) -> str:
 
 def visualize_cluster_text(cluster: dict, label_key: str = DEFAULT_LABEL_KEY, 
                           show_only_triggers: bool = False) -> None:
-    """Visualize a single cluster in text format."""
+    """
+    Visualize a single cluster in text format.
+
+    Args:
+        cluster (dict): The cluster to visualize (as loaded from clusters.json).
+        label_key (str, optional): The label key used. Defaults to DEFAULT_LABEL_KEY.
+        show_only_triggers (bool, optional): Whether to show only triggering actions. Defaults to False.
+    """
     uuid = cluster.get('uuid', 'unknown')
     num_lines = cluster.get('num_lines', 0)
     label = cluster.get('label', 'unknown')
@@ -107,232 +137,6 @@ def visualize_cluster_text(cluster: dict, label_key: str = DEFAULT_LABEL_KEY,
                 print(format_line_info(full_line, idx, is_trigger=is_trigger))
     
     print()
-
-
-def visualize_clusters_html(clusters: list[dict], output_file: str, 
-                            label_key: str = DEFAULT_LABEL_KEY,
-                            show_only_triggers: bool = False) -> None:
-    """Generate an HTML visualization of clusters."""
-    html_template = """<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Cluster Visualization</title>
-    <style>
-        body {{
-            font-family: 'Courier New', monospace;
-            margin: 20px;
-            background-color: #f5f5f5;
-        }}
-        .cluster {{
-            background-color: white;
-            margin: 20px 0;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }}
-        .cluster-header {{
-            background-color: #4CAF50;
-            color: white;
-            padding: 10px;
-            border-radius: 5px;
-            margin-bottom: 10px;
-        }}
-        .cluster-info {{
-            font-weight: bold;
-            margin-bottom: 5px;
-        }}
-        .line {{
-            padding: 5px;
-            margin: 2px 0;
-            border-left: 3px solid #ddd;
-            padding-left: 10px;
-        }}
-        .trigger {{
-            background-color: #fff3cd;
-            border-left: 3px solid #ffc107;
-            font-weight: bold;
-        }}
-        .trigger::before {{
-            content: "🎯 ";
-        }}
-        .timestamp {{
-            color: #666;
-        }}
-        .username {{
-            color: #2196F3;
-            font-weight: bold;
-        }}
-        .verb {{
-            color: #9C27B0;
-            font-weight: bold;
-        }}
-        .resource {{
-            color: #4CAF50;
-        }}
-        .namespace {{
-            color: #FF5722;
-        }}
-        .name {{
-            color: #795548;
-        }}
-        .filter-controls {{
-            background-color: white;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }}
-        .filter-controls label {{
-            margin-right: 20px;
-        }}
-        .summary {{
-            background-color: #e3f2fd;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }}
-    </style>
-</head>
-<body>
-    <h1>Kubernetes Audit Log Cluster Visualization</h1>
-    
-    <div class="summary">
-        <h2>Summary</h2>
-        <p><strong>Total Clusters:</strong> {total_clusters}</p>
-        <p><strong>Total Lines:</strong> {total_lines}</p>
-        <p><strong>Total Triggering Actions:</strong> {total_triggers}</p>
-    </div>
-    
-    <div class="filter-controls">
-        <label><input type="checkbox" id="showOnlyTriggers" {checked}> Show only triggering actions</label>
-        <label><input type="number" id="minLines" placeholder="Min lines" style="width: 80px;"> Minimum cluster size</label>
-        <label><input type="number" id="maxLines" placeholder="Max lines" style="width: 80px;"> Maximum cluster size</label>
-        <button onclick="applyFilters()">Apply Filters</button>
-        <button onclick="resetFilters()">Reset</button>
-    </div>
-    
-    <div id="clusters">
-"""
-    
-    total_lines = sum(c.get('num_lines', 0) for c in clusters)
-    total_triggers = 0
-    
-    # Calculate total triggering actions
-    for cluster in clusters:
-        full_lines = cluster.get('full_lines', [])
-        if full_lines:
-            for full_line in full_lines:
-                if full_line and is_triggering_action(full_line, label_key):
-                    total_triggers += 1
-    
-    html = html_template.format(
-        total_clusters=len(clusters),
-        total_lines=total_lines,
-        total_triggers=total_triggers,
-        checked="checked" if show_only_triggers else ""
-    )
-    
-    for cluster in clusters:
-        uuid = cluster.get('uuid', 'unknown')
-        num_lines = cluster.get('num_lines', 0)
-        label = cluster.get('label', 'unknown')
-        indices = cluster.get('indices', [])
-        lines = cluster.get('lines', [])
-        full_lines = cluster.get('full_lines', [])
-        
-        # Find triggering actions using full lines if available
-        triggering_indices = []
-        if full_lines:
-            for i, full_line in enumerate(full_lines):
-                if full_line and is_triggering_action(full_line, label_key):
-                    triggering_indices.append(i)
-        
-        html += f'    <div class="cluster" data-num-lines="{num_lines}">\n'
-        html += f'        <div class="cluster-header">\n'
-        html += f'            <div class="cluster-info">Cluster UUID: {uuid}</div>\n'
-        html += f'            <div>Label: {label} | Lines: {num_lines} | Triggering Actions: {len(triggering_indices)}</div>\n'
-        html += f'        </div>\n'
-        
-        for i, (idx, line) in enumerate(zip(indices, lines)):
-            is_trigger = i in triggering_indices
-            info = line  # Already in informative dict format
-            
-            username = info.get('username', 'N/A')
-            verb = info.get('verb', 'N/A')
-            resource = info.get('resource', 'N/A')
-            namespace = info.get('namespace', 'N/A')
-            name = info.get('name', 'N/A')
-            timestamp = line.get('requestReceivedTimestamp', line.get('stageTimestamp', 'N/A'))
-            
-            if len(timestamp) > 23:
-                timestamp = timestamp[:23]
-            
-            line_class = "line trigger" if is_trigger else "line"
-            
-            html += f'        <div class="{line_class}" data-is-trigger="{str(is_trigger).lower()}">\n'
-            html += f'            <span class="timestamp">[{idx:5d}] {timestamp}</span> | '
-            html += f'<span class="username">{username}</span> | '
-            html += f'<span class="verb">{verb}</span> | '
-            html += f'<span class="resource">{resource}</span>'
-            
-            if namespace != 'N/A':
-                html += f' | <span class="namespace">ns:{namespace}</span>'
-            if name != 'N/A':
-                html += f' | <span class="name">name:{name}</span>'
-            
-            html += '\n        </div>\n'
-        
-        html += '    </div>\n'
-    
-    html += """    </div>
-    
-    <script>
-        function applyFilters() {
-            const showOnlyTriggers = document.getElementById('showOnlyTriggers').checked;
-            const minLines = parseInt(document.getElementById('minLines').value) || 0;
-            const maxLines = parseInt(document.getElementById('maxLines').value) || Infinity;
-            
-            document.querySelectorAll('.cluster').forEach(cluster => {
-                const numLines = parseInt(cluster.getAttribute('data-num-lines'));
-                
-                // Filter by cluster size
-                if (numLines < minLines || numLines > maxLines) {
-                    cluster.style.display = 'none';
-                    return;
-                }
-                
-                cluster.style.display = 'block';
-                
-                // Filter lines within cluster
-                cluster.querySelectorAll('.line').forEach(line => {
-                    const isTrigger = line.getAttribute('data-is-trigger') === 'true';
-                    if (showOnlyTriggers && !isTrigger) {
-                        line.style.display = 'none';
-                    } else {
-                        line.style.display = 'block';
-                    }
-                });
-            });
-        }
-        
-        function resetFilters() {
-            document.getElementById('showOnlyTriggers').checked = false;
-            document.getElementById('minLines').value = '';
-            document.getElementById('maxLines').value = '';
-            applyFilters();
-        }
-        
-        // Apply initial filter state
-        applyFilters();
-    </script>
-</body>
-</html>"""
-    
-    with open(output_file, 'w') as f:
-        f.write(html)
-    
-    log.info(f"HTML visualization written to {output_file}")
 
 
 def main():
@@ -422,10 +226,6 @@ def main():
         for cluster in clusters:
             visualize_cluster_text(cluster, args.key, args.triggers_only)
     else:
-        # HTML output
-        # Get OUT_FOLDER from sys.modules to ensure we get the updated value
-        # The issue is that support/log.py imports 'parameters' while this file imports 'parseLog.parameters'
-        # They can be different module objects, so we need to check both
         import sys
         params_module = sys.modules.get('parameters')
         if params_module is None:
