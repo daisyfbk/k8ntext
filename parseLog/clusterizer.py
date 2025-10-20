@@ -210,6 +210,7 @@ def _create_empty_cluster_metadata() -> dict:
     """Create an empty metadata dictionary for a cluster."""
     return {
         'usernames': set(),
+        'verbs': set(),
         'resources': set(),
         'uids': set(),
         'owner_uids': set(),
@@ -225,6 +226,10 @@ def _update_cluster_metadata(metadata: dict, line: dict) -> None:
     # Add username
     if 'username' in info and info['username']:
         metadata['usernames'].add(info['username'])
+
+    # Add verb
+    if 'verb' in info and info['verb']:
+        metadata['verbs'].add(info['verb'])
 
     # Add resource signature
     resource_sig = (
@@ -297,6 +302,7 @@ def _find_best_cluster_match(
         max_cluster_size: int | float
 ) -> Optional[str]:
     username = info.get('username')
+    verb = info.get('verb')
     resource_sig = (info.get('resource'), info.get('namespace'), info.get('name'))
 
     line_uid = info.get('metadata/uid')
@@ -342,11 +348,16 @@ def _find_best_cluster_match(
 
         score = 0
 
-        # Priority 1: Username match (weight: 100)
+        # Priority 1: Username match (weight: 30)
         if username and username in metadata['usernames']:
-            score += 50
+            score += 30
 
-        # Priority 2: ObjectRef match (weight: 50)
+        # Priority 1.5: Verb match (weight: 30)
+        # Having the same verb is important to avoid mixing different operations
+        if verb and verb in metadata['verbs']:
+            score += 30
+
+        # Priority 2: ObjectRef match (weight: 100)
         if resource_sig in metadata['resources']:
             score += 100
 
@@ -426,7 +437,10 @@ def _find_best_cluster_match(
             best_score = score
             best_cluster = uuid
 
-    if best_score >= 50:
+    # Require at least 60 points to match a cluster
+    # This prevents clustering lines together based on username alone (30 points)
+    # and requires at least username+verb (60 points) or a resource match (100 points)
+    if best_score >= 60:
         return best_cluster
 
     return None
@@ -575,14 +589,14 @@ def clusterize_log(lines: list[dict[str, str]],
                 final_clusters[uuid] = [idx]
             continue
 
-        # If a triggering action is alone, we cluster it alone
-        if len(tractionlist) == 1 and len(indices) > 1:
-            uuid = get_next_uuid(is_control_plane_action(
-                get_informative_dict(lines[tractionlist[0]])) is not None and merge_control_plane)
-            for idx in indices:
-                lines[idx][UUID] = uuid
-            final_clusters[uuid] = indices
-            continue
+        # # If a triggering action is alone, we cluster it alone
+        # if len(tractionlist) == 1 and len(indices) > 1:
+        #     uuid = get_next_uuid(is_control_plane_action(
+        #         get_informative_dict(lines[tractionlist[0]])) is not None and merge_control_plane)
+        #     for idx in indices:
+        #         lines[idx][UUID] = uuid
+        #     final_clusters[uuid] = indices
+        #     continue
 
         # For larger clusters, we can do more advanced processing
         output_clusters = clusterize_labels(

@@ -4,7 +4,7 @@ from functools import partial
 
 import keras
 import keras_tuner as kt
-from keras.api import layers, models, callbacks, backend
+from keras import layers, models, callbacks, backend
 
 import parameters as pm
 from support.log import silence_stdout_logging, activate_stdout_logging
