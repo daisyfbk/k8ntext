@@ -39,7 +39,9 @@ To get started with K8NTEXT, follow these steps:
 
 ### Training a model
 
-The dataset is in the `audit-log` directory. In order to train a model:
+The dataset is in the Releases section of this repository, due to its size. Download it and extract it to a folder of your choice (e.g., `audit-log`). The dataset can be also be created using the `data-collection` scripts (see below).
+
+In order to train a model:
 
 1. `cd` into `parseLog`:
 
@@ -53,7 +55,7 @@ The dataset is in the `audit-log` directory. In order to train a model:
    python3 model.py -f $DATASET_FILE
    ```
 
-    where `$DATASET_FILE` is a JSON file containing a labeled dataset. The dataset can be created using the `data-collection` scripts (see below). The trained model and some statistics will be saved in the `out` directory.
+   where `$DATASET_FILE` is a JSON file containing a labeled dataset. TThe trained model and some statistics will be saved in the `out` directory.
 
 The model can be deeply customized by editing the `parameters.py` file. The features used for training are in `model_features.py`. For example, in `parameters.py`, the key of the label can be changed by modifying the `LABEL_KEY` variable, which is set to `label` by default.
 
