@@ -12,6 +12,24 @@ The following files are available:
 - `tests`: some shell scripts for evaluating K8NTEXT. The data is then fed to the `plots` scripts.
 - `scripts`: miscellaneous scripts used for various tasks. Not fundamental to the project.
 
+## Premise
+
+![Screenshot of a Kubernetes audit log entry](data-collection/audit-log-screenshot.png)
+
+Kubernetes audit logs provide a detailed record of the activities occurring within a Kubernetes cluster. However, these logs can be overwhelming due to their verbosity and lack of context. K8NTEXT addresses this challenge by correlating related audit log entries, thereby enhancing the interpretability of the logs.
+
+From a high-level perspective, K8NTEXT works as follows:
+
+1. **Data collection**: Audit logs are collected from a Kubernetes cluster with auditing enabled. Logs are exposed in JSON format
+   with a specific structure which is defined by the Kubernetes API.
+2. **Preprocessing and labeling**: Data is automatically preprocessed to reorder and clean the logs. Then, a ML model automatically
+   divides the logs in batches and applies labels to them. A majority voting system is used to assign a label to each log entry
+   from the multiple predictions made on each batch.
+3. **Clustering**: Once the logs have been labeled, each label group is further divided into clusters using a custom clustering algorithm,
+   which groups together related log entries based on criteria such as time proximity, resource similarity, likelihood scores, and more.
+
+After processing, the logs are enriched with additional fields that indicate their labels and cluster assignments. This enriched data can then be used for further analysis and visualization.
+
 ## Getting started
 
 To get started with K8NTEXT, follow these steps:
