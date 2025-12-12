@@ -211,7 +211,7 @@ This software is licensed under the Creative Commons Attribution-NonCommercial-N
 When citing this project, please use the following citation:
 
 ```generic
-M. Franzil, V. Armani, L. A. D. Knob, and D. Siracusa, ‘Sharpening Kubernetes Audit Logs with Context Awareness’. arXiv, Jun. 19, 2025. doi: 10.48550/arXiv.2506.16328. Available: http://arxiv.org/abs/2506.16328. 
+[1] M. Franzil, V. Armani, L. A. Dias Knob, and D. Siracusa, ‘Sharpening Kubernetes Audit Logs with Context Awareness’, Computer Networks, p. 111890, Nov. 2025, doi: 10.1016/j.comnet.2025.111890. Available: https://www.sciencedirect.com/science/article/pii/S1389128625008564.
 ```
 
 The authors of this project are:
