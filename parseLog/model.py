@@ -14,7 +14,7 @@ from keras import callbacks, losses, metrics as keras_metrics, models, layers
 from keras.optimizers import Adam
 from keras.utils import to_categorical
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, cohen_kappa_score
 from sklearn.model_selection import train_test_split, KFold
 
 import model_features
@@ -632,7 +632,9 @@ def model_inference(model: models.Model,
                     x_encoders: list[Any],
                     yle: preprocessing.LabelEncoder,
                     data: list[dict],
-                    model_version: int = 0) -> dict:
+                    model_version: int = 0,
+                    calculate_confusion_matrix: bool = False,
+                    calculate_kappa: bool = False) -> dict:
     flattened_data, total_features = preprocess_data(data, features, randomize_data=False)
     training_data = encode_data(flattened_data, total_features, include_y=False, previous_xenc=x_encoders,
                                 model_version=pm.MODEL_VERSION)
@@ -659,7 +661,46 @@ def model_inference(model: models.Model,
     log.info(
         f"Total prediction time: {timer:.2f} seconds. Intermediate decoding time: {intermediate:.2f} seconds. Total sequences: {len(X)}. Average time per sequence: {timer / len(X):.4f} seconds. WINDOW_SIZE={pm.WINDOW_LENGTH}")
 
-    return calculate_majorities(data, y_pred_decoded)
+    result = calculate_majorities(data, y_pred_decoded)
+    
+    # Calculate confusion matrix and kappa if requested and labels are available
+    if (calculate_confusion_matrix or calculate_kappa) and 'original_sequence' in result:
+        original_seq = result['original_sequence']
+        predicted_seq = result['predicted_sequence']
+        
+        # Filter out None values for valid comparisons
+        valid_pairs = [(o, p) for o, p in zip(original_seq, predicted_seq) 
+                       if o is not None and p is not None 
+                       and o not in (LABEL_UNKNOWN, LABEL_IGNORE)]
+        
+        if valid_pairs:
+            y_true_filtered = [pair[0] for pair in valid_pairs]
+            y_pred_filtered = [pair[1] for pair in valid_pairs]
+            
+            if calculate_confusion_matrix:
+                labels = sorted(list(set(y_true_filtered)))
+                cm = confusion_matrix(y_true_filtered, y_pred_filtered, labels=labels, normalize='true')
+                
+                # Convert to dictionary format
+                cm_dict = {}
+                for i, true_label in enumerate(labels):
+                    cm_dict[int(true_label)] = {}
+                    for j, pred_label in enumerate(labels):
+                        if cm[i][j] != 0:
+                            cm_dict[int(true_label)][int(pred_label)] = float(cm[i][j])
+                
+                result['confusion_matrix'] = cm_dict
+                result['confusion_matrix_labels'] = [int(l) for l in labels]
+                log.info(f"Confusion matrix calculated with {len(labels)} classes")
+            
+            if calculate_kappa:
+                kappa = cohen_kappa_score(y_true_filtered, y_pred_filtered)
+                result['cohen_kappa'] = float(kappa)
+                log.info(f"Cohen's kappa coefficient: {kappa:.4f}")
+        else:
+            log.warning("No valid labeled pairs found for confusion matrix/kappa calculation")
+    
+    return result
 
 
 def calculate_majorities(data: list[dict],
@@ -1043,7 +1084,9 @@ def main(args):
             features = json.load(f)
 
         result = model_inference(model, features, x_encoders, y_encoders, data,
-                                 model_version=pm.MODEL_VERSION)
+                                 model_version=pm.MODEL_VERSION,
+                                 calculate_confusion_matrix=args.confusion_matrix,
+                                 calculate_kappa=args.kappa)
 
         if args.trustee:
             log.info("Generating Trustee explanations for pre-trained model...")
@@ -1077,6 +1120,27 @@ def main(args):
 
         with open(pm.OUT_FOLDER + '/inference.json', 'w') as f:
             json.dump(result, f)
+        
+        # Export confusion matrix if calculated
+        if 'confusion_matrix' in result:
+            with open(pm.OUT_FOLDER + '/confusion_matrix.json', 'w') as f:
+                json.dump({
+                    'confusion_matrix': result['confusion_matrix'],
+                    'labels': result['confusion_matrix_labels'],
+                    'cohen_kappa': result.get('cohen_kappa')
+                }, f, indent=2)
+            log.info(f"Confusion matrix exported to {pm.OUT_FOLDER}/confusion_matrix.json")
+            
+            # Visualize confusion matrix
+            from model_visualize import plot_confusion_matrix_from_dict
+            try:
+                plot_confusion_matrix_from_dict(
+                    result['confusion_matrix'],
+                    result['confusion_matrix_labels'],
+                    output_file=pm.OUT_FOLDER + '/confusion_matrix.png'
+                )
+            except Exception as e:
+                log.warning(f"Could not plot confusion matrix: {e}")
 
         if 'error_statistics' in result and result['error_statistics']['total'] > 0:
             from model_visualize import plot_error_statistics
@@ -1110,6 +1174,10 @@ if __name__ == '__main__':
                         help='Number of stability iterations for Trustee (default: 20)')
     parser.add_argument('--trustee-sample-size', type=float, default=0.5,
                         help='Sample size for Trustee explanation generation (default: 0.5)')
+    parser.add_argument('--confusion-matrix', action='store_true',
+                        help='Calculate and export confusion matrix during inference (requires labeled data)')
+    parser.add_argument('--kappa', action='store_true',
+                        help="Calculate Cohen's kappa coefficient during inference (requires labeled data)")
 
     __args = parser.parse_args()
 
