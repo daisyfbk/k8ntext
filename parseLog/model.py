@@ -678,9 +678,16 @@ def model_inference(model: models.Model,
             y_pred_filtered = [pair[1] for pair in valid_pairs]
             
             if calculate_confusion_matrix:
-                labels = sorted(list(set(y_true_filtered)))
+                # print("True:", len(set(y_true_filtered)))
+                # print("Filtered:", len(set(y_pred_filtered)))
+                # print("True - Filtered:", set(y_true_filtered) - set(y_pred_filtered))
+                # print("Filtered - True:", set(y_pred_filtered) - set(y_true_filtered))
+
+                labels = sorted(list(set(y_true_filtered) | set(y_pred_filtered)))
                 cm = confusion_matrix(y_true_filtered, y_pred_filtered, labels=labels, normalize='true')
-                
+                # print("Len1:", len(cm[:]))
+                # print("Len2:", len(cm[0,:]))
+
                 # Convert to dictionary format
                 cm_dict = {}
                 for i, true_label in enumerate(labels):
@@ -694,9 +701,108 @@ def model_inference(model: models.Model,
                 log.info(f"Confusion matrix calculated with {len(labels)} classes")
             
             if calculate_kappa:
-                kappa = cohen_kappa_score(y_true_filtered, y_pred_filtered)
+                # Calculate Cohen's kappa using matricial formula
+                # κ = (p_o - p_e) / (1 - p_e)
+                # where p_o = observed agreement, p_e = expected agreement by chance
+                
+                # Get raw (non-normalized) confusion matrix
+                labels_kappa = sorted(list(set(y_true_filtered) | set(y_pred_filtered)))
+                cm_raw = confusion_matrix(y_true_filtered, y_pred_filtered, labels=labels_kappa)
+
+                # for i in range(10):
+                #     for j in range(10):
+                #         print(cm_raw[i][j], end=' ')
+                #     print()
+                
+                # Total number of observations
+                N = np.sum(cm_raw)
+                
+                # Observed agreement: p_o = sum of diagonal / total
+                p_o = np.trace(cm_raw) / N
+                
+                # Expected agreement: p_e = sum((row_sum * col_sum) / N^2)
+                row_sums = np.sum(cm_raw, axis=1)  # Sum each row (true labels)
+                col_sums = np.sum(cm_raw, axis=0)  # Sum each column (predicted labels)
+                p_e = np.sum(row_sums * col_sums) / (N * N)
+                
+                # Cohen's kappa coefficient
+                if p_e == 1.0:
+                    kappa = 1.0 if p_o == 1.0 else 0.0  # Avoid division by zero
+                else:
+                    kappa = (p_o - p_e) / (1.0 - p_e)
+                
                 result['cohen_kappa'] = float(kappa)
-                log.info(f"Cohen's kappa coefficient: {kappa:.4f}")
+                result['cohen_kappa_components'] = {
+                    'observed_agreement': float(p_o),
+                    'expected_agreement': float(p_e),
+                    'total_observations': int(N)
+                }
+                log.info(f"Cohen's kappa coefficient: {kappa:.4f} (p_o={p_o:.4f}, p_e={p_e:.4f})")
+                
+                # Calculate per-component confusion matrices and kappa
+                log.info("Calculating per-component confusion matrices and kappa...")
+                component_names = ['label_id', 'label_sub_id', 'is_namespaced', 'is_single_object', 'verb_id']
+                result['component_confusion_matrices'] = {}
+                result['component_kappas'] = {}
+                
+                for comp_name in component_names:
+                    # Extract component values from true and predicted labels
+                    y_true_component = []
+                    y_pred_component = []
+                    
+                    for true_label, pred_label in zip(y_true_filtered, y_pred_filtered):
+                        try:
+                            true_decoded = decode_label(true_label)
+                            pred_decoded = decode_label(pred_label)
+                            
+                            if 'error' not in true_decoded and 'error' not in pred_decoded:
+                                y_true_component.append(true_decoded['raw'][comp_name])
+                                y_pred_component.append(pred_decoded['raw'][comp_name])
+                        except Exception as e:
+                            log.warning(f"Failed to decode label for component {comp_name}: {e}")
+                            continue
+                    
+                    if y_true_component:
+                        # Calculate confusion matrix for this component
+                        comp_labels = sorted(list(set(y_true_component) | set(y_pred_component)))
+                        cm_comp_raw = confusion_matrix(y_true_component, y_pred_component, labels=comp_labels)
+                        cm_comp_norm = confusion_matrix(y_true_component, y_pred_component, 
+                                                       labels=comp_labels, normalize='true')
+                        
+                        # Convert to dictionary format
+                        cm_comp_dict = {}
+                        for i, true_val in enumerate(comp_labels):
+                            cm_comp_dict[int(true_val)] = {}
+                            for j, pred_val in enumerate(comp_labels):
+                                if cm_comp_norm[i][j] != 0:
+                                    cm_comp_dict[int(true_val)][int(pred_val)] = float(cm_comp_norm[i][j])
+                        
+                        result['component_confusion_matrices'][comp_name] = {
+                            'matrix': cm_comp_dict,
+                            'labels': [int(l) for l in comp_labels]
+                        }
+                        
+                        # Calculate Cohen's kappa for this component
+                        N_comp = np.sum(cm_comp_raw)
+                        p_o_comp = np.trace(cm_comp_raw) / N_comp
+                        
+                        row_sums_comp = np.sum(cm_comp_raw, axis=1)
+                        col_sums_comp = np.sum(cm_comp_raw, axis=0)
+                        p_e_comp = np.sum(row_sums_comp * col_sums_comp) / (N_comp * N_comp)
+                        
+                        if p_e_comp == 1.0:
+                            kappa_comp = 1.0 if p_o_comp == 1.0 else 0.0
+                        else:
+                            kappa_comp = (p_o_comp - p_e_comp) / (1.0 - p_e_comp)
+                        
+                        result['component_kappas'][comp_name] = {
+                            'kappa': float(kappa_comp),
+                            'observed_agreement': float(p_o_comp),
+                            'expected_agreement': float(p_e_comp),
+                            'total_observations': int(N_comp)
+                        }
+                        
+                        log.info(f"  {comp_name}: kappa={kappa_comp:.4f} (p_o={p_o_comp:.4f}, p_e={p_e_comp:.4f})")
         else:
             log.warning("No valid labeled pairs found for confusion matrix/kappa calculation")
     
@@ -718,14 +824,17 @@ def calculate_majorities(data: list[dict],
             weight = 1 - abs(j - pm.WINDOW_LENGTH / 2) / (pm.WINDOW_LENGTH / 2)
             original_sequence_y_pred[index].append((y_pred_decoded[i][j], weight))
 
-    # Drop sequences that do not have pm.WINDOW_LENGTH elements
-    original_sequence_y_pred = {k: v for k, v in original_sequence_y_pred.items() if len(v) == pm.WINDOW_LENGTH}
-    selected = sorted(list(original_sequence_y_pred.keys()))
+    # Separate complete and incomplete sequences
+    complete_sequences = {k: v for k, v in original_sequence_y_pred.items() if len(v) == pm.WINDOW_LENGTH}
+    incomplete_sequences = {k: v for k, v in original_sequence_y_pred.items() if len(v) < pm.WINDOW_LENGTH}
+    
+    selected = sorted(list(complete_sequences.keys()))
 
     predicted_sequence = {}
     sequence_weights = {}
 
-    for k, v in original_sequence_y_pred.items():
+    # Process complete sequences with full window
+    for k, v in complete_sequences.items():
         # Sum the weights for each label
         weighted_labels = {}
         for label, weight in v:
@@ -739,12 +848,17 @@ def calculate_majorities(data: list[dict],
         most_weighted = max(weighted_labels, key=weighted_labels.get)
         predicted_sequence[int(k)] = int(most_weighted)
 
+    # Assign bogus class (-1) to incomplete sequences (boundary cases)
+    bogus_class = -3
+    for k, v in incomplete_sequences.items():
+        predicted_sequence[int(k)] = bogus_class
+        sequence_weights[int(k)] = {bogus_class: 1.0}
+    
+    log.info(f"Predicted {len(complete_sequences)} complete sequences and {len(incomplete_sequences)} incomplete sequences (assigned class {bogus_class})")
+    
     if len(predicted_sequence) > len(data):
         raise ValueError(
             f"Predicted sequence length does not match data length: {len(predicted_sequence)} != {len(data)}. Cannot reshape.")
-    elif len(predicted_sequence) < len(data):
-        log.warning(
-            f"Shorter predicted sequence than data: {len(predicted_sequence)} != {len(data)}. Reshaping to match.")
 
     correct = 0
     accounted = 0
@@ -780,12 +894,24 @@ def calculate_majorities(data: list[dict],
         if original == predicted:
             correct += 1
         else:
-            # log.info(f"Error in sequence {i}: (embedded) {original} != {predicted} (predicted)")
             try:
                 decoded_original = decode_label(original)
+                if 'error' in decoded_original:
+                    log.error(f"Failed to decode original label {original} in sequence {i}, skipping. Reason: {decoded_original['error']}")
+                    continue
+
                 decoded_predicted = decode_label(predicted)
 
-                decoded_original = decoded_original['raw']
+                if 'error' in decoded_predicted:
+                    log.error(f"Failed to decode predicted label {predicted} in sequence {i}, skipping. Reason: {decoded_predicted['error']}")
+                    continue
+
+                try:
+                    decoded_original = decoded_original['raw']
+                except Exception:
+                    log.error("Failed to decode original label, why?")
+                    print(decoded_original)
+                    continue
                 try:
                     decoded_predicted = decoded_predicted['raw']
                 except Exception:
@@ -1123,24 +1249,24 @@ def main(args):
         
         # Export confusion matrix if calculated
         if 'confusion_matrix' in result:
-            with open(pm.OUT_FOLDER + '/confusion_matrix.json', 'w') as f:
-                json.dump({
-                    'confusion_matrix': result['confusion_matrix'],
-                    'labels': result['confusion_matrix_labels'],
-                    'cohen_kappa': result.get('cohen_kappa')
-                }, f, indent=2)
-            log.info(f"Confusion matrix exported to {pm.OUT_FOLDER}/confusion_matrix.json")
+            export_data = {
+                'confusion_matrix': result['confusion_matrix'],
+                'labels': result['confusion_matrix_labels'],
+                'cohen_kappa': result.get('cohen_kappa'),
+                'cohen_kappa_components': result.get('cohen_kappa_components')
+            }
             
-            # Visualize confusion matrix
-            from model_visualize import plot_confusion_matrix_from_dict
-            try:
-                plot_confusion_matrix_from_dict(
-                    result['confusion_matrix'],
-                    result['confusion_matrix_labels'],
-                    output_file=pm.OUT_FOLDER + '/confusion_matrix.png'
-                )
-            except Exception as e:
-                log.warning(f"Could not plot confusion matrix: {e}")
+            # Add component confusion matrices if available
+            if 'component_confusion_matrices' in result:
+                export_data['component_confusion_matrices'] = result['component_confusion_matrices']
+            
+            # Add component kappas if available
+            if 'component_kappas' in result:
+                export_data['component_kappas'] = result['component_kappas']
+            
+            with open(pm.OUT_FOLDER + '/confusion_matrix.json', 'w') as f:
+                json.dump(export_data, f, indent=2)
+            log.info(f"Confusion matrix (with component matrices) exported to {pm.OUT_FOLDER}/confusion_matrix.json")
 
         if 'error_statistics' in result and result['error_statistics']['total'] > 0:
             from model_visualize import plot_error_statistics
