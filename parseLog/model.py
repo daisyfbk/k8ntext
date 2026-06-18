@@ -1086,73 +1086,75 @@ def main(args):
         tuner_search(data, tuner_type=args.hyperparam_tuning)
         exit(0)
 
-    if not args.model:
+    if not args.model: 
         losses = []
         metrics = []
 
-        if args.stats_mode:
-            if 'save' in args.stats_mode:
+        if args.kfolds:
+            log.info("Starting k-fold training.")
+            result = kfold_training(data)
+
+            for i in range(len(result)):
+                os.makedirs(pm.OUT_FOLDER + f'/attempt_{i}', exist_ok=True)
+
+                losses.append(result[i]['history'])
+                metrics.append(result[i]['metrics'])
+
+                if args.save:
+                    save_model(result[i], pm.OUT_FOLDER + f'/attempt_{i}', model_basename=f'model_{i}.keras')
+
+                    y_pred = result[i]['maj_result']['predicted_sequence']
+                    for log_line, label in zip(data, y_pred):
+                        log_line["predicted_label"] = label
+
+                    with open(pm.OUT_FOLDER + f'/attempt_{i}/labeled.json', 'w') as f:
+                        for line in data:
+                            f.write(json.dumps(line) + '\n')
+
+                with open(pm.OUT_FOLDER + f'/attempt_{i}/inference.json', 'w') as f:
+                    json.dump(result[i]['maj_result'], f)
+        elif args.statistics:
+            if args.save:
                 save_models = True
                 log.info('Starting statistics mode with model saving.')
             else:
                 save_models = False
                 log.info('Starting statistics mode.')
 
-            if 'kfolds' in args.stats_mode:
-                log.info("Starting k-fold training.")
-                result = kfold_training(data)
+            for i in range(pm.STATISTICS_ATTEMPTS):
+                result = model_training(data, statistical_mode=True, randomize_data=args.randomize)
+                losses.append(result['history'])
+                metrics.append(result['metrics'])
+                log.info(f"Attempt {i + 1} done.")
 
-                for i in range(len(result)):
-                    os.makedirs(pm.OUT_FOLDER + f'/attempt_{i}', exist_ok=True)
+                attempt_path = pm.OUT_FOLDER + f'/attempt_{i}'
+                if save_models or args.trustee:
+                    os.makedirs(attempt_path, exist_ok=True)
 
-                    losses.append(result[i]['history'])
-                    metrics.append(result[i]['metrics'])
+                if save_models:
+                    save_model(result, attempt_path, model_basename=f'model_{i}.keras')
 
-                    if 'save' in args.stats_mode:
-                        save_model(result[i], pm.OUT_FOLDER + f'/attempt_{i}', model_basename=f'model_{i}.keras')
+                if args.trustee:
+                    log.info(f"Generating Trustee explanations for attempt {i + 1}...")
+                    from model_trustee import generate_trustee_explanation, save_trustee_explanation
+                    trustee_result = generate_trustee_explanation(
+                        model=result['model'],
+                        x_train=result['x_train'],
+                        y_train=result['y_train'],
+                        x_test=result['x_test'],
+                        y_test=result['y_test'],
+                        feature_names=result['features'],
+                        model_version=pm.MODEL_VERSION,
+                        num_iter=args.trustee_iter,
+                        num_stability_iter=args.trustee_stability_iter,
+                        samples_size=args.trustee_sample_size
+                    )
 
-                        y_pred = result[i]['maj_result']['predicted_sequence']
-                        for log_line, label in zip(data, y_pred):
-                            log_line["predicted_label"] = label
-
-                        with open(pm.OUT_FOLDER + f'/attempt_{i}/labeled.json', 'w') as f:
-                            for line in data:
-                                f.write(json.dumps(line) + '\n')
-
-                    with open(pm.OUT_FOLDER + f'/attempt_{i}/inference.json', 'w') as f:
-                        json.dump(result[i]['maj_result'], f)
-            else:
-                for i in range(pm.STATISTICS_ATTEMPTS):
-                    result = model_training(data, statistical_mode=True, randomize_data=args.randomize)
-                    losses.append(result['history'])
-                    metrics.append(result['metrics'])
-                    log.info(f"Attempt {i + 1} done.")
-
-                    if save_models:
-                        os.makedirs(pm.OUT_FOLDER + f'/attempt_{i}', exist_ok=True)
-                        save_model(result, pm.OUT_FOLDER + f'/attempt_{i}', model_basename=f'model_{i}.keras')
-
-                    if args.trustee:
-                        log.info(f"Generating Trustee explanations for attempt {i + 1}...")
-                        from model_trustee import generate_trustee_explanation, save_trustee_explanation
-                        trustee_result = generate_trustee_explanation(
-                            model=result['model'],
-                            x_train=result['x_train'],
-                            y_train=result['y_train'],
-                            x_test=result['x_test'],
-                            y_test=result['y_test'],
-                            feature_names=result['features'],
-                            model_version=pm.MODEL_VERSION,
-                            num_iter=args.trustee_iter,
-                            num_stability_iter=args.trustee_stability_iter,
-                            samples_size=args.trustee_sample_size
-                        )
-
-                        if trustee_result:
-                            save_trustee_explanation(trustee_result, pm.OUT_FOLDER + f'/attempt_{i}')
-                            log.info(f"Trustee explanations for attempt {i + 1} saved successfully.")
-                        else:
-                            log.warning(f"Trustee explanation generation failed for attempt {i + 1}.")
+                    if trustee_result:
+                        save_trustee_explanation(trustee_result, attempt_path)
+                        log.info(f"Trustee explanations for attempt {i + 1} saved successfully.")
+                    else:
+                        log.warning(f"Trustee explanation generation failed for attempt {i + 1}.")
 
         else:
             log.info("Starting model training.")
@@ -1164,7 +1166,8 @@ def main(args):
             losses.append(result['history'])
             metrics.append(result['metrics'])
 
-            save_model(result, pm.OUT_FOLDER)
+            if args.save:
+                save_model(result, pm.OUT_FOLDER)
 
             if args.trustee:
                 log.info("Generating Trustee explanations...")
@@ -1235,7 +1238,7 @@ def main(args):
             else:
                 log.warning("Trustee explanation generation failed for pre-trained model.")
 
-        if 'save' in args.stats_mode:
+        if args.save:
             y_pred = result['predicted_sequence']
             for log_line, label in zip(data, y_pred):
                 log_line["predicted_label"] = label
@@ -1274,16 +1277,18 @@ def main(args):
 
 
 if __name__ == '__main__':
-    stats_mode_help = "Turns on statistics mode and accepts a comma-separated list of options: " \
-                      "save: saves the models generated during the process, else only statistics are saved. " \
-                      "kfolds: uses k-fold cross-validation instead of random splits. "
 
     parser = argparse.ArgumentParser(prog='model')
     parser.add_argument('-f', '--file', type=str, help='Path to the files, one or many', nargs='+', required=True)
     parser.add_argument('-m', '--model', type=str,
                         help='Path to the model file; if provided, will do inference instead of training')
-    parser.add_argument('-s', '--stats-mode', nargs='?', const='stats_only', default='',
-                        help=stats_mode_help)
+    parser.add_argument('--statistics', action=argparse.BooleanOptionalAction, default=True,
+                        help='Repeat training for STATISTICS_ATTEMPTS random train/test splits (enabled by default)')
+    parser.add_argument('--save', action=argparse.BooleanOptionalAction, default=True,
+                        help='Save trained models and labeled datasets (enabled by default)')
+    parser.add_argument('--kfolds', action='store_true',
+                        help='Use k-fold cross-validation instead of repeated random train/test splits')
+
     parser.add_argument('-y', '--hyperparam-tuning', type=str,
                         help='Use hyperparameter tuning instead of training')
     parser.add_argument('-l', '--log-level', type=str, help='Log level', default='INFO')
@@ -1291,7 +1296,7 @@ if __name__ == '__main__':
                         default=-1)
     parser.add_argument('--mirroring', action='store_true', help='Use mirrored strategy for multi-GPU training')
     parser.add_argument('-r', '--randomize', action='store_true',
-                        help='Randomize the data before training (only in non-statistics mode)')
+                        help='Randomize the data before training (ignored for k-fold cross-validation)')
     parser.add_argument('--trustee', action='store_true',
                         help='Generate model explanations using Trustee framework')
     parser.add_argument('--trustee-iter', type=int, default=100,
@@ -1306,6 +1311,9 @@ if __name__ == '__main__':
                         help="Calculate Cohen's kappa coefficient during inference (requires labeled data)")
 
     __args = parser.parse_args()
+
+    if __args.model and __args.kfolds:
+        parser.error('--kfolds can only be used during training')
 
     initialize_log(log_level=__args.log_level, application_type="train" if not __args.model else "inference")
 
@@ -1331,10 +1339,6 @@ if __name__ == '__main__':
     log.info("Starting model generation with the following parameters:")
     for p in __param:
         log.info("" + p)
-
-    # if __args.model and __args.stats_mode:
-    #     log.error('Cannot use stats mode with a model file.')
-    #     exit(1)
 
     if pm.KERAS_BACKEND == "tensorflow" and \
             __args.mirroring and \

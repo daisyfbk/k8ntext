@@ -73,7 +73,15 @@ In order to train a model:
    python3 model.py -f $DATASET_FILE
    ```
 
-   where `$DATASET_FILE` is a JSON file containing a labeled dataset. TThe trained model and some statistics will be saved in the `out` directory.
+   where `$DATASET_FILE` is a JSON file containing a labeled dataset. By default, `model.py` runs `STATISTICS_ATTEMPTS` training attempts with different train/test splits, saves each trained model in `out/attempt_*`, and writes aggregate statistics in `out`.
+
+   If you want a single training run instead, disable statistics:
+
+   ```bash
+   python3 model.py -f $DATASET_FILE --no-statistics
+   ```
+
+   Use `--kfolds` to switch to k-fold cross-validation, or `--no-save` to skip saving trained models during training and labeled datasets during inference.
 
 The model can be deeply customized by editing the `parameters.py` file. The features used for training are in `model_features.py`. For example, in `parameters.py`, the key of the label can be changed by modifying the `LABEL_KEY` variable, which is set to `label` by default.
 
@@ -95,7 +103,7 @@ Once a model has been trained, it can be used to make predictions on new data.
    python3 model.py -m $MODEL_FILE -f $DATASET_FILE
     ```
 
-    where `$MODEL_FILE` is the path to the trained model (e.g., `out/model.keras`) and `$DATASET_FILE` is a JSON file containing the dataset to be used for inference. The predictions will be saved in the `out` directory. The same dataset format used for training is used for inference.
+   where `$MODEL_FILE` is the path to the trained model (for example, `out/model.keras` after `--no-statistics`, or `out/attempt_0/model_0.keras` with the default training flow) and `$DATASET_FILE` is a JSON file containing the dataset to be used for inference. The predictions will be saved in the `out` directory, and inference also writes `labeled.json` by default unless `--no-save` is set. The same dataset format used for training is used for inference.
 
 ### Clustering the model results
 
