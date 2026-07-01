@@ -492,6 +492,119 @@ def _find_best_cluster_match(
     return None
 
 
+def _get_node_identity(info: dict) -> Optional[str]:
+    """Return the node name for self-issued kubelet actions, if applicable."""
+    username = info.get('username')
+    name = info.get('name')
+    if not username or not username.startswith('system:node:'):
+        return None
+    node_name = username.removeprefix('system:node:')
+    if not name or name != node_name:
+        return None
+    return node_name
+
+
+def _reassign_node_self_gets(
+        lines: list[dict[str, str]],
+        clusters: ClusterDict,
+        label_key: str,
+        max_trigger_distance_seconds: float = 15.0,
+) -> None:
+    """Attach kubelet self-get node heartbeats to the nearest same-node trigger.
+
+    These `get nodes` heartbeats often sit in a different label bucket from the
+    corresponding `update leases` heartbeat trigger, so the main per-label
+    clustering pass cannot group them correctly.
+    """
+    trigger_candidates: dict[str, list[tuple[float, str, int]]] = {}
+
+    for line in lines:
+        if UUID not in line:
+            continue
+
+        info = get_informative_dict(line)
+        node_name = _get_node_identity(info)
+        if node_name is None or not is_triggering_action(line, label_key):
+            continue
+
+        verb = info.get('verb')
+        resource = info.get('resource')
+        namespace = info.get('namespace')
+        timestamp = get_timestamp_seconds(line)
+        if timestamp is None:
+            continue
+
+        priority: Optional[int] = None
+        if resource == 'leases' and namespace == 'kube-node-lease' and verb in ('update', 'patch'):
+            priority = 0
+        elif resource == 'nodes' and verb in ('patch', 'update'):
+            priority = 1
+
+        if priority is None:
+            continue
+
+        trigger_candidates.setdefault(node_name, []).append((timestamp, line[UUID], priority))
+
+    if not trigger_candidates:
+        return
+
+    touched_uuids: set[str] = set()
+    reassigned = 0
+
+    for idx, line in enumerate(lines):
+        current_uuid = line.get(UUID)
+        if current_uuid is None:
+            continue
+
+        info = get_informative_dict(line)
+        node_name = _get_node_identity(info)
+        if node_name is None or info.get('verb') != 'get' or info.get('resource') != 'nodes':
+            continue
+
+        timestamp = get_timestamp_seconds(line)
+        if timestamp is None:
+            continue
+
+        candidates = trigger_candidates.get(node_name, [])
+        if not candidates:
+            continue
+
+        nearest_ts, nearest_uuid, _ = min(
+            candidates,
+            key=lambda candidate: (
+                abs(candidate[0] - timestamp),
+                0 if candidate[0] >= timestamp else 1,
+                candidate[2],
+            ),
+        )
+        if abs(nearest_ts - timestamp) > max_trigger_distance_seconds:
+            continue
+        if nearest_uuid == current_uuid:
+            continue
+
+        try:
+            clusters[current_uuid].remove(idx)
+        except (KeyError, ValueError):
+            continue
+
+        clusters.setdefault(nearest_uuid, []).append(idx)
+        line[UUID] = nearest_uuid
+        touched_uuids.add(current_uuid)
+        touched_uuids.add(nearest_uuid)
+        reassigned += 1
+
+    for uuid in list(touched_uuids):
+        if uuid not in clusters:
+            continue
+        if not clusters[uuid]:
+            del clusters[uuid]
+            continue
+        clusters[uuid].sort()
+
+    if reassigned > 0:
+        log.info(f"Reassigned {reassigned} node self-get lines to nearest cross-label heartbeat trigger")
+
+
 def clusterize_labels(lines: list[dict],
                       indices: list[int],
                       tractionlist: list[int],
@@ -664,6 +777,8 @@ def clusterize_log(lines: list[dict[str, str]],
                 final_clusters[uuid] = output_clusters[uuid]
             else:
                 final_clusters[uuid].extend(output_clusters[uuid])
+
+    _reassign_node_self_gets(lines, final_clusters, label_key)
 
     log.info(f"Total overall clusters formed: {len(final_clusters)}")
     # Further processing can be done here for larger clusters

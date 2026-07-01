@@ -261,8 +261,16 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             font-size: 0.8rem;
             cursor: pointer;
             user-select: none;
+            min-width: 0;
         }
         .user-toggle input { cursor: pointer; }
+        .user-toggle span {
+            display: block;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
         #cluster-info {
             max-height: 35%;
             overflow-y: auto;
@@ -302,7 +310,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         #y-axis {
             position: absolute;
             left: 0;
-            top: 30px;
+            top: 0;
             bottom: 0;
             width: 180px;
             background: rgba(248,249,250,0.95);
@@ -310,15 +318,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             z-index: 2;
             overflow: hidden;
         }
+        #y-axis-content {
+            position: relative;
+            will-change: transform;
+        }
         .user-label {
             position: absolute;
-            left: 8px;
-            right: 8px;
+            left: 0;
+            right: 0;
             height: __ROW_HEIGHT__px;
             display: flex;
             align-items: center;
+            padding: 0 8px;
+            box-sizing: border-box;
             font-size: 0.78rem;
             font-weight: 500;
+        }
+        .user-label-text {
+            display: block;
+            width: 100%;
+            min-width: 0;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -327,7 +346,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         #timeline-scroll {
             flex: 1;
             overflow-x: auto;
-            overflow-y: hidden;
+            overflow-y: auto;
             margin-left: 180px;
             position: relative;
             background: #fff;
@@ -371,7 +390,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             font-weight: 700;
         }
 
-        /* Hidden users are collapsed */
+        /* Hidden users are removed from the packed layout */
         .user-row.user-hidden { display: none; }
         .user-label.user-hidden { display: none; }
         .action-dot.user-hidden { display: none; }
@@ -456,7 +475,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             </div>
             <div id="timeline-wrapper">
                 <div id="y-axis">
-                    __USER_LABELS__
+                    <div id="y-axis-content">__USER_LABELS__</div>
                 </div>
                 <div id="timeline-scroll">
                     <svg id="timeline-svg" width="__TIMELINE_WIDTH__" height="__TOTAL_HEIGHT__" xmlns="http://www.w3.org/2000/svg">
@@ -483,17 +502,96 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         const baseScale = __PIXELS_PER_SECOND__;
         const normalRadius = __NORMAL_RADIUS__;
         const triggerRadius = __TRIGGER_RADIUS__;
+        const allUsersVisibleHeight = __TOTAL_HEIGHT__;
 
         let currentScale = baseScale;
         let selectedUuid = null;
+        let packedVisibleUsers = false;
 
         const svg = document.getElementById('timeline-svg');
         const scrollArea = document.getElementById('timeline-scroll');
+        const yAxis = document.getElementById('y-axis');
+        const yAxisContent = document.getElementById('y-axis-content');
         const zoomSlider = document.getElementById('zoom-slider');
         const zoomValue = document.getElementById('zoom-value');
         const detailPanel = document.getElementById('detail-panel');
         const detailTitle = document.getElementById('detail-title');
         const detailContent = document.getElementById('detail-content');
+        const baseUserRow = Object.fromEntries(users.map((user, idx) => [user, idx]));
+
+        function isUserVisible(user) {
+            const cb = document.querySelector('.user-toggle input[data-user="' + user + '"]');
+            return !!(cb && cb.checked);
+        }
+
+        function getUserRowMap() {
+            if (!packedVisibleUsers) {
+                return baseUserRow;
+            }
+
+            const rowMap = {};
+            let visibleRow = 0;
+            users.forEach(user => {
+                if (!isUserVisible(user)) return;
+                rowMap[user] = visibleRow;
+                visibleRow += 1;
+            });
+            return rowMap;
+        }
+
+        function getVisibleUserCount() {
+            return users.filter(isUserVisible).length;
+        }
+
+        function refreshLayout() {
+            const rowMap = getUserRowMap();
+            const visibleUserCount = getVisibleUserCount();
+            const totalHeight = packedVisibleUsers
+                ? Math.max(rowHeight, visibleUserCount * rowHeight + rowHeight)
+                : allUsersVisibleHeight;
+
+            svg.setAttribute('height', totalHeight);
+            yAxis.style.height = totalHeight + 'px';
+            yAxisContent.style.height = totalHeight + 'px';
+
+            document.querySelectorAll('.user-label').forEach(label => {
+                const user = label.dataset.user;
+                const visible = isUserVisible(user);
+                label.classList.toggle('user-hidden', !visible);
+                if (!visible) return;
+                const row = rowMap[user];
+                label.style.top = (row * rowHeight) + 'px';
+                label.style.height = rowHeight + 'px';
+            });
+
+            document.querySelectorAll('.user-row').forEach(row => {
+                const user = row.dataset.user;
+                const visible = isUserVisible(user);
+                row.classList.toggle('user-hidden', !visible);
+                if (!visible) return;
+                row.setAttribute('y', rowMap[user] * rowHeight);
+            });
+
+            document.querySelectorAll('.row-separator').forEach(line => {
+                const user = line.dataset.user;
+                const visible = isUserVisible(user);
+                line.classList.toggle('user-hidden', !visible);
+                if (!visible) return;
+                const y = (rowMap[user] + 1) * rowHeight;
+                line.setAttribute('y1', y);
+                line.setAttribute('y2', y);
+            });
+
+            document.querySelectorAll('.action-dot').forEach(dot => {
+                const user = dot.dataset.user;
+                const visible = isUserVisible(user);
+                dot.classList.toggle('user-hidden', !visible);
+                if (!visible) return;
+                dot.setAttribute('cy', rowMap[user] * rowHeight + rowHeight / 2);
+            });
+
+            document.querySelectorAll('.grid-line').forEach(line => line.setAttribute('y2', totalHeight));
+        }
 
         function xForSeconds(s) {
             return (s - timelineStart) * currentScale;
@@ -554,25 +652,24 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         zoomSlider.addEventListener('input', e => updateScale(e.target.value));
 
         function toggleUser(checkbox) {
-            const user = checkbox.dataset.user;
-            const hidden = !checkbox.checked;
-            document.querySelectorAll('[data-user="' + user + '"]').forEach(el => {
-                if (el.classList.contains('user-label') || el.classList.contains('user-row') || el.classList.contains('action-dot')) {
-                    el.classList.toggle('user-hidden', hidden);
-                }
-            });
+            if (checkbox.checked) {
+                packedVisibleUsers = false;
+            }
+            refreshLayout();
         }
 
         function showAllUsers() {
             document.querySelectorAll('.user-toggle input').forEach(cb => cb.checked = true);
-            document.querySelectorAll('.user-hidden').forEach(el => el.classList.remove('user-hidden'));
+            packedVisibleUsers = false;
+            refreshLayout();
         }
 
         function deselectAllUsers() {
             document.querySelectorAll('.user-toggle input').forEach(cb => {
                 cb.checked = false;
-                toggleUser(cb);
             });
+            packedVisibleUsers = false;
+            refreshLayout();
         }
 
         function scrollToStart() {
@@ -597,6 +694,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.querySelectorAll('.cluster-selected').forEach(el => el.classList.remove('cluster-selected'));
             document.querySelectorAll('.cluster-info-item.selected').forEach(el => el.classList.remove('selected'));
 
+            const visibleUsersBeforeSelection = getVisibleUserCount();
+
             // Highlight all dots belonging to this cluster and ensure their users are visible.
             document.querySelectorAll('.action-dot[data-uuid="' + uuid + '"]').forEach(dot => {
                 dot.classList.add('cluster-selected');
@@ -609,6 +708,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 });
                 const cb = document.querySelector('.user-toggle input[data-user="' + user + '"]');
                 if (cb) cb.checked = true;
+            });
+
+            packedVisibleUsers = visibleUsersBeforeSelection === 0;
+            refreshLayout();
+
+            document.querySelectorAll('.action-dot[data-uuid="' + uuid + '"]').forEach(dot => {
+                dot.classList.add('cluster-selected');
+                const user = dot.dataset.user;
+                document.querySelectorAll('.user-row[data-user="' + user + '"], .user-label[data-user="' + user + '"]').forEach(el => {
+                    el.classList.add('cluster-selected');
+                });
             });
 
             const info = document.querySelector('.cluster-info-item[data-uuid="' + uuid + '"]');
@@ -644,6 +754,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             item.addEventListener('click', () => selectCluster(item.dataset.uuid));
         });
 
+        scrollArea.addEventListener('scroll', () => {
+            yAxisContent.style.transform = 'translateY(' + (-scrollArea.scrollTop) + 'px)';
+        });
+
         // Click on background resets.
         scrollArea.addEventListener('click', e => {
             if (e.target === scrollArea || e.target === svg) {
@@ -655,6 +769,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape') resetSelection();
         });
+
+        refreshLayout();
     </script>
 </body>
 </html>
@@ -764,7 +880,7 @@ def build_html(
         )
         row_elements.append(
             f'<line x1="0" y1="{y + row_height}" x2="{timeline_width}" '
-            f'y2="{y + row_height}" class="row-separator" />'
+            f'y2="{y + row_height}" class="row-separator" data-user="{user}" />'
         )
 
     # User filter panel.
@@ -773,7 +889,7 @@ def build_html(
         user_checkboxes.append(
             f'<label class="user-toggle">'
             f'<input type="checkbox" checked data-user="{user}" '
-            f'onchange="toggleUser(this)"> {user}</label>'
+            f'onchange="toggleUser(this)"><span>{user}</span></label>'
         )
 
     # Cluster legend/info, sorted by size descending.
@@ -824,7 +940,7 @@ def build_html(
         "__STATS__": f"{len(actions)} actions · {len(users)} users · {len(clusters)} clusters",
         "__USER_LABELS__": "\n".join(
             f'<div class="user-label" data-user="{u}" '
-            f'style="top:{i*row_height}px;height:{row_height}px;">{u}</div>'
+            f'style="top:{i*row_height}px;height:{row_height}px;"><span class="user-label-text">{u}</span></div>'
             for i, u in enumerate(users)
         ),
         "__GRID_ELEMENTS__": "\n".join(grid_elements),
