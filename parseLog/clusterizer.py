@@ -147,7 +147,15 @@ def clusterize_main_logic(lines: list[dict],
     for uuid in clusters:
         cluster_metadata[uuid] = _create_empty_cluster_metadata()
 
-        # Initialize with triggering action metadata
+        # Initialize with triggering action metadata.
+        # The first line in a candidate cluster is the trigger, so use its
+        # timestamp as the cluster's temporal anchor for tie-breaking and seed
+        # the cluster verb from it.
+        trigger_idx = clusters[uuid][0]
+        trigger_info = get_informative_dict(lines[trigger_idx])
+        cluster_metadata[uuid]['trigger_timestamp'] = get_timestamp_seconds(lines[trigger_idx])
+        if trigger_info.get('verb'):
+            cluster_metadata[uuid]['verbs'].add(trigger_info['verb'])
         for idx in clusters[uuid]:
             _update_cluster_metadata(cluster_metadata[uuid], lines[idx])
 
@@ -157,6 +165,7 @@ def clusterize_main_logic(lines: list[dict],
     for idx in unassigned_lines:
         line = lines[idx]
         informative_dict = get_informative_dict(line)
+        line_ts = get_timestamp_seconds(line)
         # print(informative_dict)
 
         # Control plane action trigger for keeping them separate or not
@@ -169,6 +178,9 @@ def clusterize_main_logic(lines: list[dict],
                 if cp_uuid not in clusters:
                     clusters[cp_uuid] = []
                     cluster_metadata[cp_uuid] = _create_empty_cluster_metadata()
+                    cluster_metadata[cp_uuid]['trigger_timestamp'] = line_ts
+                    if informative_dict.get('verb'):
+                        cluster_metadata[cp_uuid]['verbs'].add(informative_dict['verb'])
                 clusters[cp_uuid].append(idx)
                 idx_to_cluster[idx] = cp_uuid
                 _update_cluster_metadata(cluster_metadata[cp_uuid], line)
@@ -200,6 +212,9 @@ def clusterize_main_logic(lines: list[dict],
             clusters[new_uuid] = [idx]
             idx_to_cluster[idx] = new_uuid
             cluster_metadata[new_uuid] = _create_empty_cluster_metadata()
+            cluster_metadata[new_uuid]['trigger_timestamp'] = line_ts
+            if informative_dict.get('verb'):
+                cluster_metadata[new_uuid]['verbs'].add(informative_dict['verb'])
             _update_cluster_metadata(cluster_metadata[new_uuid], line)
 
     # print(clusters)
@@ -216,6 +231,7 @@ def _create_empty_cluster_metadata() -> dict:
         'owner_uids': set(),
         'involved_objects': set(),
         'claim_refs': set(),
+        'trigger_timestamp': None,
     }
 
 
@@ -227,9 +243,13 @@ def _update_cluster_metadata(metadata: dict, line: dict) -> None:
     if 'username' in info and info['username']:
         metadata['usernames'].add(info['username'])
 
-    # Add verb
-    if 'verb' in info and info['verb']:
-        metadata['verbs'].add(info['verb'])
+    # Note: we intentionally do NOT add the verb here.  Verbs are seeded from
+    # the trigger line(s) that create a cluster; adding verbs from every
+    # subsequently matched line makes the cluster appear to be about those
+    # actions too, causing runaway growth (e.g. a single lease-update cluster
+    # accumulating all lease gets because the verb 'get' ends up in its
+    # metadata).  Callers that create new clusters from non-trigger lines are
+    # responsible for seeding the verb themselves.
 
     # Add resource signature
     resource_sig = (
@@ -337,11 +357,17 @@ def _find_best_cluster_match(
                 claim.get('name')
             )
 
+    line_ts = get_timestamp_seconds(line)
+
     # Score each cluster
     best_cluster = None
     best_score = 0
+    scored_clusters: list[tuple[str, float]] = []
 
     for uuid, metadata in cluster_metadata.items():
+        # Skip clusters whose anchor timestamp is unknown (should not happen)
+        if metadata['trigger_timestamp'] is None:
+            continue
         # Skip if cluster is at max size
         if len(clusters[uuid]) >= max_cluster_size:
             continue
@@ -433,9 +459,29 @@ def _find_best_cluster_match(
             if namespace_delete_sig in metadata['resources']:
                 score += 95
 
+        if score >= 60:
+            scored_clusters.append((uuid, score))
         if score > best_score:
             best_score = score
             best_cluster = uuid
+
+    # If several clusters score similarly, prefer the one whose latest action is
+    # closest in time.  This prevents a single early cluster from absorbing all
+    # subsequent actions on the same resource (e.g. lease gets drifting into the
+    # first lease-update cluster).
+    TIME_TIE_TOLERANCE = 20
+    if line_ts is not None and scored_clusters:
+        # Keep only clusters within the tolerance window of the best score.
+        candidates = [
+            (uuid, score, abs(line_ts - cluster_metadata[uuid]['trigger_timestamp']))
+            for uuid, score in scored_clusters
+            if score >= best_score - TIME_TIE_TOLERANCE
+        ]
+
+        if candidates:
+            # Sort by score descending, then by time distance ascending.
+            candidates.sort(key=lambda x: (-x[1], x[2]))
+            return candidates[0][0]
 
     # Require at least 60 points to match a cluster
     # This prevents clustering lines together based on username alone (30 points)

@@ -20,13 +20,22 @@ Kubernetes audit logs provide a detailed record of the activities occurring with
 
 From a high-level perspective, K8NTEXT works as follows:
 
-1. **Data collection**: Audit logs are collected from a Kubernetes cluster with auditing enabled. Logs are exposed in JSON format
-   with a specific structure which is defined by the Kubernetes API.
-2. **Preprocessing and labeling**: Data is automatically preprocessed to reorder and clean the logs. Then, a ML model automatically
-   divides the logs in batches and applies labels to them. A majority voting system is used to assign a label to each log entry
-   from the multiple predictions made on each batch.
-3. **Clustering**: Once the logs have been labeled, each label group is further divided into clusters using a custom clustering algorithm,
-   which groups together related log entries based on criteria such as time proximity, resource similarity, likelihood scores, and more.
+1. Audit logs are collected from a Kubernetes cluster with
+   auditing enabled. Logs are exposed in JSON format with a specific structure
+   which is defined by the Kubernetes API.
+2. Data is automatically preprocessed to reorder
+   and clean the logs. Then, a ML model automatically divides the logs in batches
+   and applies labels to them. A majority voting system is used to assign a label
+   to each log entry from the multiple predictions made on each batch.
+3. Once the logs have been labeled, each label group is further
+   divided into clusters using a custom clustering algorithm, which groups together
+   related log entries based on a series of heuristics such as time proximity, resource
+   similarity, user identity, and more.
+4. After processing, the logs with their labels and UUIDs can be used in
+   downstream tasks, such as visualization and analysis. The `analysis` directory
+   contains a script that generates an HTML file with a timeline view of the
+   clustered events, allowing for easy exploration and analysis of the
+   relationships between different log entries.
 
 After processing, the logs are enriched with additional fields that indicate their labels and cluster assignments. This enriched data can then be used for further analysis and visualization.
 
@@ -124,91 +133,29 @@ Once predictions have been made, the results can be clustered using the `cluster
    where `$DATASET_FILE` is the JSON file containing the dataset with predictions, `-k $LABEL_KEY` is an optional argument to specify the key used for labels (default is `label`, but if you are running it on a labeled dataset, you might want to set it to `predicted_label`).
    The results are output to the `out` directory.
 
-### Gathering and labeling data from a Kubernetes cluster
+### Visualizing the results
 
-The dataset provided with this project has been collected as following.
+The results of the clustering process can be visualized using the `visualize_timeline.py` script under `analysis`. This script generates an HTML file that provides a timeline view of the clustered events, allowing for easy exploration and analysis of the relationships between different log entries.
 
-1. Set up your Kubernetes cluster and ensure you have access to it via `kubectl`.
-2. Make sure auditing has been enabled in your cluster. You can follow the [official Kubernetes documentation](https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/) to enable auditing. In our case, a permissive audit policy has been used, in the `audit-policy.yaml` file.
-3. `cd` to the `data-collection` directory:
+To visualize the results:
 
-   ```bash
-   cd data-collection
-   ```
-
-4. Run the `move-logs.sh` script to start collecting audit logs. The script will guide you through the process, allowing you to cut pieces of the audit log file as needed. The collected logs will be stored in the `$DATASET_FOLDER` directory.
-5. Once you have collected the logs, cd to the `parseLog` directory:
+1. `cd` into `analysis`:
 
    ```bash
-   cd ../parseLog
+   cd analysis
    ```
 
-6. Use the `labeler.py` script to label the collected logs. The script will process the logs, automatically label control plane events, and prompt you to label user events.
-
-
-### Testing the labeling process
-
-The `tests` directory contains some shell scripts that can be used to test the labeling process. In particular:
-
-- `feature-zeroing.sh`: tests the features by zeroing them one at a time and checking the impact on the model's performance.
-- `kfolds.sh`: performs k-fold cross-validation on the dataset to evaluate the model's performance.
-- `train-test-split.sh`: splits the dataset into training and testing sets and evaluates the model's performance as the ratio of the split changes.
-- `window-size.sh`: evaluates the model's performance as the size of the window changes.
-
-### Plotting results
-
-Once you have the results of your model and have executed the tests described in the previous section, you can use the scripts in the `plots` directory to generate visualizations. In particular:
-
-- `plot-feature-zeroing.py`: generates a bar plot showing the impact of zeroing each feature on the model's performance.
-- `plot-kfolds.py`: shows the results of the k-fold cross-validation as a multiple heatmap.
-- `plot-train-test-split.py`: generates a heatmap showing the model's performance as the train-test split ratio changes.
-
-Window tests do not have a dedicated plot script, as the results are shown in table format in the paper.
-
-Some other scripts do not rely on the tests, but can be used to visualize the results of the model:
-
-- `plot-average-cluster-sizes.py`: generates a bar plot showing the average size of each cluster once the results have been clustered.
-- `plot-class-accuracy-weighted.py`: generates a scatterplot showing the accuracy of each class weighted by its frequency in the dataset.
-- `plot-
-
- All the plots presented in the paper can be generated using these scripts.
-
-### Querying functionality
-
-The querying functionality described in the paper has not been ported to the new clustering algorithm yet. It will be added in a future release. For the moment, it can be used by using the files in the `trash` directory, which contains the old implementation of the clusterizer/visualizer. The code is not maintained and might not work with the current version of the project.
-
-### Explainability with Trustee
-
-K8NTEXT now supports model explainability using the [Trustee framework](https://trusteeml.github.io/). Trustee extracts decision tree explanations from black-box ML models, providing interpretable insights into model behavior.
-
-To generate model explanations:
-
-1. `cd` into `parseLog`:
+2. Use `visualize_timeline.py` to generate the visualization:
 
    ```bash
-   cd parseLog
+   python3 visualize_timeline.py -f $LOG_FILE -o $OUTPUT_FILE --scale $SCALE --palette $PALETTE
    ```
 
-2. Use `model.py` with the `--trustee` flag to train a model and generate explanations:
+   where `-f` specifies the input JSON file containing the clustered results, `-o` specifies the output HTML file, `--scale` adjusts the time scale of the timeline, and `--palette` allows you to choose a color palette for the visualization (you can choose from `cluster`, `verb`, `user`, or `resource`).
 
-    ```bash
-    python3 model.py -f $DATASET_FILE --trustee
-    ```
+### Additional documentation
 
-    You can also generate explanations for a pre-trained model:
-
-    ```bash
-    python3 model.py -m $MODEL_FILE  -f $DATASET_FILE --trustee
-    ```
-
-The explanation results will be saved in the output directory as:
-
-- `trustee_decision_tree.txt`: Human-readable decision tree rules with actual feature names
-- `trustee_decision_tree.dot`: Graphical decision tree representation (can be converted to PNG/PDF with Graphviz)
-- `trustee_explanation.json`: Fidelity metrics, explanation accuracy, and feature information
-- `trustee_predictions.json`: Detailed prediction comparisons
-
-Features are flattened for Trustee analysis. Feature names in the decision tree follow the pattern `feature_name_t0`, `feature_name_t1`, etc., where `t0`, `t1` represent different time steps in the sequence window.
+In the [docs/additional-features.md](docs/additional-features.md) file, you can find documentation on additional features and scripts. This includes scripts for labeling logs, testing the labeling process, and generating plots from the results.
 
 ## License
 
