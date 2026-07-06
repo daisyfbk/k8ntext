@@ -203,6 +203,20 @@ def get_informative_dict(json_data):
         if metadata.get('uid') is not None:
             res['metadata/uid'] = metadata.get('uid')
 
+    # Some successful delete responses do not return the deleted object under
+    # responseObject.metadata.uid.  They instead expose the target UID inside a
+    # Status.details payload.  Preserve it so ownerReference-based clustering can
+    # link cascaded deletes (e.g. StatefulSet -> Pods/ControllerRevisions).
+    if 'metadata/uid' not in res:
+        if exists_subkey(json_data, 'responseObject', 'details', 'uid'):
+            uid = json_data.get('responseObject').get('details').get('uid')
+            if uid is not None:
+                res['metadata/uid'] = uid
+        elif exists_subkey(json_data, 'responseStatus', 'details', 'uid'):
+            uid = json_data.get('responseStatus').get('details').get('uid')
+            if uid is not None:
+                res['metadata/uid'] = uid
+
     return res
 
 

@@ -94,6 +94,15 @@ def _dark_color_for_key(key: str) -> str:
     return _color_for_key(key, saturation=75, lightness=35)
 
 
+def short_username(username: str) -> str:
+    """Return a shortened username for display purposes."""
+    if username.startswith("system:serviceaccount:"):
+        return "sys:sa:" + username.split(":", 2)[-1]
+    if username.startswith("system:"):
+        return "sys:" + username.split(":", 1)[-1]
+    return username
+
+
 def load_clusterized_log(path: str, label_key: str = DEFAULT_LABEL_KEY) -> list[dict]:
     """Load a JSONL file and enrich each line with derived fields."""
     actions = []
@@ -233,7 +242,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             overflow: hidden;
         }
         #sidebar {
-            width: 260px;
+            width: 300px;
             background: var(--panel-bg);
             border-right: 1px solid var(--border);
             display: flex;
@@ -312,7 +321,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             left: 0;
             top: 0;
             bottom: 0;
-            width: 180px;
+            width: 240px;
             background: rgba(248,249,250,0.95);
             border-right: 1px solid var(--border);
             z-index: 2;
@@ -347,7 +356,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             flex: 1;
             overflow-x: auto;
             overflow-y: auto;
-            margin-left: 180px;
+            margin-left: 240px;
             position: relative;
             background: #fff;
         }
@@ -446,7 +455,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <h1>K8NTEXT Timeline Visualizer</h1>
             <div class="control-group">
                 <label for="zoom-slider">Zoom:</label>
-                <input id="zoom-slider" type="range" min="0.5" max="20" step="0.5" value="__PIXELS_PER_SECOND__">
+                <input id="zoom-slider" type="range" min="0.5" max="100" step="0.5" value="__PIXELS_PER_SECOND__">
                 <span id="zoom-value">__PIXELS_PER_SECOND__x</span>
             </div>
             <div class="control-group">
@@ -790,7 +799,7 @@ def build_html(
     if not actions:
         raise ValueError("No actions to visualize.")
 
-    users = sorted({a["username"] for a in actions})
+    users = sorted({short_username(a["username"]) for a in actions})
     user_to_row = {u: i for i, u in enumerate(users)}
     clusters: dict[str, list[dict]] = {}
     for a in actions:
@@ -819,7 +828,7 @@ def build_html(
 
     def _build_action_circle(a: dict) -> str:
         x = x_for_seconds(a["seconds"])
-        y = user_to_row[a["username"]] * row_height + row_height // 2
+        y = user_to_row[short_username(a["username"])] * row_height + row_height // 2
         color = cluster_color[a["uuid"]]
         stroke = _dark_color_for_key(_cluster_color_key(a["uuid"], clusters[a["uuid"]], palette))
         radius = trigger_radius if a["is_trigger"] else normal_radius
@@ -835,7 +844,7 @@ def build_html(
         return (
             f'<circle class="action-dot" '
             f'data-uuid="{a["uuid"]}" '
-            f'data-user="{a["username"]}" '
+            f'data-user="{short_username(a["username"])}" '
             f'data-idx="{a["index"]}" '
             f'data-seconds="{a["seconds"]}" '
             f'{trigger_attr} '
@@ -911,7 +920,7 @@ def build_html(
         {
             "index": a["index"],
             "uuid": a["uuid"],
-            "user": a["username"],
+            "user": short_username(a["username"]),
             "timestamp": _format_timestamp(a["timestamp"]),
             "summary": a["summary"],
             "is_trigger": a["is_trigger"],
